@@ -4187,6 +4187,18 @@ then
     fi
 fi
 
+dnl platform specific C and header files
+PLATFORM_HEADERS=
+PLATFORM_OBJS=
+
+AS_CASE([$ac_sys_system],
+  [Emscripten], [
+    AS_VAR_APPEND([PLATFORM_OBJS], [Python/emscripten_signal.o])
+  ],
+)
+AC_SUBST([PLATFORM_HEADERS])
+AC_SUBST([PLATFORM_OBJS])
+
 # -I${DLINCLDIR} is added to the compile rule for importdl.o
 AC_SUBST(DLINCLDIR)
 DLINCLDIR=.
