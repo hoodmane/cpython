@@ -1121,6 +1121,25 @@ PyEval_EvalFrameEx(PyFrameObject *f, int throwflag)
     return _PyEval_EvalFrame(tstate, f->f_frame, throwflag);
 }
 
+#if defined(__EMSCRIPTEN__)
+
+bool Py_EMSCRIPTEN_SIGNAL_HANDLING;
+void _Py_CheckEmscriptenSignals(void);
+
+static int
+emscripten_signal_clock = 50;
+
+static int
+periodically_check_emscripten_signals()
+{
+    emscripten_signal_clock--;
+    if (emscripten_signal_clock == 0) {
+        emscripten_signal_clock = 50;
+        _Py_CheckEmscriptenSignals();
+    }
+}
+
+#endif
 
 /* Handle signals, pending calls, GIL drop request
    and asynchronous exception */
@@ -1129,6 +1148,12 @@ eval_frame_handle_pending(PyThreadState *tstate)
 {
     _PyRuntimeState * const runtime = &_PyRuntime;
     struct _ceval_runtime_state *ceval = &runtime->ceval;
+
+    #if defined(__EMSCRIPTEN__)
+    if (Py_EMSCRIPTEN_SIGNAL_HANDLING) {
+        periodically_check_emscripten_signals();
+    }
+    #endif
 
     /* Pending signals */
     if (_Py_atomic_load_relaxed(&ceval->signals_pending)) {
