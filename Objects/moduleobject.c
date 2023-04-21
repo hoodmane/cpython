@@ -74,6 +74,13 @@ module_init_dict(PyModuleObject *mod, PyObject *md_dict,
     return 0;
 }
 
+
+static PyObject*
+module_Vectorcall(PyObject* self,
+                  PyObject* const* args,
+                  size_t nargsf,
+                  PyObject* kwnames);
+
 static PyModuleObject *
 new_module_notrack(PyTypeObject *mt)
 {
@@ -86,6 +93,7 @@ new_module_notrack(PyTypeObject *mt)
     m->md_weaklist = NULL;
     m->md_name = NULL;
     m->md_dict = PyDict_New();
+    m->m_vectorcall = module_Vectorcall;
     if (m->md_dict != NULL) {
         return m;
     }
@@ -928,6 +936,27 @@ exit:
     return ret;
 }
 
+static PyObject*
+module_Vectorcall(PyObject* self,
+                  PyObject* const* args,
+                  size_t nargsf,
+                  PyObject* kwnames)
+{
+    // _Py_IDENTIFIER(__call__);
+    
+    // callfunc = PyObject_GetAttrId(self, &PyId___call__);
+    PyObject* callfunc = PyObject_GetAttrString(self, "__call__");
+    if(callfunc == NULL) {
+        PyErr_SetString(PyExc_TypeError, "'module' object is not callable");
+        return NULL;
+    }
+    if(PyObject_IsInstance(callfunc, (PyObject*)&_PyMethodWrapper_Type)) {
+        PyErr_SetString(PyExc_TypeError, "'module' object is not callable");
+        return NULL;
+    }
+    return PyObject_Vectorcall(callfunc, args, nargsf, kwnames);
+}
+
 
 static PyGetSetDef module_getsets[] = {
     {"__annotations__", (getter)module_get_annotations, (setter)module_set_annotations},
@@ -940,7 +969,7 @@ PyTypeObject PyModule_Type = {
     sizeof(PyModuleObject),                     /* tp_basicsize */
     0,                                          /* tp_itemsize */
     (destructor)module_dealloc,                 /* tp_dealloc */
-    0,                                          /* tp_vectorcall_offset */
+    offsetof(PyModuleObject, m_vectorcall),                                          /* tp_vectorcall_offset */
     0,                                          /* tp_getattr */
     0,                                          /* tp_setattr */
     0,                                          /* tp_as_async */
@@ -949,13 +978,13 @@ PyTypeObject PyModule_Type = {
     0,                                          /* tp_as_sequence */
     0,                                          /* tp_as_mapping */
     0,                                          /* tp_hash */
-    0,                                          /* tp_call */
+    PyVectorcall_Call,                                          /* tp_call */
     0,                                          /* tp_str */
     (getattrofunc)module_getattro,              /* tp_getattro */
     PyObject_GenericSetAttr,                    /* tp_setattro */
     0,                                          /* tp_as_buffer */
     Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC |
-        Py_TPFLAGS_BASETYPE,                    /* tp_flags */
+        Py_TPFLAGS_BASETYPE | Py_TPFLAGS_HAVE_VECTORCALL,                    /* tp_flags */
     module___init____doc__,                     /* tp_doc */
     (traverseproc)module_traverse,              /* tp_traverse */
     (inquiry)module_clear,                      /* tp_clear */
