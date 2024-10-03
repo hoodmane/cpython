@@ -1660,7 +1660,7 @@ fi
 
 # LIBRARY_DEPS, LINK_PYTHON_OBJS and LINK_PYTHON_DEPS variable
 AS_CASE([$ac_sys_system/$ac_sys_emscripten_target],
-  [Emscripten/browser*], [LIBRARY_DEPS='$(PY3LIBRARY) $(WASM_STDLIB) python.html python.worker.js'],
+  [Emscripten/browser*], [LIBRARY_DEPS='$(PY3LIBRARY)'],
   [LIBRARY_DEPS='$(PY3LIBRARY) $(EXPORTSYMS)']
 )
 LINK_PYTHON_DEPS='$(LIBRARY_DEPS)'
@@ -2407,7 +2407,6 @@ AS_CASE([$ac_sys_system],
     AS_CASE([$ac_sys_emscripten_target],
       [browser*], [
         AS_VAR_IF([ac_sys_emscripten_target], [browser-debug], [wasm_debug=yes])
-        AS_VAR_APPEND([LINKFORSHARED], [" --preload-file=\$(WASM_ASSETS_DIR)"])
         WASM_ASSETS_DIR=".\$(prefix)"
         WASM_STDLIB="\$(WASM_ASSETS_DIR)/local/lib/python\$(VERSION)/os.py"
         dnl separate-dwarf does not seem to work in Chrome DevTools Support.

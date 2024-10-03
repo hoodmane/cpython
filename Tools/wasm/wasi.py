@@ -357,6 +357,12 @@ def main():
                 "make-host": make_wasi_python,
                 "build": build_all,
                 "clean": clean_contents}
+
+    if not context.subcommand:
+        # No command provided, display help and exit
+        print("Expected one of", ", ".joinsorted(dispatch.keys()), file=sys.stderr)
+        parser.print_help(sys.stderr)
+        sys.exit(1)
     dispatch[context.subcommand](context)
 
 
