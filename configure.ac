@@ -1281,30 +1281,6 @@ AS_CASE([$ac_sys_system/$ac_sys_release],
  ]
 )
 
-AC_MSG_CHECKING([for --with-emscripten-target])
-AC_ARG_WITH([emscripten-target],
-  [AS_HELP_STRING([--with-emscripten-target=@<:@browser|node@:>@], [Emscripten platform])],
-[
-	AS_VAR_IF([ac_sys_system], [Emscripten], [
-    AS_CASE([$with_emscripten_target],
-      [browser], [ac_sys_emscripten_target=browser],
-      [node], [ac_sys_emscripten_target=node],
-dnl Debug builds with source map / dwarf symbols. Py_DEBUG builds easily
-dnl run out of stack space. Detached sybmols and map prohibit some
-dnl optimizations and increase file size. Options are undocumented so we
-dnl are free to remove them in the future.
-      [browser-debug], [ac_sys_emscripten_target=browser-debug],
-      [node-debug], [ac_sys_emscripten_target=node-debug],
-      [AC_MSG_ERROR([Invalid argument: --with-emscripten-target=browser|node])]
-    )
-  ], [
-    AC_MSG_ERROR([--with-emscripten-target only applies to Emscripten])
-  ])
-], [
-  AS_VAR_IF([ac_sys_system], [Emscripten], [ac_sys_emscripten_target=browser])
-])
-AC_MSG_RESULT([$ac_sys_emscripten_target])
-
 dnl On Emscripten dlopen() requires -s MAIN_MODULE and -fPIC. The flags
 dnl disables dead code elimination and increases the size of the WASM module
 dnl by about 1.5 to 2MB. MAIN_MODULE defines __wasm_mutable_globals__.
@@ -1636,8 +1612,8 @@ AC_MSG_CHECKING([HOSTRUNNER])
 AC_ARG_VAR([HOSTRUNNER], [Program to run CPython for the host platform])
 if test -z "$HOSTRUNNER"
 then
-  AS_CASE([$ac_sys_system/$ac_sys_emscripten_target],
-    [Emscripten/node*], [
+  AS_CASE([$ac_sys_system],
+    [Emscripten], [
       AC_PATH_TOOL([NODE], [node], [node])
       HOSTRUNNER="$NODE"
       AS_VAR_IF([host_cpu], [wasm64], [AS_VAR_APPEND([HOSTRUNNER], [" --experimental-wasm-memory64"])])
@@ -1645,7 +1621,7 @@ then
     dnl TODO: support other WASI runtimes
     dnl wasmtime starts the process with "/" as CWD. For OOT builds add the
     dnl directory containing _sysconfigdata to PYTHONPATH.
-    [WASI/*], [HOSTRUNNER='wasmtime run --wasm max-wasm-stack=16777216 --wasi preview2 --env PYTHONPATH=/$(shell realpath --relative-to $(abs_srcdir) $(abs_builddir))/$(shell cat pybuilddir.txt):/Lib --dir $(srcdir)::/'],
+    [WASI], [HOSTRUNNER='wasmtime run --wasm max-wasm-stack=16777216 --wasi preview2 --env PYTHONPATH=/$(shell realpath --relative-to $(abs_srcdir) $(abs_builddir))/$(shell cat pybuilddir.txt):/Lib --dir $(srcdir)::/'],
     [HOSTRUNNER='']
   )
 fi
@@ -1658,10 +1634,8 @@ if test -n "$HOSTRUNNER"; then
 fi
 
 # LIBRARY_DEPS, LINK_PYTHON_OBJS and LINK_PYTHON_DEPS variable
-AS_CASE([$ac_sys_system/$ac_sys_emscripten_target],
-  [Emscripten/browser*], [LIBRARY_DEPS='$(PY3LIBRARY)'],
-  [LIBRARY_DEPS='$(PY3LIBRARY) $(EXPORTSYMS)']
-)
+LIBRARY_DEPS='$(PY3LIBRARY) $(EXPORTSYMS)'
+
 LINK_PYTHON_DEPS='$(LIBRARY_DEPS)'
 if test "$PY_ENABLE_SHARED" = 1 || test "$enable_framework" ; then
     LIBRARY_DEPS="\$(LDLIBRARY) $LIBRARY_DEPS"
@@ -2402,23 +2376,7 @@ AS_CASE([$ac_sys_system],
       AS_VAR_APPEND([LDFLAGS_NODIST], [" -sUSE_PTHREADS"])
       AS_VAR_APPEND([LINKFORSHARED], [" -sPROXY_TO_PTHREAD"])
     ])
-
-    AS_CASE([$ac_sys_emscripten_target],
-      [browser*], [
-        AS_VAR_IF([ac_sys_emscripten_target], [browser-debug], [wasm_debug=yes])
-        WASM_ASSETS_DIR=".\$(prefix)"
-        WASM_STDLIB="\$(WASM_ASSETS_DIR)/local/lib/python\$(VERSION)/os.py"
-        dnl separate-dwarf does not seem to work in Chrome DevTools Support.
-        WASM_LINKFORSHARED_DEBUG="-gsource-map --emit-symbol-map"
-      ],
-      [node*], [
-        AS_VAR_IF([ac_sys_emscripten_target], [node-debug], [wasm_debug=yes])
-        AS_VAR_APPEND([LDFLAGS_NODIST], [" --pre-js=\$(srcdir)/Tools/wasm/emscripten/node_pre.js"])
-        AS_VAR_APPEND([LDFLAGS_NODIST], [" -sALLOW_MEMORY_GROWTH -sNODERAWFS"])
-        AS_VAR_APPEND([LINKFORSHARED], [" -sEXIT_RUNTIME"])
-        WASM_LINKFORSHARED_DEBUG="-gseparate-dwarf --emit-symbol-map"
-      ]
-    )
+    WASM_LINKFORSHARED_DEBUG="-gseparate-dwarf --emit-symbol-map"
 
     AS_VAR_IF([wasm_debug], [yes], [
       AS_VAR_APPEND([LDFLAGS_NODIST], [" -sASSERTIONS"])
@@ -7504,12 +7462,7 @@ AC_MSG_CHECKING([for --disable-test-modules])
 AC_ARG_ENABLE([test-modules],
   [AS_HELP_STRING([--disable-test-modules], [don't build nor install test modules])], [
   AS_VAR_IF([enable_test_modules], [yes], [TEST_MODULES=yes], [TEST_MODULES=no])
-], [
-  AS_CASE([$ac_sys_system/$ac_sys_emscripten_target],
-    [Emscripten/browser*], [TEST_MODULES=no],
-    [TEST_MODULES=yes]
-  )
-])
+], [TEST_MODULES=yes])
 AC_MSG_RESULT([$TEST_MODULES])
 AC_SUBST([TEST_MODULES])
 
@@ -7641,17 +7594,8 @@ AS_CASE([$ac_sys_system],
       [resource],
       [syslog],
     )
-    AS_CASE([$ac_sys_system/$ac_sys_emscripten_target],
-      [Emscripten/browser*], [
-        dnl These modules are not particularly useful in browsers.
-        PY_STDLIB_MOD_SET_NA(
-          [fcntl],
-          [readline],
-          [termios],
-        )
-      ],
-      [Emscripten/node*], [],
-      [WASI/*], [
+    AS_CASE([$ac_sys_system],
+      [WASI], [
         dnl WASI SDK 15.0 does not support file locking, mmap, and more.
         dnl Test modules that must be compiled as shared libraries are not supported
         dnl (see Modules/Setup.stdlib.in).
