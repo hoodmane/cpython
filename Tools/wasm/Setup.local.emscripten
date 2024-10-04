@@ -9,7 +9,6 @@ zlib zlibmodule.c
 *disabled*
 pwd
 _sqlite3
-_ctypes
 _ssl
 _lzma
 _hashlib

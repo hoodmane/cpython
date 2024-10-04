@@ -155,6 +155,23 @@ def make_build_python(context, working_dir):
 
 
 @subdir(HOST_DIR, clean_ok=True)
+def make_libffi(context, working_dir):
+    call([
+        "git",
+        "clone",
+        "https://github.com/libffi/libffi",
+    ],
+    quiet=context.quiet,
+    )
+    call(
+        [WASM_DIR / "emscripten/make_libffi.sh"],
+        env=updated_env({"TARGET": HOST_DIR}),
+        cwd=HOST_DIR/"libffi",
+        quiet=context.quiet,
+    )
+
+
+@subdir(HOST_DIR, clean_ok=True)
 def configure_emscripten_python(context, working_dir):
     """Configure the emscripten/host build."""
     config_site = os.fsdecode(CHECKOUT / "Tools" / "wasm" / "config.site-wasm32-emscripten")
@@ -183,7 +200,8 @@ def configure_emscripten_python(context, working_dir):
         "PYTHON_WASM": working_dir / "python.wasm",
     }
     host_runner = context.host_runner.format_map(args)
-    env_additions = {"CONFIG_SITE": config_site, "HOSTRUNNER": host_runner}
+    pkg_config_path_dir = (working_dir / "lib/pkgconfig/").resolve()
+    env_additions = {"CONFIG_SITE": config_site, "HOSTRUNNER": host_runner, "EM_PKG_CONFIG_PATH": str(pkg_config_path_dir)}
     build_python = os.fsdecode(build_python_path())
     # The path to `configure` MUST be relative, else `python.wasm` is unable
     # to find the stdlib due to Python not recognizing that it's being
@@ -205,6 +223,7 @@ def configure_emscripten_python(context, working_dir):
         "emconfigure",
         os.path.relpath(CHECKOUT / "configure", working_dir),
         'CFLAGS=-DPY_CALL_TRAMPOLINE',
+        'PKG_CONFIG=pkg-config',
         f"--host={HOST_TRIPLE}",
         f"--build={build_platform()}",
         f"--with-build-python={build_python}",
@@ -213,7 +232,7 @@ def configure_emscripten_python(context, working_dir):
         "--disable-ipv6",
         "--enable-big-digits=30",
         "--enable-wasm-dynamic-linking",
-        f"--prefix={HOST_DIR}"
+        f"--prefix={HOST_DIR}",
     ]
     if pydebug:
         configure.append("--with-pydebug")
@@ -280,6 +299,9 @@ def main():
     parser = argparse.ArgumentParser()
     subcommands = parser.add_subparsers(dest="subcommand")
     build = subcommands.add_parser("build", help="Build everything")
+    make_libffi_cmd = subcommands.add_parser(
+        "make-libffi", help="Clone libffi repo, configure and build it for emscripten"
+    )
     configure_build = subcommands.add_parser(
         "configure-build-python", help="Run `configure` for the " "build Python"
     )
@@ -297,7 +319,7 @@ def main():
     clean = subcommands.add_parser(
         "clean", help="Delete files and directories " "created by this script"
     )
-    for subcommand in build, configure_build, make_build, configure_host, make_host:
+    for subcommand in build, make_libffi_cmd, configure_build, make_build, configure_host, make_host:
         subcommand.add_argument(
             "--quiet",
             action="store_true",
@@ -330,6 +352,7 @@ def main():
     context = parser.parse_args()
 
     dispatch = {
+        "make-libffi": make_libffi,
         "configure-build-python": configure_build_python,
         "make-build-python": make_build_python,
         "configure-host": configure_emscripten_python,
