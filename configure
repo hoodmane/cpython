@@ -7331,12 +7331,10 @@ esac
 
 else $as_nop
 
-  case $ac_sys_system/$ac_sys_emscripten_target in #(
-  Emscripten/browser*) :
+  case $ac_sys_system in #(
+  Emscripten) :
     EXEEXT=.js ;; #(
-  Emscripten/node*) :
-    EXEEXT=.js ;; #(
-  WASI/*) :
+  WASI) :
     EXEEXT=.wasm ;; #(
   *) :
     EXEEXT=
