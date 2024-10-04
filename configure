@@ -7288,7 +7288,7 @@ else $as_nop
 
   case $ac_sys_system in #(
   Emscripten) :
-    EXEEXT=.js ;; #(
+    EXEEXT=.mjs ;; #(
   WASI) :
     EXEEXT=.wasm ;; #(
   *) :
@@ -9461,6 +9461,7 @@ fi
         as_fn_append LDFLAGS_NODIST " -sWASM_BIGINT"
 
         as_fn_append LDFLAGS_NODIST " -sFORCE_FILESYSTEM -lidbfs.js -lnodefs.js -lproxyfs.js -lworkerfs.js"
+    as_fn_append LDFLAGS_NODIST " -sEXPORTED_RUNTIME_METHODS=FS"
 
     if test "x$enable_wasm_dynamic_linking" = xyes
 then :

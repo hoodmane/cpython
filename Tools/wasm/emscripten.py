@@ -205,7 +205,6 @@ def configure_emscripten_python(context, working_dir):
         "emconfigure",
         os.path.relpath(CHECKOUT / "configure", working_dir),
         'CFLAGS=-DPY_CALL_TRAMPOLINE',
-        f'LDFLAGS=--pre-js={PRE_JS}',
         f"--host={HOST_TRIPLE}",
         f"--build={build_platform()}",
         f"--with-build-python={build_python}",
@@ -226,9 +225,9 @@ def configure_emscripten_python(context, working_dir):
         quiet=context.quiet,
     )
     shutil.copy(SETUP_LOCAL_FILE, working_dir / "Modules/Setup.local")
+    shutil.copy(WASM_DIR / "node_entry.mjs", working_dir / "node_entry.mjs")
 
-
-    python_js = working_dir / "python.js"
+    python_js = working_dir / "node_entry.mjs"
     exec_script = working_dir / "python.sh"
     exec_script.write_text(f'#!/bin/sh\nexec {host_runner} {python_js} "$@"\n')
     exec_script.chmod(0o755)
