@@ -3352,6 +3352,8 @@ MODULE__CODECS_KR_DEPS=$(srcdir)/Modules/cjkcodecs/mappings_kr.h $(CODECS_COMMON
 MODULE__CODECS_TW_DEPS=$(srcdir)/Modules/cjkcodecs/mappings_tw.h $(CODECS_COMMON_HEADERS)
 MODULE__MULTIBYTECODEC_DEPS=$(srcdir)/Modules/cjkcodecs/multibytecodec.h
 
+MODULE__PYODIDE_CORE_DEPS=$(srcdir)/Modules/_pyodide_core/error_handling.h
+
 # IF YOU PUT ANYTHING HERE IT WILL GO AWAY
 # Local Variables:
 # mode: makefile

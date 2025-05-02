@@ -172,7 +172,7 @@
 
 ############################################################################
 # Emscripten specific modules
-@MODULE__PYODIDE_CORE_TRUE@_pyodide_core _pyodide_core/_pyodide_core.c
+@MODULE__PYODIDE_CORE_TRUE@_pyodide_core _pyodide_core/_pyodide_core.c _pyodide_core/error_handling.c
 
 
 ############################################################################
