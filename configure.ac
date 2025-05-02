@@ -7788,6 +7788,7 @@ SRCDIRS="\
   Modules/_xxtestfuzz \
   Modules/_zstd \
   Modules/cjkcodecs \
+  Modules/_pyodide_core \
   Modules/expat \
   Objects \
   Objects/mimalloc \
@@ -8378,10 +8379,10 @@ AC_DEFUN([PY_STDLIB_MOD_SET_NA], [
 # stdlib not available
 dnl Modules that are not available on some platforms
 AS_CASE([$ac_sys_system],
-  [AIX], [PY_STDLIB_MOD_SET_NA([_scproxy])],
-  [VxWorks*], [PY_STDLIB_MOD_SET_NA([_scproxy], [termios], [grp])],
+  [AIX], [PY_STDLIB_MOD_SET_NA([_scproxy], [_pyodide_core])],
+  [VxWorks*], [PY_STDLIB_MOD_SET_NA([_scproxy], [_pyodide_core], [termios], [grp])],
   dnl The _scproxy module is available on macOS
-  [Darwin], [],
+  [Darwin], [PY_STDLIB_MOD_SET_NA([_pyodide_core])],
   [iOS], [
     dnl subprocess and multiprocessing are not supported (no fork syscall).
     dnl curses and tkinter user interface are not available.
@@ -8395,6 +8396,7 @@ AS_CASE([$ac_sys_system],
       [_posixshmem],
       [_posixsubprocess],
       [_scproxy],
+      [_pyodide_core],
       [_tkinter],
       [grp],
       [nis],
@@ -8404,9 +8406,9 @@ AS_CASE([$ac_sys_system],
       [syslog],
     )
   ],
-  [CYGWIN*], [PY_STDLIB_MOD_SET_NA([_scproxy])],
-  [QNX*], [PY_STDLIB_MOD_SET_NA([_scproxy])],
-  [FreeBSD*], [PY_STDLIB_MOD_SET_NA([_scproxy])],
+  [CYGWIN*], [PY_STDLIB_MOD_SET_NA([_scproxy], [_pyodide_core])],
+  [QNX*], [PY_STDLIB_MOD_SET_NA([_scproxy], [_pyodide_core])],
+  [FreeBSD*], [PY_STDLIB_MOD_SET_NA([_scproxy], [_pyodide_core])],
   [Emscripten], [
     dnl subprocess and multiprocessing are not supported (no fork syscall).
     dnl curses and tkinter user interface are not available.
@@ -8449,6 +8451,7 @@ AS_CASE([$ac_sys_system],
       [_posixshmem],
       [_posixsubprocess],
       [_scproxy],
+      [_pyodide_core],
       [_tkinter],
       [_interpreters],
       [_interpchannels],
@@ -8475,7 +8478,7 @@ AS_CASE([$ac_sys_system],
       [xxlimited_3_13],
     )
   ],
-  [PY_STDLIB_MOD_SET_NA([_scproxy])]
+  [PY_STDLIB_MOD_SET_NA([_scproxy], [_pyodide_core])]
 )
 
 dnl AC_MSG_NOTICE([m4_set_list([_PY_STDLIB_MOD_SET_NA])])
@@ -8613,6 +8616,7 @@ PY_STDLIB_MOD([_scproxy],
   [], [-framework SystemConfiguration -framework CoreFoundation])
 PY_STDLIB_MOD([syslog], [], [test "$ac_cv_header_syslog_h" = yes])
 PY_STDLIB_MOD([termios], [], [test "$ac_cv_header_termios_h" = yes])
+PY_STDLIB_MOD([_pyodide_core], [], [])
 
 dnl _elementtree loads libexpat via CAPI hook in pyexpat
 PY_STDLIB_MOD([pyexpat],
