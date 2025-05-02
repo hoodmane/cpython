@@ -170,6 +170,10 @@
 # _scproxy needs SystemConfiguration and CoreFoundation framework
 @MODULE__SCPROXY_TRUE@_scproxy _scproxy.c
 
+############################################################################
+# Emscripten specific modules
+@MODULE__PYODIDE_CORE_TRUE@_pyodide_core _pyodide_core/_pyodide_core.c
+
 
 ############################################################################
 # Test modules

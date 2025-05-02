@@ -745,6 +745,8 @@ MODULE__ELEMENTTREE_FALSE
 MODULE__ELEMENTTREE_TRUE
 MODULE_PYEXPAT_FALSE
 MODULE_PYEXPAT_TRUE
+MODULE__PYODIDE_CORE_FALSE
+MODULE__PYODIDE_CORE_TRUE
 MODULE_TERMIOS_FALSE
 MODULE_TERMIOS_TRUE
 MODULE_SYSLOG_FALSE
@@ -29770,6 +29772,7 @@ SRCDIRS="\
   Modules/_testlimitedcapi \
   Modules/_xxtestfuzz \
   Modules/cjkcodecs \
+  Modules/_pyodide_core \
   Modules/expat \
   Modules/_zstd \
   Objects \
@@ -30924,16 +30927,21 @@ case $ac_sys_system in #(
 
 
     py_cv_module__scproxy=n/a
+    py_cv_module__pyodide_core=n/a
  ;; #(
   VxWorks*) :
 
 
     py_cv_module__scproxy=n/a
+    py_cv_module__pyodide_core=n/a
     py_cv_module_termios=n/a
     py_cv_module_grp=n/a
  ;; #(
     Darwin) :
-     ;; #(
+
+
+    py_cv_module__pyodide_core=n/a
+ ;; #(
   iOS) :
 
 
@@ -30945,6 +30953,7 @@ case $ac_sys_system in #(
     py_cv_module__posixshmem=n/a
     py_cv_module__posixsubprocess=n/a
     py_cv_module__scproxy=n/a
+    py_cv_module__pyodide_core=n/a
     py_cv_module__tkinter=n/a
     py_cv_module_grp=n/a
     py_cv_module_nis=n/a
@@ -30959,16 +30968,19 @@ case $ac_sys_system in #(
 
 
     py_cv_module__scproxy=n/a
+    py_cv_module__pyodide_core=n/a
  ;; #(
   QNX*) :
 
 
     py_cv_module__scproxy=n/a
+    py_cv_module__pyodide_core=n/a
  ;; #(
   FreeBSD*) :
 
 
     py_cv_module__scproxy=n/a
+    py_cv_module__pyodide_core=n/a
  ;; #(
   Emscripten) :
 
@@ -31012,6 +31024,7 @@ case $ac_sys_system in #(
     py_cv_module__posixshmem=n/a
     py_cv_module__posixsubprocess=n/a
     py_cv_module__scproxy=n/a
+    py_cv_module__pyodide_core=n/a
     py_cv_module__tkinter=n/a
     py_cv_module__interpreters=n/a
     py_cv_module__interpchannels=n/a
@@ -31041,6 +31054,7 @@ case $ac_sys_system in #(
 
 
     py_cv_module__scproxy=n/a
+    py_cv_module__pyodide_core=n/a
 
  ;;
 esac
@@ -32080,6 +32094,46 @@ fi
 
   { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: $py_cv_module_termios" >&5
 printf "%s\n" "$py_cv_module_termios" >&6; }
+
+
+  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking for stdlib extension module _pyodide_core" >&5
+printf %s "checking for stdlib extension module _pyodide_core... " >&6; }
+        if test "$py_cv_module__pyodide_core" != "n/a"
+then :
+
+    if true
+then :
+  if true
+then :
+  py_cv_module__pyodide_core=yes
+else case e in #(
+  e) py_cv_module__pyodide_core=missing ;;
+esac
+fi
+else case e in #(
+  e) py_cv_module__pyodide_core=disabled ;;
+esac
+fi
+
+fi
+  as_fn_append MODULE_BLOCK "MODULE__PYODIDE_CORE_STATE=$py_cv_module__pyodide_core$as_nl"
+  if test "x$py_cv_module__pyodide_core" = xyes
+then :
+
+
+
+
+fi
+   if test "$py_cv_module__pyodide_core" = yes; then
+  MODULE__PYODIDE_CORE_TRUE=
+  MODULE__PYODIDE_CORE_FALSE='#'
+else
+  MODULE__PYODIDE_CORE_TRUE='#'
+  MODULE__PYODIDE_CORE_FALSE=
+fi
+
+  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: $py_cv_module__pyodide_core" >&5
+printf "%s\n" "$py_cv_module__pyodide_core" >&6; }
 
 
 
@@ -34320,6 +34374,10 @@ Usually this means the macro was only invoked conditionally." "$LINENO" 5
 fi
 if test -z "${MODULE_TERMIOS_TRUE}" && test -z "${MODULE_TERMIOS_FALSE}"; then
   as_fn_error $? "conditional \"MODULE_TERMIOS\" was never defined.
+Usually this means the macro was only invoked conditionally." "$LINENO" 5
+fi
+if test -z "${MODULE__PYODIDE_CORE_TRUE}" && test -z "${MODULE__PYODIDE_CORE_FALSE}"; then
+  as_fn_error $? "conditional \"MODULE__PYODIDE_CORE\" was never defined.
 Usually this means the macro was only invoked conditionally." "$LINENO" 5
 fi
 if test -z "${MODULE_PYEXPAT_TRUE}" && test -z "${MODULE_PYEXPAT_FALSE}"; then
