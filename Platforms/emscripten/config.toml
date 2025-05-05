@@ -24,3 +24,9 @@ shasum = "b0dea9df23c863a7a50e825440f3ebffabd65df1497108e5d437747843895a4e"
 url = "https://www.bytereef.org/software/mpdecimal/releases/mpdecimal-{version}.tar.gz"
 version = "4.0.1"
 shasum = "96d33abb4bb0070c7be0fed4246cd38416188325f820468214471938545b1ac8"
+
+
+[dependencies.hiwire]
+url = "https://github.com/pyodide/hiwire/archive/refs/tags/{version}.tar.gz"
+version = "1.0.1"
+shasum = "b03fbd2ba0e22f85e6f36babc0bdb3d7d5fde9a60bb9589f4d103389781c4493"

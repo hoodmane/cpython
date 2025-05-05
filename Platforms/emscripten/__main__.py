@@ -299,11 +299,13 @@ def pythoninfo_build_python(context, working_dir):
 def check_shasum(file: str, expected_shasum: str):
     with open(file, "rb") as f:
         digest = hashlib.file_digest(f, "sha256")
-    if digest.hexdigest() != expected_shasum:
-        raise RuntimeError(f"Unexpected shasum for {file}")
+    got_shasum = digest.hexdigest()
+    if got_shasum != expected_shasum:
+        raise RuntimeError(f"Unexpected shasum for {file}: got {got_shasum} expected {expected_shasum}")
 
 
-def download_and_unpack(working_dir: Path, url: str, expected_shasum: str):
+def download_and_unpack(working_dir: Path, url: str, expected_shasum: str, quiet: bool):
+    print("Downloading", url)
     with tempfile.NamedTemporaryFile(
         suffix=".tar.gz", delete_on_close=False
     ) as tmp_file:
@@ -377,6 +379,7 @@ def make_emscripten_libffi(context, working_dir):
         working_dir,
         url.format(version=version),
         shasum,
+        quiet=context.quiet,
     )
     call(
         [EMSCRIPTEN_DIR / "make_libffi.sh"],
@@ -408,6 +411,7 @@ def make_mpdec(context, working_dir):
         working_dir,
         url.format(version=version),
         shasum,
+        quiet=context.quiet,
     )
     call(
         [
@@ -430,9 +434,49 @@ def make_mpdec(context, working_dir):
     write_library_config(prefix, "mpdec", mpdec_config, context.quiet)
 
 
+@subdir("host_build_dir", clean_ok=True)
+def make_hiwire(context, working_dir):
+    validate_emsdk_version(context.emsdk_cache)
+    prefix = context.build_paths["prefix_dir"]
+    hiwire_config = load_config_toml()["dependencies"]["hiwire"]
+    with open(EMSCRIPTEN_DIR / "make_hiwire.sh", "rb") as f:
+        hiwire_config["make_hiwire_sh_shasum"] = hashlib.file_digest(f, "sha256").hexdigest()
+    with open(EMSCRIPTEN_DIR / "libhiwire.pc", "rb") as f:
+        hiwire_config["libhiwire_pc_shasum"] = hashlib.file_digest(f, "sha256").hexdigest()
+
+    url = hiwire_config["url"]
+    version = hiwire_config["version"]
+    shasum = hiwire_config["shasum"]
+
+    if not should_build_library(prefix, "hiwire", hiwire_config, context.quiet):
+        return
+
+    if context.check_up_to_date:
+        print("hiwire out of date, expected to be up to date", file=sys.stderr)
+        sys.exit(1)
+
+    hiwire_dir = working_dir / f"hiwire-{version}"
+    shutil.rmtree(hiwire_dir, ignore_errors=True)
+    download_and_unpack(
+        working_dir,
+        url.format(version=version),
+        shasum,
+        quiet=context.quiet,
+    )
+    call(
+        [EMSCRIPTEN_DIR / "make_hiwire.sh"],
+        env=updated_env({"PREFIX": prefix,  "EMSCRIPTEN_DIR": EMSCRIPTEN_DIR}, context.emsdk_cache),
+        cwd=hiwire_dir,
+        quiet=context.quiet,
+    )
+    write_library_config(prefix, "hiwire", hiwire_config, context.quiet)
+
+
+
 def make_dependencies(context):
     make_emscripten_libffi(context)
     make_mpdec(context)
+    make_hiwire(context)
 
 
 def calculate_node_path():
@@ -624,8 +668,7 @@ def build_target(context):
         ])
     if context.target in {"host", "all"}:
         steps.extend([
-            make_emscripten_libffi,
-            make_mpdec,
+            make_dependencies,
             configure_emscripten_python,
             make_emscripten_python,
             pythoninfo_emscripten_python,
@@ -704,12 +747,17 @@ def main():
         help="Clone libffi repo, configure and build it for emscripten",
     )
 
+    make_hiwire_cmd = subcommands.add_parser(
+        "make-hiwire", help="Clone hiwire repo and build it for emscripten"
+    )
+
+
     make_dependencies_cmd = subcommands.add_parser(
         "make-dependencies",
         help="Build all static library dependencies",
     )
 
-    for cmd in [make_mpdec_cmd, make_libffi_cmd, make_dependencies_cmd]:
+    for cmd in [make_mpdec_cmd, make_libffi_cmd, make_hiwire_cmd, make_dependencies_cmd]:
         cmd.add_argument(
             "--check-up-to-date",
             action="store_true",
@@ -790,6 +838,7 @@ def main():
         configure_build,
         make_libffi_cmd,
         make_mpdec_cmd,
+        make_hiwire_cmd,
         make_dependencies_cmd,
         make_build,
         pythoninfo_build,
@@ -861,6 +910,7 @@ def main():
         "install-emscripten": install_emscripten,
         "make-libffi": make_emscripten_libffi,
         "make-mpdec": make_mpdec,
+        "make-hiwire": make_hiwire,
         "make-dependencies": make_dependencies,
         "configure-build-python": configure_build_python,
         "make-build-python": make_build_python,

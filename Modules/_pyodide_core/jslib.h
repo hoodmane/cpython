@@ -1,6 +1,8 @@
 #include <sys/types.h>
+#include <hiwire.h>
 
 typedef __externref_t JsVal;
+typedef HwRef JsRef;
 
 #define JS_NULL __builtin_wasm_ref_null_extern()
 int JsvNull_Check(JsVal);

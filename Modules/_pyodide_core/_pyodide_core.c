@@ -207,6 +207,39 @@ finally:
 }
 
 
+
+/*[clinic input]
+_pyodide_core.bad_hiwire_get
+
+    select: 'i'
+    /
+
+Run hiwire_get on bad imputs to test the errors.
+
+Currently this fatally crashes the runtime so it can't be used in a test.
+[clinic start generated code]*/
+
+static PyObject *
+_pyodide_core_bad_hiwire_get_impl(PyObject *module, int select)
+/*[clinic end generated code: output=25686670072611be input=6b09a9ac032a469f]*/
+{
+    switch(select) {
+        case 1:
+            hiwire_get((JsRef)0);
+            return NULL;
+        case 2:
+            PyErr_SetString(PyExc_TypeError, "oops!");
+            hiwire_get((JsRef)0);
+            return NULL;
+        case 3:
+            hiwire_get((JsRef)3);
+            return NULL;
+    }
+    return NULL;
+}
+
+
+
 static PyModuleDef_Slot _pyodide_core_slots[] = {
     {Py_mod_multiple_interpreters, Py_MOD_PER_INTERPRETER_GIL_SUPPORTED},
     {Py_mod_gil, Py_MOD_GIL_NOT_USED},
@@ -218,6 +251,7 @@ static struct PyMethodDef _pyodide_core_functions[] = {
     _PYODIDE_CORE_TEST_PYTHON2JS_METHODDEF
     _PYODIDE_CORE_TEST_JS2PYTHON_METHODDEF
     _PYODIDE_CORE_RUN_JS_METHODDEF
+    _PYODIDE_CORE_BAD_HIWIRE_GET_METHODDEF
     {NULL,       NULL}          /* sentinel */
 };
 
