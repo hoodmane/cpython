@@ -181,6 +181,31 @@ function jsAssert(cb, message = "") {
 });
 
 
+EM_JS_VAL(JsVal, _pyodide_core_run_js_js, (const char* js_code), {
+    return nullToUndefined(eval(UTF8ToString(js_code)));
+});
+
+/*[clinic input]
+_pyodide_core.run_js
+
+    js_code: 's'
+    /
+
+Run some JavaScript code and return the result
+[clinic start generated code]*/
+
+static PyObject *
+_pyodide_core_run_js_impl(PyObject *module, const char *js_code)
+/*[clinic end generated code: output=05aba34409b7877e input=0042ad0e422f7ba8]*/
+{
+    JsVal res = _pyodide_core_run_js_js(js_code);
+    FAIL_IF_JS_NULL(res);
+    return js2python(res);
+
+finally:
+    return NULL;
+}
+
 
 static PyModuleDef_Slot _pyodide_core_slots[] = {
     {Py_mod_multiple_interpreters, Py_MOD_PER_INTERPRETER_GIL_SUPPORTED},
@@ -192,6 +217,7 @@ static struct PyMethodDef _pyodide_core_functions[] = {
     _PYODIDE_CORE_TEST_ERROR_HANDLING_METHODDEF
     _PYODIDE_CORE_TEST_PYTHON2JS_METHODDEF
     _PYODIDE_CORE_TEST_JS2PYTHON_METHODDEF
+    _PYODIDE_CORE_RUN_JS_METHODDEF
     {NULL,       NULL}          /* sentinel */
 };
 

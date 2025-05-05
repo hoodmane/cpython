@@ -1,5 +1,5 @@
 from unittest import TestCase
-from _pyodide_core import test_error_handling, test_js2python, test_python2js
+from _pyodide_core import test_error_handling, test_js2python, test_python2js, run_js
 
 class PyodideTest(TestCase):
     def test_error_handling(self):
@@ -34,4 +34,21 @@ class PyodideTest(TestCase):
         test_python2js(8, "pyodidé")
         test_python2js(9, "碘化物")
         test_python2js(10, "🐍")
+
+    def test_run_js(self):
+        self.assertEqual(run_js("3 + 4"), 7)
+        self.assertEqual(run_js('"pyodidé"'), "pyodidé")
+        self.assertEqual(run_js('"碘化物"'), "碘化物")
+        self.assertEqual(run_js('"🐍"'), "🐍")
+        self.assertEqual(run_js('2.3'), 2.3)
+        self.assertEqual(run_js('77015781075109876017131518n'), 77015781075109876017131518)
+        self.assertEqual(run_js('undefined'), None)
+        self.assertEqual(run_js('null'), None)
+        self.assertEqual(run_js('false'), False)
+        self.assertEqual(run_js('true'), True)
+        with self.assertRaisesRegex(TypeError, "No Python conversion known for JavaScript object of type Array"):
+            run_js('[]')
+        with self.assertRaisesRegex(RuntimeError, "TypeError: oops!"):
+            run_js('throw new TypeError("oops!")')
+
 
