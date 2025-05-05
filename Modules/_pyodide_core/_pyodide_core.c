@@ -73,6 +73,15 @@ EM_JS_NUM(int, test_python2js_js, (int test, JsVal x), {
         case 7:
             jsAssert(() => x === "abc", msg);
             return;
+        case 8:
+            jsAssert(() => x === "pyodidé", msg);
+            return;
+        case 9:
+            jsAssert(() => x === "碘化物", msg);
+            return;
+        case 10:
+            jsAssert(() => x === "🐍", msg);
+            return;
     }
     throw new Error("hi!");
 });
@@ -121,6 +130,15 @@ EM_JS_VAL(JsVal, test_js2python_js, (int arg), {
             return true;
         case 8:
             return [];
+        case 9:
+            // ucs1
+            return "pyodidé";
+        case 10:
+            // ucs2
+            return "碘化物";
+        case 11:
+            // ucs4
+            return "🐍";
     }
     throw new Error("hi!");
 });
