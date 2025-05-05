@@ -2353,7 +2353,11 @@ AS_CASE([$ac_sys_system],
     AS_VAR_APPEND([LINKFORSHARED], ["_PyLong_FromDouble,"])
     AS_VAR_APPEND([LINKFORSHARED], ["_PyFloat_FromDouble,"])
     AS_VAR_APPEND([LINKFORSHARED], ["__PyLong_FromByteArray,"])
+    AS_VAR_APPEND([LINKFORSHARED], ["_PyErr_Occurred,"])
+    AS_VAR_APPEND([LINKFORSHARED], ["_PyErr_Print,"])
     AS_VAR_APPEND([LINKFORSHARED], ["_PyUnicode_New"])
+
+
     AS_VAR_APPEND([LINKFORSHARED], [" -sSTACK_SIZE=5MB"])
     dnl Avoid bugs in JS fallback string decoding path
     AS_VAR_APPEND([LINKFORSHARED], [" -sTEXTDECODER=2"])
@@ -7939,7 +7943,7 @@ PY_STDLIB_MOD([_scproxy],
   [], [-framework SystemConfiguration -framework CoreFoundation])
 PY_STDLIB_MOD([syslog], [], [test "$ac_cv_header_syslog_h" = yes])
 PY_STDLIB_MOD([termios], [], [test "$ac_cv_header_termios_h" = yes])
-PY_STDLIB_MOD([_pyodide_core], [], [])
+PY_STDLIB_MOD([_pyodide_core], [], [], [$($PKG_CONFIG libhiwire --cflags)], [$($PKG_CONFIG libhiwire --libs)])
 
 dnl _elementtree loads libexpat via CAPI hook in pyexpat
 PY_STDLIB_MOD([pyexpat],
