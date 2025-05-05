@@ -2335,7 +2335,17 @@ AS_CASE([$ac_sys_system],
     dnl Include file system support
     AS_VAR_APPEND([LINKFORSHARED], [" -sFORCE_FILESYSTEM -lidbfs.js -lnodefs.js -lproxyfs.js -lworkerfs.js"])
     AS_VAR_APPEND([LINKFORSHARED], [" -sEXPORTED_RUNTIME_METHODS=FS,callMain,ENV"])
-    AS_VAR_APPEND([LINKFORSHARED], [" -sEXPORTED_FUNCTIONS=_main,_Py_Version,__PyRuntime,__PyEM_EMSCRIPTEN_COUNT_ARGS_OFFSET,_PyGILState_GetThisThreadState,__Py_DumpTraceback"])
+    AS_VAR_APPEND([LINKFORSHARED], [" -sEXPORTED_FUNCTIONS="])
+    AS_VAR_APPEND([LINKFORSHARED], ["_main,"])
+    AS_VAR_APPEND([LINKFORSHARED], ["_Py_Version,"])
+    AS_VAR_APPEND([LINKFORSHARED], ["__PyRuntime,"])
+    AS_VAR_APPEND([LINKFORSHARED], ["__PyEM_EMSCRIPTEN_COUNT_ARGS_OFFSET,"])
+    AS_VAR_APPEND([LINKFORSHARED], ["_PyGILState_GetThisThreadState,"])
+    AS_VAR_APPEND([LINKFORSHARED], ["__Py_DumpTraceback,"])
+    AS_VAR_APPEND([LINKFORSHARED], ["_PyLong_FromDouble,"])
+    AS_VAR_APPEND([LINKFORSHARED], ["_PyFloat_FromDouble,"])
+    AS_VAR_APPEND([LINKFORSHARED], ["__PyLong_FromByteArray,"])
+    AS_VAR_APPEND([LINKFORSHARED], ["_PyUnicode_New"])
     AS_VAR_APPEND([LINKFORSHARED], [" -sSTACK_SIZE=5MB"])
 
     AS_VAR_IF([enable_wasm_dynamic_linking], [yes], [
