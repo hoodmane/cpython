@@ -2348,7 +2348,10 @@ AS_CASE([$ac_sys_system],
     AS_VAR_APPEND([LINKFORSHARED], ["__PyLong_FromByteArray,"])
     AS_VAR_APPEND([LINKFORSHARED], ["_PyErr_Occurred,"])
     AS_VAR_APPEND([LINKFORSHARED], ["_PyErr_Print,"])
-    AS_VAR_APPEND([LINKFORSHARED], ["_PyUnicode_New"])
+    AS_VAR_APPEND([LINKFORSHARED], ["_PyUnicode_New,"])
+    dnl some hiwire functions
+    AS_VAR_APPEND([LINKFORSHARED], ["_hiwire_intern,"])
+    AS_VAR_APPEND([LINKFORSHARED], ["_hiwire_get"])
 
 
     AS_VAR_APPEND([LINKFORSHARED], [" -sSTACK_SIZE=5MB"])

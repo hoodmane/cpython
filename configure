@@ -9617,7 +9617,9 @@ fi
     as_fn_append LINKFORSHARED "__PyLong_FromByteArray,"
     as_fn_append LINKFORSHARED "_PyErr_Occurred,"
     as_fn_append LINKFORSHARED "_PyErr_Print,"
-    as_fn_append LINKFORSHARED "_PyUnicode_New"
+    as_fn_append LINKFORSHARED "_PyUnicode_New,"
+        as_fn_append LINKFORSHARED "_hiwire_intern,"
+    as_fn_append LINKFORSHARED "_hiwire_get"
 
 
     as_fn_append LINKFORSHARED " -sSTACK_SIZE=5MB"
