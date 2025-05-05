@@ -2,6 +2,35 @@
 #include "error_handling.h"
 #include "jsmemops.h"
 
+#undef true
+#undef false
+
+#define JS_BUILTIN(val) JS_CONST(val, val)
+#define JS_INIT_CONSTS()                                                       \
+  JS_BUILTIN(undefined)                                                        \
+  JS_BUILTIN(true)                                                             \
+  JS_BUILTIN(false)
+
+// we use HIWIRE_INIT_CONSTS once in C and once inside JS with different
+// definitions of HIWIRE_INIT_CONST to ensure everything lines up properly
+// C definition:
+#define JS_CONST(name, value) EMSCRIPTEN_KEEPALIVE const JsRef Jsr_##name;
+JS_INIT_CONSTS();
+
+#undef JS_CONST
+
+#define JS_CONST(name, value) HEAP32[_Jsr_##name / 4] = _hiwire_intern(value);
+
+EM_JS_MACROS(void, jslib_init_js, (void), {
+  JS_INIT_CONSTS();
+});
+
+
+__attribute__((constructor)) void
+jslib_init(void)
+{
+  jslib_init_js();
+}
 
 EM_JS_NUM(int, Jsv_type, (JsVal val, char* buf, int size), {
   return stringToUTF8(val?.constructor?.name ?? "unknown", buf, size);
@@ -32,18 +61,4 @@ JsvNum_fromDigits,
   }
   return result;
 });
-
-
-
-EM_JS(JsVal, _Jsv_get_true, (void), {
-    return true;
-})
-
-EM_JS(JsVal, _Jsv_get_false, (void), {
-    return false;
-})
-
-EM_JS(JsVal, _Jsv_get_undefined, (void), {
-    return undefined;
-})
 
