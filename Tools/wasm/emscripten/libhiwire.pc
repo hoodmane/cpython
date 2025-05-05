@@ -1,0 +1,8 @@
+libdir=${prefix}/lib
+includedir=${prefix}/include
+
+Name: libffi
+Description: Library supporting Foreign Function Interfaces
+Version: 3.4.6
+Libs: -L${libdir} -lhiwire
+Cflags: -I${includedir}

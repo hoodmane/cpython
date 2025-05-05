@@ -180,6 +180,22 @@ def make_emscripten_libffi(context, working_dir):
         quiet=context.quiet,
     )
 
+@subdir(HOST_BUILD_DIR, clean_ok=True)
+def make_hiwire(context, working_dir):
+    shutil.rmtree(working_dir / "hiwire-1.0.0", ignore_errors=True)
+    with tempfile.NamedTemporaryFile(suffix=".tar.gz") as tmp_file:
+        with urlopen(
+            "https://github.com/hoodmane/hiwire/archive/refs/tags/1.0.0.tar.gz"
+        ) as response:
+            shutil.copyfileobj(response, tmp_file)
+        shutil.unpack_archive(tmp_file.name, working_dir)
+    call(
+        [EMSCRIPTEN_DIR / "make_hiwire.sh"],
+        env=updated_env({"PREFIX": PREFIX_DIR,  "EMSCRIPTEN_DIR": EMSCRIPTEN_DIR}),
+        cwd=working_dir / "hiwire-1.0.0",
+        quiet=context.quiet,
+    )
+
 
 @subdir(HOST_DIR, clean_ok=True)
 def configure_emscripten_python(context, working_dir):
@@ -293,6 +309,7 @@ def build_all(context):
         configure_build_python,
         make_build_python,
         make_emscripten_libffi,
+        make_hiwire,
         configure_emscripten_python,
         make_emscripten_python,
     ]
@@ -324,6 +341,9 @@ def main():
     make_libffi_cmd = subcommands.add_parser(
         "make-libffi", help="Clone libffi repo, configure and build it for emscripten"
     )
+    make_hiwire_cmd = subcommands.add_parser(
+        "make-hiwire", help="Clone hiwire repo and build it for emscripten"
+    )
     make_build = subcommands.add_parser(
         "make-build-python", help="Run `make` for the build Python"
     )
@@ -341,6 +361,7 @@ def main():
         build,
         configure_build,
         make_libffi_cmd,
+        make_hiwire_cmd,
         make_build,
         configure_host,
         make_host,
@@ -378,6 +399,7 @@ def main():
 
     dispatch = {
         "make-libffi": make_emscripten_libffi,
+        "make-hiwire": make_hiwire,
         "configure-build-python": configure_build_python,
         "make-build-python": make_build_python,
         "configure-host": configure_emscripten_python,

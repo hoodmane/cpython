@@ -9604,6 +9604,7 @@ fi
 
         as_fn_append LINKFORSHARED " -sFORCE_FILESYSTEM -lidbfs.js -lnodefs.js -lproxyfs.js -lworkerfs.js"
     as_fn_append LINKFORSHARED " -sEXPORTED_RUNTIME_METHODS=FS,callMain,ENV"
+
     as_fn_append LINKFORSHARED " -sEXPORTED_FUNCTIONS="
     as_fn_append LINKFORSHARED "_main,"
     as_fn_append LINKFORSHARED "_Py_Version,"
@@ -9614,7 +9615,11 @@ fi
     as_fn_append LINKFORSHARED "_PyLong_FromDouble,"
     as_fn_append LINKFORSHARED "_PyFloat_FromDouble,"
     as_fn_append LINKFORSHARED "__PyLong_FromByteArray,"
+    as_fn_append LINKFORSHARED "_PyErr_Occurred,"
+    as_fn_append LINKFORSHARED "_PyErr_Print,"
     as_fn_append LINKFORSHARED "_PyUnicode_New"
+
+
     as_fn_append LINKFORSHARED " -sSTACK_SIZE=5MB"
 
     if test "x$enable_wasm_dynamic_linking" = xyes
@@ -32130,8 +32135,8 @@ fi
   if test "x$py_cv_module__pyodide_core" = xyes
 then :
 
-
-
+    as_fn_append MODULE_BLOCK "MODULE__PYODIDE_CORE_CFLAGS=$($PKG_CONFIG libhiwire --cflags)$as_nl"
+    as_fn_append MODULE_BLOCK "MODULE__PYODIDE_CORE_LDFLAGS=$($PKG_CONFIG libhiwire --libs)$as_nl"
 
 fi
    if test "$py_cv_module__pyodide_core" = yes; then

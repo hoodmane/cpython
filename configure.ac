@@ -2335,6 +2335,7 @@ AS_CASE([$ac_sys_system],
     dnl Include file system support
     AS_VAR_APPEND([LINKFORSHARED], [" -sFORCE_FILESYSTEM -lidbfs.js -lnodefs.js -lproxyfs.js -lworkerfs.js"])
     AS_VAR_APPEND([LINKFORSHARED], [" -sEXPORTED_RUNTIME_METHODS=FS,callMain,ENV"])
+
     AS_VAR_APPEND([LINKFORSHARED], [" -sEXPORTED_FUNCTIONS="])
     AS_VAR_APPEND([LINKFORSHARED], ["_main,"])
     AS_VAR_APPEND([LINKFORSHARED], ["_Py_Version,"])
@@ -2345,7 +2346,11 @@ AS_CASE([$ac_sys_system],
     AS_VAR_APPEND([LINKFORSHARED], ["_PyLong_FromDouble,"])
     AS_VAR_APPEND([LINKFORSHARED], ["_PyFloat_FromDouble,"])
     AS_VAR_APPEND([LINKFORSHARED], ["__PyLong_FromByteArray,"])
+    AS_VAR_APPEND([LINKFORSHARED], ["_PyErr_Occurred,"])
+    AS_VAR_APPEND([LINKFORSHARED], ["_PyErr_Print,"])
     AS_VAR_APPEND([LINKFORSHARED], ["_PyUnicode_New"])
+
+
     AS_VAR_APPEND([LINKFORSHARED], [" -sSTACK_SIZE=5MB"])
 
     AS_VAR_IF([enable_wasm_dynamic_linking], [yes], [
@@ -7881,7 +7886,7 @@ PY_STDLIB_MOD([_scproxy],
   [], [-framework SystemConfiguration -framework CoreFoundation])
 PY_STDLIB_MOD([syslog], [], [test "$ac_cv_header_syslog_h" = yes])
 PY_STDLIB_MOD([termios], [], [test "$ac_cv_header_termios_h" = yes])
-PY_STDLIB_MOD([_pyodide_core], [], [])
+PY_STDLIB_MOD([_pyodide_core], [], [], [$($PKG_CONFIG libhiwire --cflags)], [$($PKG_CONFIG libhiwire --libs)])
 
 dnl _elementtree loads libexpat via CAPI hook in pyexpat
 PY_STDLIB_MOD([pyexpat],
