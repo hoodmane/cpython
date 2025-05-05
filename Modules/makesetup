@@ -169,7 +169,7 @@ sed -e 's/[ 	]*#.*//' -e '/^[ 	]*$/d' |
 			/*.o)		libs="$libs $arg";;
 			*.def)		libs="$libs $arg";;
 			*.o)		srcs="$srcs `basename $arg .o`.c";;
-			*.[cC])		srcs="$srcs $arg";;
+			*.[cCs])	srcs="$srcs $arg";;
 			*.m)		srcs="$srcs $arg";; # Objective-C src
 			*.cc)		srcs="$srcs $arg";;
 			*.c++)		srcs="$srcs $arg";;
@@ -229,6 +229,7 @@ sed -e 's/[ 	]*#.*//' -e '/^[ 	]*$/d' |
 		do
 			case $src in
 			*.c)   obj=`basename $src .c`.o; cc='$(CC)';;
+			*.s)   obj=`basename $src .s`.o; cc='$(CC)';;
 			*.cc)  obj=`basename $src .cc`.o; cc='$(CXX)';;
 			*.c++) obj=`basename $src .c++`.o; cc='$(CXX)';;
 			*.C)   obj=`basename $src .C`.o; cc='$(CXX)';;
