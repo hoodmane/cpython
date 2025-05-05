@@ -17,3 +17,5 @@ class PyodideTest(TestCase):
         self.assertIs(test_js2python(5), None)
         self.assertIs(test_js2python(6), False)
         self.assertIs(test_js2python(7), True)
+        with self.assertRaisesRegex(TypeError, "No Python conversion known for JavaScript object of type Array"):
+            test_js2python(8)

@@ -45,7 +45,13 @@ EM_JS_REF(PyObject*, js2python_js, (JsVal value), {
 EMSCRIPTEN_KEEPALIVE PyObject*
 js2python(JsVal val)
 {
-  return js2python_js(val);
+  PyObject* res = js2python_js(val);
+  if (res == NULL) {
+    char type[100];
+    Jsv_type(val, type, sizeof(type));
+    PyErr_Format(PyExc_TypeError, "No Python conversion known for JavaScript object of type %s.", type);
+  }
+  return res;
 }
 
 
