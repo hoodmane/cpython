@@ -17,10 +17,13 @@ class PyodideTest(TestCase):
         self.assertIs(test_js2python(5), None)
         self.assertIs(test_js2python(6), False)
         self.assertIs(test_js2python(7), True)
-        with self.assertRaisesRegex(TypeError, "No Python conversion known for JavaScript object of type Array"):
-            test_js2python(8)
+        self.assertEqual(test_js2python(9), "pyodidé")
+        self.assertEqual(test_js2python(10), "碘化物")
+        self.assertEqual(test_js2python(11), "🐍")
 
     def  test_python2js(self):
+        with self.assertRaisesRegex(TypeError, r"No JavaScript conversion known for Python object: \[\]\."):
+            test_python2js(-1, [])
         test_python2js(1, None)
         test_python2js(2, True)
         test_python2js(3, False)
@@ -28,5 +31,7 @@ class PyodideTest(TestCase):
         test_python2js(5, 23.75)
         test_python2js(6, 77015781075109876017131518)
         test_python2js(7, "abc")
-        with self.assertRaisesRegex(TypeError, r"No JavaScript conversion known for Python object: \[\]\."):
-            test_python2js(-1, [])
+        test_python2js(8, "pyodidé")
+        test_python2js(9, "碘化物")
+        test_python2js(10, "🐍")
+
