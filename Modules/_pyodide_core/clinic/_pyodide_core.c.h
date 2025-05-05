@@ -95,4 +95,41 @@ _pyodide_core_test_js2python(PyObject *module, PyObject *arg_)
 exit:
     return return_value;
 }
-/*[clinic end generated code: output=880e467998828257 input=a9049054013a1b77]*/
+
+PyDoc_STRVAR(_pyodide_core_run_js__doc__,
+"run_js($module, js_code, /)\n"
+"--\n"
+"\n"
+"Run some JavaScript code and return the result");
+
+#define _PYODIDE_CORE_RUN_JS_METHODDEF    \
+    {"run_js", (PyCFunction)_pyodide_core_run_js, METH_O, _pyodide_core_run_js__doc__},
+
+static PyObject *
+_pyodide_core_run_js_impl(PyObject *module, const char *js_code);
+
+static PyObject *
+_pyodide_core_run_js(PyObject *module, PyObject *arg)
+{
+    PyObject *return_value = NULL;
+    const char *js_code;
+
+    if (!PyUnicode_Check(arg)) {
+        _PyArg_BadArgument("run_js", "argument", "str", arg);
+        goto exit;
+    }
+    Py_ssize_t js_code_length;
+    js_code = PyUnicode_AsUTF8AndSize(arg, &js_code_length);
+    if (js_code == NULL) {
+        goto exit;
+    }
+    if (strlen(js_code) != (size_t)js_code_length) {
+        PyErr_SetString(PyExc_ValueError, "embedded null character");
+        goto exit;
+    }
+    return_value = _pyodide_core_run_js_impl(module, js_code);
+
+exit:
+    return return_value;
+}
+/*[clinic end generated code: output=419c50fbe0cc8d51 input=a9049054013a1b77]*/
