@@ -64,6 +64,8 @@ EM_JS_VAL(JsVal, test_js2python_js, (int arg), {
             return false;
         case 7:
             return true;
+        case 8:
+            return [];
     }
     throw new Error("hi!");
 });

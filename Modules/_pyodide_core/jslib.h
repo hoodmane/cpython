@@ -11,3 +11,7 @@ int JsvNull_Check(JsVal);
 // clang-format off
 #define false (!!0)
 #define true (!!1)
+
+
+int
+Jsv_type(JsVal obj, char* buf, int size);
