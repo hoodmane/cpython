@@ -32,4 +32,32 @@ _pyodide_core_test_error_handling(PyObject *module, PyObject *arg_)
 exit:
     return return_value;
 }
-/*[clinic end generated code: output=127f839cf84e4dc3 input=a9049054013a1b77]*/
+
+PyDoc_STRVAR(_pyodide_core_test_js2python__doc__,
+"test_js2python($module, arg, /)\n"
+"--\n"
+"\n"
+"A test that we can convert some simple JavaScript values to Python");
+
+#define _PYODIDE_CORE_TEST_JS2PYTHON_METHODDEF    \
+    {"test_js2python", (PyCFunction)_pyodide_core_test_js2python, METH_O, _pyodide_core_test_js2python__doc__},
+
+static PyObject *
+_pyodide_core_test_js2python_impl(PyObject *module, int arg);
+
+static PyObject *
+_pyodide_core_test_js2python(PyObject *module, PyObject *arg_)
+{
+    PyObject *return_value = NULL;
+    int arg;
+
+    arg = PyLong_AsInt(arg_);
+    if (arg == -1 && PyErr_Occurred()) {
+        goto exit;
+    }
+    return_value = _pyodide_core_test_js2python_impl(module, arg);
+
+exit:
+    return return_value;
+}
+/*[clinic end generated code: output=7235672407403889 input=a9049054013a1b77]*/
