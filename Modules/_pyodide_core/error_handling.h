@@ -1,4 +1,5 @@
 #include <emscripten.h>
+#include "jslib.h"
 
 /**
  * EM_JS Wrappers

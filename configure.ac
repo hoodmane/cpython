@@ -2443,7 +2443,14 @@ AS_CASE([$ac_sys_system],
     dnl Include file system support
     AS_VAR_APPEND([LINKFORSHARED], [" -sFORCE_FILESYSTEM -lidbfs.js -lnodefs.js -lproxyfs.js -lworkerfs.js"])
     AS_VAR_APPEND([LINKFORSHARED], [" -sEXPORTED_RUNTIME_METHODS=FS,callMain,ENV,HEAPU32,TTY,ERRNO_CODES"])
-    AS_VAR_APPEND([LINKFORSHARED], [" -sEXPORTED_FUNCTIONS=_main,_Py_Version,_PyGILState_GetThisThreadState"])
+    AS_VAR_APPEND([LINKFORSHARED], [" -sEXPORTED_FUNCTIONS="])
+    AS_VAR_APPEND([LINKFORSHARED], ["_main,"])
+    AS_VAR_APPEND([LINKFORSHARED], ["_Py_Version,"])
+    AS_VAR_APPEND([LINKFORSHARED], ["_PyGILState_GetThisThreadState,"])
+    AS_VAR_APPEND([LINKFORSHARED], ["_PyLong_FromDouble,"])
+    AS_VAR_APPEND([LINKFORSHARED], ["_PyFloat_FromDouble,"])
+    AS_VAR_APPEND([LINKFORSHARED], ["__PyLong_FromByteArray,"])
+    AS_VAR_APPEND([LINKFORSHARED], ["_PyUnicode_New"])
     AS_VAR_APPEND([LINKFORSHARED], [" -sSTACK_SIZE=5MB"])
     dnl Avoid bugs in JS fallback string decoding path
     AS_VAR_APPEND([LINKFORSHARED], [" -sTEXTDECODER=2"])
