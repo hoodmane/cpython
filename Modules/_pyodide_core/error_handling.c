@@ -23,3 +23,11 @@ EM_JS(void, error_handling_init_js, (void), {
 __attribute__((constructor)) void error_handling_init(void) {
   error_handling_init_js();
 }
+
+#ifdef DEBUG_F
+EM_JS(void, console_error, (char* msg), {
+  let jsmsg = UTF8ToString(msg);
+  console.error(jsmsg);
+});
+#endif
+
