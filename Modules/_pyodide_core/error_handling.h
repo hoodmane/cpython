@@ -78,3 +78,84 @@
     }                                                                          \
     return 0;  /* some of these were void */                                   \
   })
+
+
+/**
+ * Failure Macros
+ * These macros are intended to help make error handling as uniform and
+ * unobtrusive as possible. The EM_JS wrappers above make it so that the
+ * EM_JS calls behave just like Python API calls when it comes to errors
+ * So these can be used equally well for both cases.
+ *
+ * These all use "goto finally;" so any function that uses them must have
+ * a finally label. Luckily, the compiler errors triggered byforgetting
+ * this are usually quite clear.
+ *
+ * We define a feature flag "DEBUG_F" that will use "console.error" to
+ * report a message whenever these functions exit with error. This should
+ * particularly help to track down problems when C code fails to handle
+ * the error generated.
+ *
+ * FAIL() -- unconditionally goto finally; (but also log it with
+ *           console.error if DEBUG_F is enabled)
+ * FAIL_IF_NULL(ref) -- FAIL() if ref == NULL
+ * FAIL_IF_MINUS_ONE(num) -- FAIL() if num == -1
+ * FAIL_IF_ERR_OCCURRED(num) -- FAIL() if PyErr_Occurred()
+ */
+
+#ifdef DEBUG_F
+
+void
+console_error(char* msg);
+
+#define FAIL()                                                                 \
+  do {                                                                         \
+    char* msg;                                                                 \
+    asprintf(&msg,                                                             \
+             "Raised exception on line %d in func %s, file %s\n",              \
+             __LINE__,                                                         \
+             __func__,                                                         \
+             __FILE__);                                                        \
+    console_error(msg);                                                        \
+    free(msg);                                                                 \
+    goto finally;                                                              \
+  } while (0)
+
+#else
+#define FAIL() goto finally
+#endif
+
+#define FAIL_IF_NULL(ref)                                                      \
+  do {                                                                         \
+    if ((ref) == NULL) {                                                       \
+      FAIL();                                                                  \
+    }                                                                          \
+  } while (0)
+
+#define FAIL_IF_JS_NULL(ref)                                                   \
+  do {                                                                         \
+    if (JsvNull_Check(ref)) {                                                  \
+      FAIL();                                                                  \
+    }                                                                          \
+  } while (0)
+
+#define FAIL_IF_MINUS_ONE(num)                                                 \
+  do {                                                                         \
+    if ((num) == -1) {                                                         \
+      FAIL();                                                                  \
+    }                                                                          \
+  } while (0)
+
+#define FAIL_IF_NONZERO(num)                                                   \
+  do {                                                                         \
+    if ((num) != 0) {                                                          \
+      FAIL();                                                                  \
+    }                                                                          \
+  } while (0)
+
+#define FAIL_IF_ERR_OCCURRED()                                                 \
+  do {                                                                         \
+    if (PyErr_Occurred() != NULL) {                                            \
+      FAIL();                                                                  \
+    }                                                                          \
+  } while (0)

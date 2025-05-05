@@ -2,6 +2,7 @@
 #include "Python.h"
 #include "clinic/_pyodide_core.c.h"
 #include "js2python.h"
+#include "python2js.h"
 #include "jslib.h"
 
 
@@ -48,6 +49,60 @@ _pyodide_core_test_error_handling_impl(PyObject *module, int arg)
 
 
 
+EM_JS_NUM(int, test_python2js_js, (int test, JsVal x), {
+    const msg = `x: ${x}`;
+    switch (test) {
+        case 1:
+            jsAssert(() => x === undefined, msg);
+            return;
+        case 2:
+            jsAssert(() => x === true, msg);
+            return;
+        case 3:
+            jsAssert(() => x === false, msg);
+            return;
+        case 4:
+            jsAssert(() => x === 173, msg);
+            return;
+        case 5:
+            jsAssert(() => x === 23.75, msg);
+            return;
+        case 6:
+            jsAssert(() => x === 77015781075109876017131518n, msg);
+            return;
+        case 7:
+            jsAssert(() => x === "abc", msg);
+            return;
+    }
+    throw new Error("hi!");
+});
+
+/*[clinic input]
+_pyodide_core.test_python2js
+
+    test: 'i'
+    arg: 'O'
+    /
+
+A test that we can convert some simple Python values to JavaScript
+[clinic start generated code]*/
+
+static PyObject *
+_pyodide_core_test_python2js_impl(PyObject *module, int test, PyObject *arg)
+/*[clinic end generated code: output=63ab86c2936f1b9a input=cda2d14193bb0404]*/
+{
+    JsVal res = python2js(arg);
+    if (JsvNull_Check(res)) {
+        return NULL;
+    }
+    int status = test_python2js_js(test, res);
+    if (status == 0) {
+        Py_RETURN_NONE;
+    }
+    return NULL;
+}
+
+
 EM_JS_VAL(JsVal, test_js2python_js, (int arg), {
     switch (arg) {
         case 1:
@@ -91,6 +146,22 @@ _pyodide_core_test_js2python_impl(PyObject *module, int arg)
     return js2python(res);
 }
 
+EM_JS(void, _test_helpers, (void), {}
+function jsAssert(cb, message = "") {
+    if (message !== "") {
+        message = "\\n" + message;
+    }
+    let cond = cb.toString();
+    if (cond.startsWith("()=>")) {
+        cond = cond.slice("()=>".length);
+    }
+    if (cb() !== true) {
+        throw new Error(
+            `Assertion failed: ${cond}${message}`
+        );
+    }
+});
+
 
 
 static PyModuleDef_Slot _pyodide_core_slots[] = {
@@ -101,6 +172,7 @@ static PyModuleDef_Slot _pyodide_core_slots[] = {
 
 static struct PyMethodDef _pyodide_core_functions[] = {
     _PYODIDE_CORE_TEST_ERROR_HANDLING_METHODDEF
+    _PYODIDE_CORE_TEST_PYTHON2JS_METHODDEF
     _PYODIDE_CORE_TEST_JS2PYTHON_METHODDEF
     {NULL,       NULL}          /* sentinel */
 };
