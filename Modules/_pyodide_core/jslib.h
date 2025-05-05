@@ -7,10 +7,14 @@ typedef HwRef JsRef;
 #define JS_NULL __builtin_wasm_ref_null_extern()
 int JsvNull_Check(JsVal);
 
-// TODO: Replace these with constants
-#define Jsv_true _Jsv_get_true()
-#define Jsv_false _Jsv_get_false()
-#define Jsv_undefined _Jsv_get_undefined()
+// Special JsRefs for singleton constants.
+extern const JsRef Jsr_undefined;
+extern const JsRef Jsr_true;
+extern const JsRef Jsr_false;
+
+#define Jsv_undefined hiwire_get(Jsr_undefined)
+#define Jsv_true hiwire_get(Jsr_true)
+#define Jsv_false hiwire_get(Jsr_false)
 
 
 #undef false
@@ -34,13 +38,3 @@ JsvNum_fromDouble(double x);
 
 JsVal
 JsvNum_fromDigits(const unsigned int* digits, size_t ndigits);
-
-
-JsVal
-_Jsv_get_true(void);
-
-JsVal
-_Jsv_get_false(void);
-
-JsVal
-_Jsv_get_undefined(void);
