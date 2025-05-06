@@ -2,6 +2,7 @@
 #include "Python.h"
 #include "error_handling.h"
 #include "jsmemops.h"
+#include "jsproxy.h"
 
 ///////////////////////////////////////////////////////////////////////////////
 //
@@ -132,6 +133,8 @@ python2js(PyObject* x)
     return _python2js_float(x);
   } else if (PyUnicode_Check(x)) {
     return _python2js_unicode(x);
+  } else if (JsProxy_Check(x)) {
+    return JsProxy_Val(x);
   }
   PyErr_Format(PyExc_TypeError, "No JavaScript conversion known for Python object: %R.", x);
   return JS_NULL;

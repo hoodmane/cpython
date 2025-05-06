@@ -10,3 +10,6 @@ JsProxy_create_with_this(JsVal object,
 
 bool
 JsProxy_Check(PyObject* x);
+
+JsVal
+JsProxy_Val(PyObject* x);
