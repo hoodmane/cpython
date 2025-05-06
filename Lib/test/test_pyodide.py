@@ -71,3 +71,13 @@ class PyodideTest(TestCase):
         self.assertTrue(run_js("new Map([[1, 7]])"))
         self.assertFalse(run_js("new Set()"))
         self.assertTrue(run_js("new Set([1, 7])"))
+
+    def test_jsproxy_js_id(self):
+        o = run_js("let a = {}; let b = {}; ({a, b, c: a})")
+        a = o.a
+        b = o.b
+        c = o.c
+        self.assertEqual(a.js_id, c.js_id)
+        self.assertIsNot(a, c)
+        self.assertNotEqual(a.js_id, b.js_id)
+
