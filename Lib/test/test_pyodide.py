@@ -127,3 +127,20 @@ class PyodideTest(TestCase):
         self.assertTrue(dirb.issuperset(jsproxy_items))
         self.assertTrue(dirb.issuperset(callable_items))
         self.assertTrue(dirb.isdisjoint(a_items))
+
+    def test_jsproxy_error(self):
+        def f():
+            raise run_js("new TypeError('hi!')")
+
+        try:
+            f()
+        except Exception as e:
+            err = e
+        else:
+            assert False
+
+        self.assertEqual(err.name, "TypeError")
+        self.assertEqual(err.message, "hi!")
+        self.assertHasAttr(err, "stack")
+
+
