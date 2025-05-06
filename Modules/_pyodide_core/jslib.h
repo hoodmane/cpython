@@ -53,8 +53,45 @@ Jsv_equal(JsVal a, JsVal b);
 bool
 Jsv_not_equal(JsVal a, JsVal b);
 
+// ==================== Conversions between JsRef and JsVal ====================
+
+// Like hiwire_new except if the argument is JS_NULL it returns NULL instead of crashing.
+// Upstream to hiwire?
+JsRef
+JsRef_new(JsVal v);
+
+// Like hiwire_get except if the argument is NULL it returns JS_NULL instead of crashing.
+// Upstream to hiwire?
+JsVal
+JsRef_toVal(JsRef ref);
+
+// ==================== JsvObject API  ====================
+
+JsVal
+JsvObject_New(void);
+
 JsVal
 JsvObject_toString(JsVal obj);
 
+int
+JsvObject_SetAttr(JsVal obj, JsVal attr, JsVal value);
+
+// ==================== JsvFunction API  ====================
+
+bool
+JsvFunction_Check(JsVal obj);
+
+JsVal
+JsvFunction_CallBound(JsVal func, JsVal this, JsVal args);
+
+
+// ==================== JsvArray API  ====================
+
+JsVal
+JsvArray_New(void);
+
 bool
 JsvArray_Check(JsVal obj);
+
+int
+JsvArray_Push(JsVal obj, JsVal val);

@@ -67,6 +67,36 @@ EM_JS_BOOL(bool, Jsv_equal, (JsVal a, JsVal b), { return !!(a === b); });
 EM_JS_BOOL(bool, Jsv_not_equal, (JsVal a, JsVal b), { return !!(a !== b); });
 
 
+// ==================== Conversions between JsRef and JsVal ====================
+
+JsRef
+JsRef_new(JsVal v)
+{
+  if (JsvNull_Check(v)) {
+    return NULL;
+  }
+  return hiwire_new(v);
+}
+
+JsVal
+JsRef_toVal(JsRef ref)
+{
+  if (ref == NULL) {
+    return JS_NULL;
+  }
+  return hiwire_get(ref);
+}
+
+// ==================== JsvObject API  ====================
+
+EM_JS(JsVal, JsvObject_New, (void), {
+  return {};
+});
+
+EM_JS_NUM(int, JsvObject_SetAttr, (JsVal obj, JsVal attr, JsVal value), {
+  obj[attr] = value;
+});
+
 
 EM_JS_VAL(JsVal,
 JsvObject_toString, (JsVal obj), {
@@ -74,6 +104,26 @@ JsvObject_toString, (JsVal obj), {
     return obj.toString();
   }
   return Object.prototype.toString.call(obj);
+});
+
+
+// ==================== JsvFunction API  ====================
+
+EM_JS_BOOL(bool, JsvFunction_Check, (JsVal obj), {
+  // clang-format off
+  return typeof obj === 'function';
+  // clang-format on
+});
+
+EM_JS_VAL(JsVal, JsvFunction_CallBound, (JsVal func, JsVal this_, JsVal args), {
+  return nullToUndefined(Function.prototype.apply.apply(func, [ this_, args ]));
+});
+
+
+// ==================== JsvArray API  ====================
+
+EM_JS(JsVal, JsvArray_New, (void), {
+  return [];
 });
 
 EM_JS_BOOL(bool, JsvArray_Check, (JsVal obj), {
@@ -94,6 +144,10 @@ EM_JS_BOOL(bool, JsvArray_Check, (JsVal obj), {
     return true;
   }
   return false;
+});
+
+EM_JS(int, JsvArray_Push, (JsVal arr, JsVal obj), {
+  return arr.push(obj);
 });
 
 EM_JS(void, jslib_toplevel_helpers, (void), {}
