@@ -1,3 +1,6 @@
+#ifndef JSLIB_H
+#define JSLIB_H
+
 #include <sys/types.h>
 #include <hiwire.h>
 #include <emscripten.h>
@@ -26,6 +29,18 @@ extern const JsRef Jsr_false;
 // clang-format off
 #define false (!!0)
 #define true (!!1)
+
+typedef struct Js_Identifier
+{
+  const char* string;
+  JsRef object;
+} Js_Identifier;
+
+#define Js_static_string_init(value) { .string = value, .object = NULL }
+#define Js_static_string(varname, value)                                       \
+  static Js_Identifier varname = Js_static_string_init(value)
+#define Js_IDENTIFIER(varname) Js_static_string(JsId_##varname, #varname)
+
 
 #define hiwire_CLEAR(x)                                                        \
   do {                                                                         \
@@ -65,6 +80,17 @@ JsRef_new(JsVal v);
 JsVal
 JsRef_toVal(JsRef ref);
 
+// ==================== Primitive Conversions ====================
+
+JsVal
+JsvUTF8ToString(const char*);
+
+JsRef
+JsrString_FromId(Js_Identifier* id);
+
+JsVal
+JsvString_FromId(Js_Identifier* id);
+
 // ==================== JsvObject API  ====================
 
 JsVal
@@ -75,6 +101,13 @@ JsvObject_toString(JsVal obj);
 
 int
 JsvObject_SetAttr(JsVal obj, JsVal attr, JsVal value);
+
+JsVal
+JsvObject_CallMethod_OneArg(JsVal obj, JsVal name, JsVal arg);
+
+
+JsVal
+JsvObject_CallMethodId_OneArg(JsVal obj, Js_Identifier* name_id, JsVal arg);
 
 // ==================== JsvFunction API  ====================
 
@@ -97,3 +130,5 @@ JsvArray_Check(JsVal obj);
 
 int
 JsvArray_Push(JsVal obj, JsVal val);
+
+#endif // JSLIB_H

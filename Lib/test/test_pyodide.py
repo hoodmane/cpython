@@ -98,3 +98,7 @@ class PyodideTest(TestCase):
         self.assertEqual(r.protocol, "http:")
         self.assertEqual(r.pathname, "/a/b")
         self.assertEqual(r.search, "?c=2")
+
+    def test_jsproxy_iter(self):
+        l = run_js("[9, 32, 12, 17]")
+        self.assertEqual(list(l), [9, 32, 12, 17])
