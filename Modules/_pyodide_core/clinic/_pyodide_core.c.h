@@ -96,43 +96,6 @@ exit:
     return return_value;
 }
 
-PyDoc_STRVAR(_pyodide_core_run_js__doc__,
-"run_js($module, js_code, /)\n"
-"--\n"
-"\n"
-"Run some JavaScript code and return the result");
-
-#define _PYODIDE_CORE_RUN_JS_METHODDEF    \
-    {"run_js", (PyCFunction)_pyodide_core_run_js, METH_O, _pyodide_core_run_js__doc__},
-
-static PyObject *
-_pyodide_core_run_js_impl(PyObject *module, const char *js_code);
-
-static PyObject *
-_pyodide_core_run_js(PyObject *module, PyObject *arg)
-{
-    PyObject *return_value = NULL;
-    const char *js_code;
-
-    if (!PyUnicode_Check(arg)) {
-        _PyArg_BadArgument("run_js", "argument", "str", arg);
-        goto exit;
-    }
-    Py_ssize_t js_code_length;
-    js_code = PyUnicode_AsUTF8AndSize(arg, &js_code_length);
-    if (js_code == NULL) {
-        goto exit;
-    }
-    if (strlen(js_code) != (size_t)js_code_length) {
-        PyErr_SetString(PyExc_ValueError, "embedded null character");
-        goto exit;
-    }
-    return_value = _pyodide_core_run_js_impl(module, js_code);
-
-exit:
-    return return_value;
-}
-
 PyDoc_STRVAR(_pyodide_core_bad_hiwire_get__doc__,
 "bad_hiwire_get($module, select, /)\n"
 "--\n"
@@ -162,4 +125,4 @@ _pyodide_core_bad_hiwire_get(PyObject *module, PyObject *arg)
 exit:
     return return_value;
 }
-/*[clinic end generated code: output=83ac051fac7b70b9 input=a9049054013a1b77]*/
+/*[clinic end generated code: output=06f80d9b6f70a646 input=a9049054013a1b77]*/
