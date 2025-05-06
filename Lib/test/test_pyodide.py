@@ -81,7 +81,6 @@ class PyodideTest(TestCase):
         self.assertIsNot(a, c)
         self.assertNotEqual(a.js_id, b.js_id)
 
-
     def test_jsproxy_compare(self):
         o = run_js("let a = {}; let b = {}; ({a, b, c: a})")
         a = o.a
@@ -99,3 +98,7 @@ class PyodideTest(TestCase):
             a <= b
         with self.assertRaisesRegex(TypeError, "not supported"):
             a >= b
+
+    def test_jsproxy_call(self):
+        res = run_js("(x, y) => x + y")(1, 9)
+        self.assertEqual(res, 10)

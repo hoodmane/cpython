@@ -1,13 +1,29 @@
 #include "jsproxy.h"
+#include "jsproxy_call.h"
 #include "jslib.h"
 #include "error_handling.h"
 #include "js2python.h"
 #include "python2js.h"
+#include "pyidentifier.h"
+
+#define IS_CALLABLE        (1 << 0)
+
+_Py_IDENTIFIER(_js_type_flags);
+
+
+struct CallableFields
+{
+  JsRef this_;
+  vectorcallfunc vectorcall;
+};
 
 typedef struct
 {
   PyObject_HEAD
   PyObject* dict;
+  union {
+    struct CallableFields mf;
+  } tf;
   JsRef js;
 } JsProxy;
 
@@ -16,10 +32,33 @@ typedef struct
 #define JsProxy_VAL(x) hiwire_get(JsProxy_REF(x))
 #define JsProxy_DICT(x) (((JsProxy*)x)->dict)
 
+#define JsMethod_THIS_REF(x) ((JsProxy*)x)->tf.mf.this_
+#define JsMethod_THIS(x) JsRef_toVal(JsMethod_THIS_REF(x))
+#define JsMethod_VECTORCALL(x) (((JsProxy*)x)->tf.mf.vectorcall)
+
+int
+JsProxy_getflags(PyObject* self)
+{
+  PyObject* pyflags =
+    _PyObject_GetAttrId((PyObject*)Py_TYPE(self), &PyId__js_type_flags);
+  if (pyflags == NULL) {
+    return -1;
+  }
+  int result = PyLong_AsLong(pyflags);
+  Py_CLEAR(pyflags);
+  return result;
+}
 
 static int
 JsProxy_clear(PyObject* self)
 {
+  int flags = JsProxy_getflags(self);
+  if (flags == -1) {
+    return -1;
+  }
+  if ((flags & IS_CALLABLE) && (JsMethod_THIS_REF(self) != NULL)) {
+    hiwire_pop(JsMethod_THIS_REF(self));
+  }
   Py_CLEAR(JsProxy_DICT(self));
   hiwire_CLEAR(JsProxy_REF(self));
   return 0;
@@ -269,7 +308,6 @@ JsProxy_RichCompare(PyObject* a, PyObject* b, int op)
       break;
     default:
       Py_RETURN_NOTIMPLEMENTED;
-
   }
 
   if (result) {
@@ -278,6 +316,69 @@ JsProxy_RichCompare(PyObject* a, PyObject* b, int op)
     Py_RETURN_FALSE;
   }
 }
+
+static int
+JsProxy_cinit(PyObject* obj, JsVal val)
+{
+  JsProxy* self = (JsProxy*)obj;
+  self->js = hiwire_new_deduplicate(val);
+#ifdef DEBUG_F
+  extern bool tracerefs;
+  if (tracerefs) {
+    printf("JsProxy cinit: %zd, object: %zd\n", (long)obj, (long)self->js);
+  }
+#endif
+  return 0;
+}
+
+
+////////////////////////////////////////////////////////////
+// JsMethod
+//
+// A subclass of JsProxy for methods
+
+/**
+ * __call__ overload for methods. Controlled by IS_CALLABLE.
+ */
+static PyObject*
+JsMethod_Vectorcall(PyObject* self,
+                    PyObject* const* pyargs,
+                    size_t nargsf,
+                    PyObject* kwnames)
+{
+  return JsMethod_Vectorcall_impl(JsProxy_VAL(self),
+                                  JsMethod_THIS(self),
+                                  pyargs,
+                                  nargsf,
+                                  kwnames);
+}
+
+static PyObject*
+JsMethod_descr_get(PyObject* self, PyObject* obj, PyObject* type)
+{
+  PyObject* result = NULL;
+
+  if (Py_IsNone(obj) || obj == NULL) {
+    Py_INCREF(self);
+    return self;
+  }
+
+  JsVal jsobj = python2js(obj);
+  FAIL_IF_JS_NULL(jsobj);
+  result = JsProxy_create_with_this(JsProxy_VAL(self), jsobj);
+
+finally:
+  return result;
+}
+
+static int
+JsMethod_cinit(PyObject* self, JsVal this_)
+{
+  JsMethod_THIS_REF(self) = JsRef_new(this_);
+  JsMethod_VECTORCALL(self) = JsMethod_Vectorcall;
+  return 0;
+}
+
 
 // clang-format off
 static PyNumberMethods JsProxy_NumberMethods = {
@@ -303,37 +404,170 @@ static PyTypeObject JsProxyType = {
   .tp_getset = JsProxy_GetSet,
 };
 
-static int
-JsProxy_cinit(PyObject* obj, JsVal val)
+/**
+ * This dynamically creates a subtype of JsProxy using PyType_FromSpecWithBases.
+ * It is called from JsProxy_get_subtype(flags) when a type with the given flags
+ * doesn't already exist.
+ *
+ * None of these types have tp_new method, we create them with tp_alloc and then
+ * call whatever init methods are needed. "new" and multiple inheritance don't
+ * go together very well.
+ */
+static PyObject*
+JsProxy_create_subtype(int flags)
 {
-  JsProxy* self = (JsProxy*)obj;
-  self->js = hiwire_new_deduplicate(val);
-#ifdef DEBUG_F
-  extern bool tracerefs;
-  if (tracerefs) {
-    printf("JsProxy cinit: %zd, object: %zd\n", (long)obj, (long)self->js);
-  }
-#endif
-  return 0;
-}
+  // Make sure these stack allocations are large enough to fit!
+  PyType_Slot slots[20];
+  int cur_slot = 0;
+  PyMemberDef members[5];
+  int cur_member = 0;
 
-PyObject*
-JsProxy_create(JsVal object)
-{
-  PyTypeObject* type = &JsProxyType;
+  int tp_flags = Py_TPFLAGS_DEFAULT;
+
+  char* type_name = "pyodide.ffi.JsProxy";
+  int basicsize = sizeof(JsProxy);
+
+  if (flags & IS_CALLABLE) {
+    tp_flags |= Py_TPFLAGS_HAVE_VECTORCALL;
+    slots[cur_slot++] =
+      (PyType_Slot){ .slot = Py_tp_call, .pfunc = (void*)PyVectorcall_Call };
+    slots[cur_slot++] = (PyType_Slot){ .slot = Py_tp_descr_get,
+                                       .pfunc = (void*)JsMethod_descr_get };
+    members[cur_member++] = (PyMemberDef){
+      .name = "__vectorcalloffset__",
+      .type = Py_T_PYSSIZET,
+      .flags = Py_READONLY,
+      .offset =
+        offsetof(JsProxy, tf) + offsetof(struct CallableFields, vectorcall),
+    };
+  }
+
+  members[cur_member++] = (PyMemberDef){ 0 };
 
   bool success = false;
+  PyObject* bases = NULL;
+  PyObject* flags_obj = NULL;
   PyObject* result = NULL;
 
-  result = type->tp_alloc(type, 0);
-  FAIL_IF_NONZERO(JsProxy_cinit(result, object));
+  slots[cur_slot++] =
+    (PyType_Slot){ .slot = Py_tp_members, .pfunc = (void*)members };
+  slots[cur_slot++] = (PyType_Slot){ 0 };
+
+  // clang-format off
+  PyType_Spec spec = {
+    .name = type_name,
+    .basicsize = basicsize,
+    .itemsize = 0,
+    .flags = tp_flags,
+    .slots = slots,
+  };
+  bases = PyTuple_Pack(1, &JsProxyType);
+  FAIL_IF_NULL(bases);
+  result = PyType_FromSpecWithBases(&spec, bases);
+  FAIL_IF_NULL(result);
+
+  flags_obj = PyLong_FromLong(flags);
+  FAIL_IF_NULL(flags_obj);
+  FAIL_IF_MINUS_ONE(
+    PyObject_SetAttr(result, _PyUnicode_FromId(&PyId__js_type_flags), flags_obj));
 
   success = true;
 finally:
   if (!success) {
     Py_CLEAR(result);
   }
+  Py_CLEAR(bases);
+  Py_CLEAR(flags_obj);
   return result;
+}
+
+static PyObject* JsProxy_TypeDict;
+
+/**
+ * Look up the appropriate type object in the types dict, if we don't find it
+ * call JsProxy_create_subtype. This is a helper for JsProxy_create_with_this
+ * and JsProxy_create.
+ */
+static PyTypeObject*
+JsProxy_get_subtype(int flags)
+{
+  PyObject* flags_key = PyLong_FromLong(flags);
+  PyObject* type = PyDict_GetItemWithError(JsProxy_TypeDict, flags_key);
+  Py_XINCREF(type);
+  if (type != NULL || PyErr_Occurred()) {
+    goto finally;
+  }
+  type = JsProxy_create_subtype(flags);
+  FAIL_IF_NULL(type);
+  FAIL_IF_MINUS_ONE(PyDict_SetItem(JsProxy_TypeDict, flags_key, type));
+finally:
+  Py_CLEAR(flags_key);
+  return (PyTypeObject*)type;
+}
+
+#define SET_FLAG_IF(flag, cond)                                                \
+  if (cond) {                                                                  \
+    type_flags |= flag;                                                        \
+  }
+
+
+EM_JS_NUM(int, JsProxy_compute_typeflags, (JsVal obj), {
+  let type_flags = 0;
+
+  SET_FLAG_IF(IS_CALLABLE, typeof obj === "function");
+  return type_flags;
+});
+
+PyObject*
+JsProxy_create_with_type(int type_flags,
+                         JsVal object,
+                         JsVal this)
+{
+  bool success = false;
+  PyTypeObject* type = NULL;
+  PyObject* result = NULL;
+
+  type = JsProxy_get_subtype(type_flags);
+  FAIL_IF_NULL(type);
+
+  result = type->tp_alloc(type, 0);
+  FAIL_IF_NONZERO(JsProxy_cinit(result, object));
+  if (type_flags & IS_CALLABLE) {
+    FAIL_IF_NONZERO(JsMethod_cinit(result, this));
+  }
+
+  success = true;
+finally:
+  Py_CLEAR(type);
+  if (!success) {
+    Py_CLEAR(result);
+  }
+  return result;
+}
+
+/**
+ * Create a JsProxy. In case it's a method, bind "this" to the argument. (In
+ * most cases "this" will be NULL, `JsProxy_create` specializes to this case.)
+ * We check what capabilities are present on the javascript object, set
+ * appropriate flags, then we get the appropriate type with JsProxy_get_subtype.
+ */
+PyObject*
+JsProxy_create_with_this(JsVal object,
+                         JsVal this)
+{
+  int type_flags = JsProxy_compute_typeflags(object);
+  if (type_flags == -1) {
+    PyErr_SetString(PyExc_SystemError,
+                    "Internal error occurred in JsProxy_compute_typeflags");
+    return NULL;
+  }
+  return JsProxy_create_with_type(type_flags, object, this);
+}
+
+PyObject*
+JsProxy_create(JsVal object)
+{
+  return JsProxy_create_with_this(object, JS_NULL);
 }
 
 EMSCRIPTEN_KEEPALIVE bool
@@ -348,6 +582,10 @@ jsproxy_init(PyObject* core_module)
 {
   bool success = false;
   FAIL_IF_MINUS_ONE(PyType_Ready(&JsProxyType));
+  JsProxy_TypeDict = PyDict_New();
+  FAIL_IF_NULL(JsProxy_TypeDict);
+  FAIL_IF_MINUS_ONE(
+    PyModule_AddObjectRef(core_module, "jsproxy_typedict", JsProxy_TypeDict));
 
   success = true;
 finally:
