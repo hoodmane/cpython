@@ -84,8 +84,17 @@ class PyodideTest(TestCase):
         with self.assertRaisesRegex(TypeError, "not supported"):
             a >= b
 
-
     def test_jsproxy_to_js(self):
         o = run_js("({x: 3, y: 7})")
         f = run_js("(o) => o.x + o.y")
         self.assertEqual(f(o), 10)
+
+    def test_jsproxy_construct(self):
+        URL = run_js("URL")
+        with self.assertRaises(RuntimeError):
+            URL("http://example.com")
+        r = URL.new("http://example.com/a/b?c=2")
+        self.assertEqual(r.origin, "http://example.com")
+        self.assertEqual(r.protocol, "http:")
+        self.assertEqual(r.pathname, "/a/b")
+        self.assertEqual(r.search, "?c=2")
