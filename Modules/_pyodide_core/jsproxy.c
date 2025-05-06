@@ -243,6 +243,42 @@ finally:
   return result;
 }
 
+static PyObject*
+JsProxy_RichCompare(PyObject* a, PyObject* b, int op)
+{
+  if (!JsProxy_Check(b)) {
+    switch (op) {
+      case Py_EQ:
+        Py_RETURN_FALSE;
+      case Py_NE:
+        Py_RETURN_TRUE;
+      default:
+        Py_RETURN_NOTIMPLEMENTED;
+    }
+  }
+
+  int result;
+  JsVal jsa = JsProxy_VAL(a);
+  JsVal jsb = JsProxy_VAL(b);
+  switch (op) {
+    case Py_EQ:
+      result = Jsv_equal(jsa, jsb);
+      break;
+    case Py_NE:
+      result = Jsv_not_equal(jsa, jsb);
+      break;
+    default:
+      Py_RETURN_NOTIMPLEMENTED;
+
+  }
+
+  if (result) {
+    Py_RETURN_TRUE;
+  } else {
+    Py_RETURN_FALSE;
+  }
+}
+
 // clang-format off
 static PyNumberMethods JsProxy_NumberMethods = {
   .nb_bool = JsProxy_Bool
@@ -258,6 +294,7 @@ static PyTypeObject JsProxyType = {
   .tp_dealloc = (destructor)JsProxy_dealloc,
   .tp_getattro = JsProxy_GetAttr,
   .tp_setattro = JsProxy_SetAttr,
+  .tp_richcompare = JsProxy_RichCompare,
   .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
   .tp_doc = "A proxy to make a Javascript object behave like a Python object",
   .tp_as_number = &JsProxy_NumberMethods,
@@ -297,6 +334,12 @@ finally:
     Py_CLEAR(result);
   }
   return result;
+}
+
+EMSCRIPTEN_KEEPALIVE bool
+JsProxy_Check(PyObject* x)
+{
+  return PyObject_TypeCheck(x, &JsProxyType);
 }
 
 

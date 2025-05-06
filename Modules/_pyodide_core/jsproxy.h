@@ -3,3 +3,6 @@
 
 PyObject*
 JsProxy_create(JsVal object);
+
+bool
+JsProxy_Check(PyObject* x);
