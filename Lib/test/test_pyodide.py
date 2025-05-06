@@ -102,3 +102,28 @@ class PyodideTest(TestCase):
     def test_jsproxy_iter(self):
         l = run_js("[9, 32, 12, 17]")
         self.assertEqual(list(l), [9, 32, 12, 17])
+
+    def test_jsproxy_dir(self):
+        a = run_js('({ x : 2, y : "9" })')
+        b = run_js("(function(){})")
+        dira = set(dir(a))
+        dirb = set(dir(b))
+
+        jsproxy_items = {
+            "__bool__",
+            "__class__",
+            "__defineGetter__",
+            "__defineSetter__",
+            "__delattr__",
+            "constructor",
+            "toString",
+            "valueOf",
+        }
+        a_items = {"x", "y"}
+        callable_items = {"__call__", "new"}
+        self.assertTrue(dira.issuperset(jsproxy_items))
+        self.assertTrue(dira.isdisjoint(callable_items))
+        self.assertTrue(dira.issuperset(a_items))
+        self.assertTrue(dirb.issuperset(jsproxy_items))
+        self.assertTrue(dirb.issuperset(callable_items))
+        self.assertTrue(dirb.isdisjoint(a_items))

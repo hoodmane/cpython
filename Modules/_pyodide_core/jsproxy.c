@@ -8,12 +8,14 @@
 
 #include "pyidentifier.h"
 #include "internal/pycore_genobject.h"
+#include "pycore_setobject.h"     // _PySet_Update()
 
 #define IS_CALLABLE        (1 << 0)
 #define IS_ITERABLE        (1 << 1)
 #define IS_ITERATOR        (1 << 2)
 
 _Py_IDENTIFIER(_js_type_flags);
+_Py_IDENTIFIER(__dir__);
 Js_IDENTIFIER(next);
 
 
@@ -258,6 +260,89 @@ EM_JS_BOOL(bool, JsProxy_Bool_js, (JsVal val), {
   return true;
   // clang-format on
 });
+
+EM_JS_VAL(JsVal, JsProxy_Dir_js, (JsVal jsobj), {
+  let result = [];
+  do {
+    // clang-format off
+    const names = Object.getOwnPropertyNames(jsobj);
+    result.push(...names.filter(
+      s => {
+        let c = s.charCodeAt(0);
+        return c < 48 || c > 57; /* Filter out integer array indices */
+      }
+    )
+    // If the word is a reserved word followed by 0 or more underscores, add an
+    // extra underscore to reverse the transformation applied by normalizeReservedWords.
+    .map(word => isReservedWord(word.replace(/_*$/, "")) ? word + "_" : word));
+    // clang-format on
+  } while (jsobj = Object.getPrototypeOf(jsobj));
+  return result;
+});
+
+/**
+ * Overload of `dir(proxy)`. Walks the prototype chain of the object and adds
+ * the ownPropertyNames of each prototype.
+ */
+static PyObject*
+JsProxy_Dir(PyObject* self, PyObject* _args)
+{
+  bool success = false;
+  PyObject* object__dir__ = NULL;
+  PyObject* keys = NULL;
+  PyObject* result_set = NULL;
+  JsVal jsdir = JS_NULL;
+  PyObject* pydir = NULL;
+  PyObject* keys_str = NULL;
+
+  PyObject* result = NULL;
+
+  // First get base __dir__ via object.__dir__(self)
+  // Would have been nice if they'd supplied PyObject_GenericDir...
+  object__dir__ =
+    _PyObject_GetAttrId((PyObject*)&PyBaseObject_Type, &PyId___dir__);
+  FAIL_IF_NULL(object__dir__);
+  keys = PyObject_CallOneArg(object__dir__, self);
+  FAIL_IF_NULL(keys);
+  result_set = PySet_New(keys);
+  FAIL_IF_NULL(result_set);
+
+  // Now get attributes of js object
+  jsdir = JsProxy_Dir_js(JsProxy_VAL(self));
+  pydir = js2python(jsdir);
+  FAIL_IF_NULL(pydir);
+  // Merge and sort
+  FAIL_IF_MINUS_ONE(_PySet_Update(result_set, pydir));
+  if (JsvArray_Check(JsProxy_VAL(self))) {
+    // See comment about Array.keys in GetAttr
+    keys_str = PyUnicode_FromString("keys");
+    FAIL_IF_NULL(keys_str);
+    FAIL_IF_MINUS_ONE(PySet_Discard(result_set, keys_str));
+  }
+  result = PyList_New(0);
+  FAIL_IF_NULL(result);
+  FAIL_IF_MINUS_ONE(PyList_Extend(result, result_set));
+  FAIL_IF_MINUS_ONE(PyList_Sort(result));
+
+  success = true;
+finally:
+  Py_CLEAR(object__dir__);
+  Py_CLEAR(keys);
+  Py_CLEAR(result_set);
+  Py_CLEAR(pydir);
+  Py_CLEAR(keys_str);
+  if (!success) {
+    Py_CLEAR(result);
+  }
+  return result;
+}
+
+static PyMethodDef JsProxy_Dir_MethodDef = {
+  "__dir__",
+  (PyCFunction)JsProxy_Dir,
+  METH_NOARGS,
+  PyDoc_STR("Returns a list of the members and methods on the object."),
+};
 
 /**
  * Overload for bool(proxy), implemented for every JsProxy. Return `False` if
@@ -588,6 +673,8 @@ JsProxy_create_subtype(int flags)
 
   char* type_name = "pyodide.ffi.JsProxy";
   int basicsize = sizeof(JsProxy);
+
+  methods[cur_method++] = JsProxy_Dir_MethodDef;
 
   if ((flags & IS_ITERABLE) && !(flags & IS_ITERATOR)) {
     // If it is an iterator we should use SelfIter instead.
