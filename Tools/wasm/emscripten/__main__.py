@@ -182,17 +182,17 @@ def make_emscripten_libffi(context, working_dir):
 
 @subdir(HOST_BUILD_DIR, clean_ok=True)
 def make_hiwire(context, working_dir):
-    shutil.rmtree(working_dir / "hiwire-1.0.0", ignore_errors=True)
+    shutil.rmtree(working_dir / "hiwire-1.0.1", ignore_errors=True)
     with tempfile.NamedTemporaryFile(suffix=".tar.gz") as tmp_file:
         with urlopen(
-            "https://github.com/hoodmane/hiwire/archive/refs/tags/1.0.0.tar.gz"
+            "https://github.com/hoodmane/hiwire/archive/refs/tags/1.0.1.tar.gz"
         ) as response:
             shutil.copyfileobj(response, tmp_file)
         shutil.unpack_archive(tmp_file.name, working_dir)
     call(
         [EMSCRIPTEN_DIR / "make_hiwire.sh"],
         env=updated_env({"PREFIX": PREFIX_DIR,  "EMSCRIPTEN_DIR": EMSCRIPTEN_DIR}),
-        cwd=working_dir / "hiwire-1.0.0",
+        cwd=working_dir / "hiwire-1.0.1",
         quiet=context.quiet,
     )
 

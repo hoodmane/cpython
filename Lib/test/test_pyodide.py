@@ -46,9 +46,17 @@ class PyodideTest(TestCase):
         self.assertEqual(run_js('null'), None)
         self.assertEqual(run_js('false'), False)
         self.assertEqual(run_js('true'), True)
-        with self.assertRaisesRegex(TypeError, "No Python conversion known for JavaScript object of type Array"):
-            run_js('[]')
         with self.assertRaisesRegex(RuntimeError, "TypeError: oops!"):
             run_js('throw new TypeError("oops!")')
 
+    def test_jsproxy(self):
+        o = run_js('[7, 11, -1]')
+        self.assertEqual(repr(o), '7,11,-1')
+        self.assertEqual(o.length, 3)
 
+        o = run_js('globalThis.o = {a: 7, b: 92}; o')
+        self.assertEqual(repr(o), '[object Object]')
+        self.assertEqual(o.a, 7)
+        self.assertEqual(o.b, 92)
+        o.a = 13
+        self.assertEqual(run_js("o.a"), 13)

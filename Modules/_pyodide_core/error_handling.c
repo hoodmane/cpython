@@ -18,9 +18,7 @@ EM_JS(void, error_handling_init_js, (void), {
         _set_error(stringToUTF8OnStack(estr));
     });
   };
-}
-const nullToUndefined = (x) => (x === null ? undefined : x);
-);
+});
 
 __attribute__((constructor)) void error_handling_init(void) {
   error_handling_init_js();
