@@ -8,15 +8,13 @@
 EMSCRIPTEN_KEEPALIVE void
 set_error(char* err)
 {
-  PyErr_SetString(PyExc_RuntimeError, err);
+  PyErr_SetObject((PyObject*)Py_TYPE(err), err);
 }
 
 EM_JS(void, error_handling_init_js, (void), {
   Module.handle_js_error = function (e) {
-    const estr = e.toString();
-    withStackSave(() => {
-        _set_error(stringToUTF8OnStack(estr));
-    });
+    let err = _JsProxy_create(e);
+    _set_error(err);
   };
 });
 
