@@ -63,6 +63,11 @@ JsvNum_fromDigits,
 });
 
 
+EM_JS_BOOL(bool, Jsv_equal, (JsVal a, JsVal b), { return !!(a === b); });
+EM_JS_BOOL(bool, Jsv_not_equal, (JsVal a, JsVal b), { return !!(a !== b); });
+
+
+
 EM_JS_VAL(JsVal,
 JsvObject_toString, (JsVal obj), {
   if (hasMethod(obj, "toString")) {
