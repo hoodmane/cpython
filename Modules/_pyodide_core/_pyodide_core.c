@@ -4,6 +4,7 @@
 #include "js2python.h"
 #include "python2js.h"
 #include "jslib.h"
+#include "jsproxy.h"
 
 
 #ifndef Py_BUILD_CORE_BUILTIN
@@ -181,31 +182,9 @@ function jsAssert(cb, message = "") {
 });
 
 
-EM_JS_VAL(JsVal, _pyodide_core_run_js_js, (const char* js_code), {
-    return nullToUndefined(eval(UTF8ToString(js_code)));
+EM_JS_VAL(JsVal, _pyodide_core_get_eval, (void), {
+    return eval;
 });
-
-/*[clinic input]
-_pyodide_core.run_js
-
-    js_code: 's'
-    /
-
-Run some JavaScript code and return the result
-[clinic start generated code]*/
-
-static PyObject *
-_pyodide_core_run_js_impl(PyObject *module, const char *js_code)
-/*[clinic end generated code: output=05aba34409b7877e input=0042ad0e422f7ba8]*/
-{
-    JsVal res = _pyodide_core_run_js_js(js_code);
-    FAIL_IF_JS_NULL(res);
-    return js2python(res);
-
-finally:
-    return NULL;
-}
-
 
 
 /*[clinic input]
@@ -247,6 +226,10 @@ _pyodide_core_exec(PyObject *m)
   bool success = false;
 
   FAIL_IF_MINUS_ONE(jsproxy_init(m));
+  JsVal eval = _pyodide_core_get_eval();
+  FAIL_IF_JS_NULL(eval);
+  FAIL_IF_MINUS_ONE(
+    PyModule_Add(m, "run_js", JsProxy_create(eval)));
 
   success = true;
 finally:
@@ -264,7 +247,6 @@ static struct PyMethodDef _pyodide_core_functions[] = {
     _PYODIDE_CORE_TEST_ERROR_HANDLING_METHODDEF
     _PYODIDE_CORE_TEST_PYTHON2JS_METHODDEF
     _PYODIDE_CORE_TEST_JS2PYTHON_METHODDEF
-    _PYODIDE_CORE_RUN_JS_METHODDEF
     _PYODIDE_CORE_BAD_HIWIRE_GET_METHODDEF
     {NULL,       NULL}          /* sentinel */
 };
