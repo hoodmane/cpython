@@ -2,6 +2,10 @@
 #include "error_handling.h"
 #include "jsmemops.h"
 
+#ifdef DEBUG_F
+bool tracerefs = false;
+#endif
+
 #undef true
 #undef false
 
