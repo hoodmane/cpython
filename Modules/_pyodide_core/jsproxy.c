@@ -4,11 +4,17 @@
 #include "error_handling.h"
 #include "js2python.h"
 #include "python2js.h"
+#include "jsmemops.h"
+
 #include "pyidentifier.h"
+#include "internal/pycore_genobject.h"
 
 #define IS_CALLABLE        (1 << 0)
+#define IS_ITERABLE        (1 << 1)
+#define IS_ITERATOR        (1 << 2)
 
 _Py_IDENTIFIER(_js_type_flags);
+Js_IDENTIFIER(next);
 
 
 struct CallableFields
@@ -332,6 +338,135 @@ JsProxy_cinit(PyObject* obj, JsVal val)
 }
 
 
+EM_JS_VAL(JsVal, JsProxy_GetIter_js, (JsVal obj), {
+  return obj[Symbol.iterator]();
+});
+
+/**
+ * iter overload. Present if IS_ITERABLE but not IS_ITERATOR (if the IS_ITERATOR
+ * flag is present we use PyObject_SelfIter). Does `obj[Symbol.iterator]()`.
+ */
+static PyObject*
+JsProxy_GetIter(PyObject* self)
+{
+  JsVal iter = JsProxy_GetIter_js(JsProxy_VAL(self));
+  FAIL_IF_JS_NULL(iter);
+  return js2python(iter);
+finally:
+  return NULL;
+}
+
+// clang-format off
+EM_JS_NUM(
+JsVal,
+handle_next_result_js,
+(JsVal res, int* done, char** msg),
+{
+  let errmsg;
+  if (typeof res !== "object") {
+    errmsg = `Result should have type "object" not "${typeof res}"`;
+  } else if (typeof res.done === "undefined") {
+    if (typeof res.then === "function") {
+      errmsg = `Result was a promise, use anext() / asend() / athrow() instead.`;
+    } else {
+      errmsg = `Result has no "done" field.`;
+    }
+  }
+  if (errmsg) {
+    ASSIGN_U32(msg, 0, stringToNewUTF8(errmsg));
+    ASSIGN_U32(done, 0, -1);
+  }
+  ASSIGN_U32(done, 0, res.done);
+  return res.value;
+});
+
+PySendResult
+handle_next_result(JsVal next_res, PyObject** result){
+  PySendResult res = PYGEN_ERROR;
+  char* msg = NULL;
+  *result = NULL;
+  int done;
+
+  JsVal jsresult = handle_next_result_js(next_res, &done, &msg);
+  // done:
+  //   1 ==> finished
+  //   0 ==> not finished
+  //  -1 ==> error (if msg is set, we set the error flag to a TypeError with
+  //         msg otherwise the error flag must already be set)
+  if (msg) {
+    PyErr_SetString(PyExc_TypeError, msg);
+    free(msg);
+    FAIL();
+  }
+  FAIL_IF_MINUS_ONE(done);
+  // If there was no "value", "idresult" will be jsundefined
+  // so pyvalue will be set to Py_None.
+  *result = js2python(jsresult);
+  FAIL_IF_NULL(*result);
+
+  res = done ? PYGEN_RETURN : PYGEN_NEXT;
+finally:
+  return res;
+}
+
+// clang-format on
+
+PySendResult
+JsProxy_am_send(PyObject* self, PyObject* arg, PyObject** result)
+{
+  *result = NULL;
+  PySendResult ret = PYGEN_ERROR;
+
+  JsVal jsarg = Jsv_undefined;
+  if (arg) {
+    jsarg = python2js(arg);
+    FAIL_IF_JS_NULL(jsarg);
+  }
+  JsVal next_res =
+    JsvObject_CallMethodId_OneArg(JsProxy_VAL(self), &JsId_next, jsarg);
+  FAIL_IF_JS_NULL(next_res);
+  ret = handle_next_result(next_res, result);
+finally:
+  return ret;
+}
+
+PyObject*
+JsProxy_IterNext(PyObject* self)
+{
+  PyObject* result;
+  if (JsProxy_am_send(self, NULL, &result) == PYGEN_RETURN) {
+    // The Python docs for tp_iternext say "When the iterator is exhausted, it
+    // must return NULL; a StopIteration exception may or may not be set."
+    // So if the result is None, we can just leave error flag unset.
+    if (!Py_IsNone(result)) {
+      _PyGen_SetStopIterationValue(result);
+    }
+    Py_CLEAR(result);
+  }
+  return result;
+}
+
+PyObject*
+JsGenerator_send(PyObject* self, PyObject* arg)
+{
+  PyObject* result;
+  if (JsProxy_am_send(self, arg, &result) == PYGEN_RETURN) {
+    if (Py_IsNone(result)) {
+      PyErr_SetNone(PyExc_StopIteration);
+    } else {
+      _PyGen_SetStopIterationValue(result);
+    }
+    Py_CLEAR(result);
+  }
+  return result;
+}
+
+static PyMethodDef JsGenerator_send_MethodDef = {
+  "send",
+  (PyCFunction)JsGenerator_send,
+  METH_O,
+};
+
 ////////////////////////////////////////////////////////////
 // JsMethod
 //
@@ -454,6 +589,35 @@ JsProxy_create_subtype(int flags)
   char* type_name = "pyodide.ffi.JsProxy";
   int basicsize = sizeof(JsProxy);
 
+  if ((flags & IS_ITERABLE) && !(flags & IS_ITERATOR)) {
+    // If it is an iterator we should use SelfIter instead.
+    slots[cur_slot++] =
+      (PyType_Slot){ .slot = Py_tp_iter, .pfunc = (void*)JsProxy_GetIter };
+  }
+
+  // If it's an iterator, we aren't sure whether it is an async iterator or a
+  // sync iterator -- they both define a next method, you have to see whether
+  // the result is  a promise or not to learn whether we are async. But most
+  // iterators also define `Symbol.iterator` to return themself, and most async
+  // iterators define `Symbol.asyncIterator` to return themself. So if one of
+  // these is defined but not the other, we use this to decide what type we are.
+
+  // Iterator methods
+  if (flags & IS_ITERATOR) {
+    // We're not sure whether it is an async iterator or a sync iterator. So add
+    // both methods and raise at runtime if someone uses the wrong one.
+    // JsProxy_GetIter would work just as well as PyObject_SelfIter
+    // but PyObject_SelfIter avoids an unnecessary allocation.
+    slots[cur_slot++] =
+      (PyType_Slot){ .slot = Py_tp_iter, .pfunc = (void*)PyObject_SelfIter };
+    slots[cur_slot++] =
+      (PyType_Slot){ .slot = Py_tp_iternext, .pfunc = (void*)JsProxy_IterNext };
+    slots[cur_slot++] =
+      (PyType_Slot){ .slot = Py_am_send, .pfunc = (void*)JsProxy_am_send };
+    methods[cur_method++] = JsGenerator_send_MethodDef;
+  }
+
+
   if (flags & IS_CALLABLE) {
     tp_flags |= Py_TPFLAGS_HAVE_VECTORCALL;
     slots[cur_slot++] =
@@ -563,10 +727,18 @@ finally:
   }
 
 
+#define SET_FLAG_IF_HAS_METHOD(flag, meth)                                     \
+  SET_FLAG_IF(flag, hasMethod(obj, meth))
+
+
 EM_JS_NUM(int, JsProxy_compute_typeflags, (JsVal obj), {
   let type_flags = 0;
 
   SET_FLAG_IF(IS_CALLABLE, typeof obj === "function");
+  SET_FLAG_IF_HAS_METHOD(IS_ITERABLE, Symbol.iterator);
+  SET_FLAG_IF(IS_ITERATOR, hasMethod(obj, "next") && (hasMethod(obj, Symbol.iterator) || !hasMethod(obj, Symbol.asyncIterator)));
+
+
   return type_flags;
 });
 
