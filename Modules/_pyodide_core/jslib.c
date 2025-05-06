@@ -87,6 +87,27 @@ JsRef_toVal(JsRef ref)
   return hiwire_get(ref);
 }
 
+// ==================== Primitive Conversions ====================
+
+EM_JS(JsVal, JsvUTF8ToString, (const char* ptr), {
+  return UTF8ToString(ptr);
+})
+
+EMSCRIPTEN_KEEPALIVE JsRef
+JsrString_FromId(Js_Identifier* id)
+{
+  if (!id->object) {
+    id->object = hiwire_intern(JsvUTF8ToString(id->string));
+  }
+  return id->object;
+}
+
+EMSCRIPTEN_KEEPALIVE JsVal
+JsvString_FromId(Js_Identifier* id)
+{
+  return JsRef_toVal(JsrString_FromId(id));
+}
+
 // ==================== JsvObject API  ====================
 
 EM_JS(JsVal, JsvObject_New, (void), {
@@ -105,6 +126,16 @@ JsvObject_toString, (JsVal obj), {
   }
   return Object.prototype.toString.call(obj);
 });
+
+EM_JS_VAL(JsVal, JsvObject_CallMethod_OneArg, (JsVal obj, JsVal meth, JsVal arg), {
+  return nullToUndefined(obj[meth](arg));
+})
+
+JsVal
+JsvObject_CallMethodId_OneArg(JsVal obj, Js_Identifier* name_id, JsVal arg)
+{
+  return JsvObject_CallMethod_OneArg(obj, JsvString_FromId(name_id), arg);
+}
 
 
 // ==================== JsvFunction API  ====================
