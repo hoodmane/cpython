@@ -84,6 +84,8 @@ JsvFunction_Check(JsVal obj);
 JsVal
 JsvFunction_CallBound(JsVal func, JsVal this, JsVal args);
 
+JsVal
+JsvFunction_Construct(JsVal func, JsVal args);
 
 // ==================== JsvArray API  ====================
 

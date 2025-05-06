@@ -91,3 +91,31 @@ finally:
   }
   return pyresult;
 }
+
+PyObject*
+JsMethod_Construct_impl(JsVal func,
+                        PyObject* const* pyargs,
+                        size_t nargs,
+                        PyObject* kwnames)
+{
+  bool success = false;
+  PyObject* pyresult = NULL;
+
+  // Recursion error?
+  FAIL_IF_NONZERO(Py_EnterRecursiveCall(" in JsMethod_Construct"));
+
+  JsVal jsargs = JsMethod_ConvertArgs(pyargs, nargs, kwnames);
+  FAIL_IF_JS_NULL(jsargs);
+  JsVal jsresult = JsvFunction_Construct(func, jsargs);
+  FAIL_IF_JS_NULL(jsresult);
+  pyresult = js2python(jsresult);
+  FAIL_IF_NULL(pyresult);
+
+  success = true;
+finally:
+  Py_LeaveRecursiveCall(/* " in JsMethod_Construct" */);
+  if (!success) {
+    Py_CLEAR(pyresult);
+  }
+  return pyresult;
+}

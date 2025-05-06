@@ -119,6 +119,15 @@ EM_JS_VAL(JsVal, JsvFunction_CallBound, (JsVal func, JsVal this_, JsVal args), {
   return nullToUndefined(Function.prototype.apply.apply(func, [ this_, args ]));
 });
 
+// clang-format off
+EM_JS_VAL(JsVal,
+JsvFunction_Construct,
+(JsVal func, JsVal args),
+{
+  return nullToUndefined(Reflect.construct(func, args));
+});
+// clang-format on
+
 
 // ==================== JsvArray API  ====================
 
