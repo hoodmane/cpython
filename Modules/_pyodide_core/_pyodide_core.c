@@ -238,9 +238,23 @@ _pyodide_core_bad_hiwire_get_impl(PyObject *module, int select)
     return NULL;
 }
 
+int
+jsproxy_init(PyObject *m);
 
+static int
+_pyodide_core_exec(PyObject *m)
+{
+  bool success = false;
+
+  FAIL_IF_MINUS_ONE(jsproxy_init(m));
+
+  success = true;
+finally:
+  return success ? 0 : -1;
+}
 
 static PyModuleDef_Slot _pyodide_core_slots[] = {
+    {Py_mod_exec, _pyodide_core_exec},
     {Py_mod_multiple_interpreters, Py_MOD_PER_INTERPRETER_GIL_SUPPORTED},
     {Py_mod_gil, Py_MOD_GIL_NOT_USED},
     {0, NULL}

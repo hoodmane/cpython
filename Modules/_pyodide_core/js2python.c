@@ -3,6 +3,7 @@
 
 #include "error_handling.h"
 #include "js2python.h"
+#include "jsproxy.h"
 
 #include <emscripten.h>
 
@@ -47,9 +48,7 @@ js2python(JsVal val)
 {
   PyObject* res = js2python_js(val);
   if (res == NULL) {
-    char type[100];
-    Jsv_type(val, type, sizeof(type));
-    PyErr_Format(PyExc_TypeError, "No Python conversion known for JavaScript object of type %s.", type);
+    return JsProxy_create(val);
   }
   return res;
 }
