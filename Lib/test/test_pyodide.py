@@ -102,3 +102,8 @@ class PyodideTest(TestCase):
     def test_jsproxy_call(self):
         res = run_js("(x, y) => x + y")(1, 9)
         self.assertEqual(res, 10)
+
+    def test_jsproxy_to_js(self):
+        o = run_js("({x: 3, y: 7})")
+        f = run_js("(o) => o.x + o.y")
+        self.assertEqual(f(o), 10)
