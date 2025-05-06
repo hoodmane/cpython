@@ -1,42 +1,29 @@
 from unittest import TestCase
-from _pyodide_core import test_error_handling, test_js2python, test_python2js, run_js
+from _pyodide_core import run_js
 
 class PyodideTest(TestCase):
-    def test_error_handling(self):
-        self.assertEqual(test_error_handling(0), 8)
-        with self.assertRaisesRegex(RuntimeError, "Error: Hi!"):
-            test_error_handling(1)
-    
-    def  test_js2python(self):
-        with self.assertRaisesRegex(RuntimeError, "Error: hi!"):
-            test_js2python(-1)
-        self.assertEqual(test_js2python(1), 7)
-        self.assertEqual(test_js2python(2), 2.3)
-        self.assertEqual(test_js2python(3), 77015781075109876017131518)
-        self.assertEqual(test_js2python(4), "abc")
-        self.assertIs(test_js2python(5), None)
-        self.assertIs(test_js2python(6), False)
-        self.assertIs(test_js2python(7), True)
-        self.assertEqual(test_js2python(9), "pyodidé")
-        self.assertEqual(test_js2python(10), "碘化物")
-        self.assertEqual(test_js2python(11), "🐍")
-
-    def  test_python2js(self):
-        with self.assertRaisesRegex(TypeError, r"No JavaScript conversion known for Python object: \[\]\."):
-            test_python2js(-1, [])
-        test_python2js(1, None)
-        test_python2js(2, True)
-        test_python2js(3, False)
-        test_python2js(4, 173)
-        test_python2js(5, 23.75)
-        test_python2js(6, 77015781075109876017131518)
-        test_python2js(7, "abc")
-        test_python2js(8, "pyodidé")
-        test_python2js(9, "碘化物")
-        test_python2js(10, "🐍")
-
     def test_run_js(self):
         self.assertEqual(run_js("3 + 4"), 7)
+        with self.assertRaisesRegex(RuntimeError, "Error: Hi!"):
+            run_js("throw new Error('Hi!')")
+
+    def test_jsproxy_call(self):
+        res = run_js("(x, y) => x + y")(1, 9)
+        self.assertEqual(res, 10)
+
+    def  test_python2js(self):
+        self.assertTrue(run_js("(x) => x === 7")(7))
+        self.assertTrue(run_js("(x) => x === 2.3")(2.3))
+        self.assertTrue(run_js("(x) => x === 77015781075109876017131518n")(77015781075109876017131518))
+        self.assertTrue(run_js("(x) => x === 'abc'")("abc"))
+        self.assertTrue(run_js("(x) => x === undefined")(None))
+        self.assertTrue(run_js("(x) => x === false")(False))
+        self.assertTrue(run_js("(x) => x === true")(True))
+        self.assertTrue(run_js("(x) => x === 'pyodidé'")("pyodidé"))
+        self.assertTrue(run_js("(x) => x === '碘化物'")("碘化物"))
+        self.assertTrue(run_js("(x) => x === '🐍'")("🐍"))
+
+    def  test_js2python(self):
         self.assertEqual(run_js('"pyodidé"'), "pyodidé")
         self.assertEqual(run_js('"碘化物"'), "碘化物")
         self.assertEqual(run_js('"🐍"'), "🐍")
@@ -46,8 +33,6 @@ class PyodideTest(TestCase):
         self.assertEqual(run_js('null'), None)
         self.assertEqual(run_js('false'), False)
         self.assertEqual(run_js('true'), True)
-        with self.assertRaisesRegex(RuntimeError, "TypeError: oops!"):
-            run_js('throw new TypeError("oops!")')
 
     def test_jsproxy(self):
         o = run_js('[7, 11, -1]')
@@ -99,9 +84,6 @@ class PyodideTest(TestCase):
         with self.assertRaisesRegex(TypeError, "not supported"):
             a >= b
 
-    def test_jsproxy_call(self):
-        res = run_js("(x, y) => x + y")(1, 9)
-        self.assertEqual(res, 10)
 
     def test_jsproxy_to_js(self):
         o = run_js("({x: 3, y: 7})")
