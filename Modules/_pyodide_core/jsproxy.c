@@ -189,6 +189,52 @@ finally:
   return success ? 0 : -1;
 }
 
+EM_JS_BOOL(bool, JsProxy_Bool_js, (JsVal val), {
+  // clang-format off
+  if (!val) {
+    return false;
+  }
+  // We want to return false on container types with size 0.
+  if (val.size === 0) {
+    if(/HTML[A-Za-z]*Element/.test(getTypeTag(val))){
+      // HTMLSelectElement and HTMLInputElement can have size 0 but we still
+      // want to return true.
+      return true;
+    }
+    // I think other things with a size are container types.
+    return false;
+  }
+  if (val.length === 0 && JsvArray_Check(val)) {
+    return false;
+  }
+  if (val.byteLength === 0) {
+    return false;
+  }
+  return true;
+  // clang-format on
+});
+
+/**
+ * Overload for bool(proxy), implemented for every JsProxy. Return `False` if
+ * the object is falsey in JavaScript, or if it has a `size` field equal to 0,
+ * or if it has a `length` field equal to zero and is an array. Otherwise return
+ * `True`. This last convention could be replaced with "has a length equal to
+ * zero and is not a function". In JavaScript, `func.length` returns the number
+ * of arguments `func` expects. We definitely don't want 0-argument functions to
+ * be falsey.
+ */
+static int
+JsProxy_Bool(PyObject* self)
+{
+  return JsProxy_Bool_js(JsProxy_VAL(self));
+}
+
+// clang-format off
+static PyNumberMethods JsProxy_NumberMethods = {
+  .nb_bool = JsProxy_Bool
+};
+// clang-format on
+
 static PyTypeObject JsProxyType = {
   .tp_name = "pyodide.ffi.JsProxy",
   .tp_basicsize = sizeof(JsProxy),
@@ -197,6 +243,7 @@ static PyTypeObject JsProxyType = {
   .tp_setattro = JsProxy_SetAttr,
   .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
   .tp_doc = "A proxy to make a Javascript object behave like a Python object",
+  .tp_as_number = &JsProxy_NumberMethods,
   .tp_repr = JsProxy_Repr,
   .tp_dictoffset = offsetof(JsProxy, dict),
 };

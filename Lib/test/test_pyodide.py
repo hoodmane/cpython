@@ -60,3 +60,14 @@ class PyodideTest(TestCase):
         self.assertEqual(o.b, 92)
         o.a = 13
         self.assertEqual(run_js("o.a"), 13)
+
+    def test_jsproxy_bool(self):
+        self.assertTrue(run_js("new TextDecoder()"))
+        self.assertFalse(run_js("[]"))
+        self.assertTrue(run_js("[1]"))
+        self.assertTrue(run_js("() => {}"))
+        self.assertTrue(run_js("(function(){})"))
+        self.assertFalse(run_js("new Map()"))
+        self.assertTrue(run_js("new Map([[1, 7]])"))
+        self.assertFalse(run_js("new Set()"))
+        self.assertTrue(run_js("new Set([1, 7])"))
