@@ -353,6 +353,31 @@ JsMethod_Vectorcall(PyObject* self,
                                   kwnames);
 }
 
+/**
+ * jsproxy.new implementation. Controlled by IS_CALLABLE.
+ *
+ * This does Reflect.construct(this, args). In other words, this treats the
+ * JsMethod as a JavaScript class, constructs a new JavaScript object of that
+ * class and returns a new JsProxy wrapping it. Similar to `new this(args)`.
+ */
+static PyObject*
+JsMethod_Construct(PyObject* self,
+                   PyObject* const* pyargs,
+                   Py_ssize_t nargs,
+                   PyObject* kwnames)
+{
+  return JsMethod_Construct_impl(
+    JsProxy_VAL(self), pyargs, nargs, kwnames);
+}
+
+// clang-format off
+static PyMethodDef JsMethod_Construct_MethodDef = {
+  "new",
+  (PyCFunction)JsMethod_Construct,
+  METH_FASTCALL | METH_KEYWORDS
+};
+// clang-format on
+
 static PyObject*
 JsMethod_descr_get(PyObject* self, PyObject* obj, PyObject* type)
 {
@@ -419,6 +444,8 @@ JsProxy_create_subtype(int flags)
   // Make sure these stack allocations are large enough to fit!
   PyType_Slot slots[20];
   int cur_slot = 0;
+  PyMethodDef methods[50];
+  int cur_method = 0;
   PyMemberDef members[5];
   int cur_member = 0;
 
@@ -433,6 +460,7 @@ JsProxy_create_subtype(int flags)
       (PyType_Slot){ .slot = Py_tp_call, .pfunc = (void*)PyVectorcall_Call };
     slots[cur_slot++] = (PyType_Slot){ .slot = Py_tp_descr_get,
                                        .pfunc = (void*)JsMethod_descr_get };
+    methods[cur_method++] = JsMethod_Construct_MethodDef;
     members[cur_member++] = (PyMemberDef){
       .name = "__vectorcalloffset__",
       .type = Py_T_PYSSIZET,
@@ -443,14 +471,35 @@ JsProxy_create_subtype(int flags)
   }
 
   members[cur_member++] = (PyMemberDef){ 0 };
+  methods[cur_method++] = (PyMethodDef){ 0 };
 
   bool success = false;
+  void* mem = NULL;
   PyObject* bases = NULL;
   PyObject* flags_obj = NULL;
   PyObject* result = NULL;
 
+  // PyType_FromSpecWithBases copies "members" automatically into the end of the
+  // type. It doesn't store the slots. But it just copies the pointer to
+  // "methods" and "getsets" into the PyTypeObject, so if we give it stack
+  // allocated methods or getsets there will be trouble. Instead, heap allocate
+  // some memory and copy them over.
+  //
+  // If the type object were later deallocated, we would leak this memory. It's
+  // unclear how to fix that, but we store the type in JsProxy_TypeDict forever
+  // anyway so it will never be deallocated.
+  mem = PyMem_Malloc(sizeof(PyMethodDef) * cur_method);
+  PyMethodDef* methods_heap = (PyMethodDef*)mem;
+  if (methods_heap == NULL) {
+    PyErr_NoMemory();
+    FAIL();
+  }
+  memcpy(methods_heap, methods, sizeof(PyMethodDef) * cur_method);
+
   slots[cur_slot++] =
     (PyType_Slot){ .slot = Py_tp_members, .pfunc = (void*)members };
+  slots[cur_slot++] =
+    (PyType_Slot){ .slot = Py_tp_methods, .pfunc = (void*)methods_heap };
   slots[cur_slot++] = (PyType_Slot){ 0 };
 
   // clang-format off
@@ -475,6 +524,9 @@ JsProxy_create_subtype(int flags)
 finally:
   if (!success) {
     Py_CLEAR(result);
+  }
+  if (!success && mem != NULL) {
+    PyMem_Free(mem);
   }
   Py_CLEAR(bases);
   Py_CLEAR(flags_obj);
