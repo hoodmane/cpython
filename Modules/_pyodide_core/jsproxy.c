@@ -229,11 +229,28 @@ JsProxy_Bool(PyObject* self)
   return JsProxy_Bool_js(JsProxy_VAL(self));
 }
 
+static PyObject*
+JsProxy_js_id(PyObject* self, void* _unused)
+{
+  PyObject* result = NULL;
+
+  JsRef idval = JsProxy_REF(self);
+  int x[2] = { (int)Py_TYPE(self), (int)idval };
+  Py_hash_t result_c = Py_HashBuffer(x, sizeof(x));
+  FAIL_IF_MINUS_ONE(result_c);
+  result = PyLong_FromLong(result_c);
+finally:
+  return result;
+}
+
 // clang-format off
 static PyNumberMethods JsProxy_NumberMethods = {
   .nb_bool = JsProxy_Bool
 };
 // clang-format on
+
+static PyGetSetDef JsProxy_GetSet[] = { { "js_id", .get = JsProxy_js_id },
+                                        { NULL } };
 
 static PyTypeObject JsProxyType = {
   .tp_name = "pyodide.ffi.JsProxy",
@@ -246,6 +263,7 @@ static PyTypeObject JsProxyType = {
   .tp_as_number = &JsProxy_NumberMethods,
   .tp_repr = JsProxy_Repr,
   .tp_dictoffset = offsetof(JsProxy, dict),
+  .tp_getset = JsProxy_GetSet,
 };
 
 static int
