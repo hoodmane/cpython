@@ -220,4 +220,16 @@ const hasMethod = (obj, prop) => {
     return false;
   }
 };
+
+const hasProperty = (obj, prop)  => {
+  try {
+    while (obj) {
+      if (Object.getOwnPropertyDescriptor(obj, prop)) {
+        return true;
+      }
+      obj = Object.getPrototypeOf(obj);
+    }
+  } catch (e) {}
+  return false;
+}
 )

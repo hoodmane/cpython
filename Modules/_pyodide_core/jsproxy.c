@@ -13,6 +13,7 @@
 #define IS_CALLABLE        (1 << 0)
 #define IS_ITERABLE        (1 << 1)
 #define IS_ITERATOR        (1 << 2)
+#define IS_ERROR           (1 << 3)
 
 _Py_IDENTIFIER(_js_type_flags);
 _Py_IDENTIFIER(__dir__);
@@ -25,15 +26,56 @@ struct CallableFields
   vectorcallfunc vectorcall;
 };
 
+struct ExceptionFields
+{
+  PyObject* args;
+  PyObject* notes;
+  PyObject* traceback;
+  PyObject* context;
+  PyObject* cause;
+  char suppress_context;
+};
+
+
 typedef struct
 {
   PyObject_HEAD
   PyObject* dict;
   union {
     struct CallableFields mf;
+    struct ExceptionFields ef;
   } tf;
   JsRef js;
 } JsProxy;
+
+// Layout of dict and ExceptionFields needs to exactly match the layout of the
+// same-name fields of BaseException. Otherwise bad things will happen. Check it
+// with static asserts!
+_Static_assert(offsetof(PyBaseExceptionObject, dict) == offsetof(JsProxy, dict),
+               "dict layout conflict between JsProxy and PyExc_BaseException");
+
+#define CHECK_EXC_FIELD(field)                                                 \
+  _Static_assert(                                                              \
+    offsetof(PyBaseExceptionObject, field) ==                                  \
+      offsetof(JsProxy, tf) + offsetof(struct ExceptionFields, field),         \
+    "'" #field "' layout conflict between JsProxy and PyExc_BaseException");
+
+CHECK_EXC_FIELD(args);
+CHECK_EXC_FIELD(notes);
+CHECK_EXC_FIELD(traceback);
+CHECK_EXC_FIELD(context);
+CHECK_EXC_FIELD(cause);
+CHECK_EXC_FIELD(suppress_context);
+
+#undef CHEC_EXC_FIELD
+
+#define FIELD_SIZE(type, field) sizeof(((type*)0)->field)
+
+_Static_assert(sizeof(PyBaseExceptionObject) ==
+                 sizeof(PyObject) + FIELD_SIZE(JsProxy, dict) +
+                   sizeof(struct ExceptionFields),
+               "size conflict between JsProxy and PyExc_BaseException");
+#undef FIELD_SIZE
 
 
 #define JsProxy_REF(x) ((JsProxy*)x)->js
@@ -66,6 +108,11 @@ JsProxy_clear(PyObject* self)
   }
   if ((flags & IS_CALLABLE) && (JsMethod_THIS_REF(self) != NULL)) {
     hiwire_pop(JsMethod_THIS_REF(self));
+  }
+  if (flags & IS_ERROR) {
+    if (((PyTypeObject*)PyExc_Exception)->tp_clear(self)) {
+      return -1;
+    }
   }
   Py_CLEAR(JsProxy_DICT(self));
   hiwire_CLEAR(JsProxy_REF(self));
@@ -624,6 +671,90 @@ JsMethod_cinit(PyObject* self, JsVal this_)
   return 0;
 }
 
+////////////////////////////////////////////////////////////
+// JsMethod
+//
+// A subclass of JsProxy for errors
+
+static PyObject*
+JsException_reduce(PyObject* self, PyObject* Py_UNUSED(ignored))
+{
+  // Record name, message, and stack.
+  // See _core_docs.JsException._new_exc where the unpickling will happen.
+  PyObject* res = NULL;
+  PyObject* args = NULL;
+  PyObject* name = NULL;
+  PyObject* message = NULL;
+  PyObject* stack = NULL;
+
+  name = PyObject_GetAttrString(self, "name");
+  FAIL_IF_NULL(name);
+  message = PyObject_GetAttrString(self, "message");
+  FAIL_IF_NULL(message);
+  stack = PyObject_GetAttrString(self, "stack");
+  FAIL_IF_NULL(stack);
+
+  args = PyTuple_Pack(3, name, message, stack);
+  FAIL_IF_NULL(args);
+
+  PyObject* dict = JsProxy_DICT(self);
+  if (dict) {
+    res = PyTuple_Pack(3, Py_TYPE(self), args, dict);
+  } else {
+    res = PyTuple_Pack(2, Py_TYPE(self), args);
+  }
+
+finally:
+  Py_CLEAR(args);
+  Py_CLEAR(name);
+  Py_CLEAR(message);
+  Py_CLEAR(stack);
+  return res;
+}
+
+static PyMethodDef JsException_reduce_MethodDef = {
+  "__reduce__",
+  (PyCFunction)JsException_reduce,
+  METH_NOARGS
+};
+
+
+// clang-format off
+EM_JS_VAL(JsVal,
+JsException_new_helper,
+(char* name_ptr, char* message_ptr, char* stack_ptr),
+{
+  let name = UTF8ToString(name_ptr);
+  let message = UTF8ToString(message_ptr);
+  let stack = UTF8ToString(stack_ptr);
+  return API.deserializeError(name, message, stack);
+});
+// clang-format on
+
+// We use this to unpickle JsException objects.
+static PyObject*
+JsException_new(PyTypeObject* subtype, PyObject* args, PyObject* kwds)
+{
+  static char* kwlist[] = { "name", "message", "stack", 0 };
+  char* name;
+  char* message = "";
+  char* stack = "";
+  if (!PyArg_ParseTupleAndKeywords(
+        args, kwds, "s|ss:__new__", kwlist, &name, &message, &stack)) {
+    return NULL;
+  }
+  JsVal result = JsException_new_helper(name, message, stack);
+  FAIL_IF_JS_NULL(result);
+  return js2python(result);
+finally:
+  return NULL;
+}
+
+static int
+JsException_init(PyBaseExceptionObject* self, PyObject* args, PyObject* kwds)
+{
+  return 0;
+}
 
 // clang-format off
 static PyNumberMethods JsProxy_NumberMethods = {
@@ -721,6 +852,21 @@ JsProxy_create_subtype(int flags)
     };
   }
 
+  if (flags & IS_ERROR) {
+    type_name = "pyodide.ffi.JsException";
+    methods[cur_method++] = JsException_reduce_MethodDef;
+    tp_flags |= Py_TPFLAGS_HAVE_GC;
+    tp_flags |= Py_TPFLAGS_BASE_EXC_SUBCLASS;
+    slots[cur_slot++] =
+      (PyType_Slot){ .slot = Py_tp_traverse,
+                     .pfunc =
+                       (void*)((PyTypeObject*)PyExc_Exception)->tp_traverse };
+    slots[cur_slot++] =
+      (PyType_Slot){ .slot = Py_tp_new, .pfunc = JsException_new };
+    slots[cur_slot++] =
+      (PyType_Slot){ .slot = Py_tp_init, .pfunc = JsException_init };
+  }
+
   members[cur_member++] = (PyMemberDef){ 0 };
   methods[cur_method++] = (PyMethodDef){ 0 };
 
@@ -761,9 +907,39 @@ JsProxy_create_subtype(int flags)
     .flags = tp_flags,
     .slots = slots,
   };
-  bases = PyTuple_Pack(1, &JsProxyType);
-  FAIL_IF_NULL(bases);
-  result = PyType_FromSpecWithBases(&spec, bases);
+  if (flags & IS_ERROR) {
+    bases = PyTuple_Pack(2, &JsProxyType, PyExc_Exception);
+    FAIL_IF_NULL(bases);
+    // The multiple inheritance we are doing is not recognized as legal by
+    // Python:
+    //
+    // 1. the solid_base of JsProxy is JsProxy.
+    // 2. the solid_base of Exception is BaseException.
+    // 3. Neither issubclass(JsProxy, BaseException) nor
+    //    issubclass(BaseException, JsProxy).
+    // 4. If you use multiple inheritance, the sold_bases of the different bases
+    //    are required to be totally ordered (otherwise Python assumes there is
+    //    a memory layout clash).
+    //
+    // So Python concludes that there is a memory layout clash. However, we have
+    // carefully ensured that the memory layout is okay (with the
+    // _Static_assert's at the top of this file) so now we need to trick the
+    // subclass creation algorithm.
+    //
+    // We temporarily set the mro of JsProxy to be (BaseException,) so that
+    // issubclass(JsProxy, BaseException) returns True. This convinces
+    // PyType_FromSpecWithBases that everything is okay. Once we have created
+    // the type, we restore the mro.
+    PyObject* save_mro = JsProxyType.tp_mro;
+    JsProxyType.tp_mro = PyTuple_Pack(1, PyExc_BaseException);
+    result = PyType_FromSpecWithBases(&spec, bases);
+    Py_CLEAR(JsProxyType.tp_mro);
+    JsProxyType.tp_mro = save_mro;
+  } else {
+    bases = PyTuple_Pack(1, &JsProxyType);
+    FAIL_IF_NULL(bases);
+    result = PyType_FromSpecWithBases(&spec, bases);
+  }
   FAIL_IF_NULL(result);
 
   flags_obj = PyLong_FromLong(flags);
@@ -824,7 +1000,27 @@ EM_JS_NUM(int, JsProxy_compute_typeflags, (JsVal obj), {
   SET_FLAG_IF(IS_CALLABLE, typeof obj === "function");
   SET_FLAG_IF_HAS_METHOD(IS_ITERABLE, Symbol.iterator);
   SET_FLAG_IF(IS_ITERATOR, hasMethod(obj, "next") && (hasMethod(obj, Symbol.iterator) || !hasMethod(obj, Symbol.asyncIterator)));
-
+  /**
+   * DOMException is a weird special case. According to WHATWG, there are two
+   * types of Exception objects, simple exceptions and DOMExceptions. The spec
+   * says:
+   *
+   * > if an implementation gives native Error objects special powers or
+   * > nonstandard properties (such as a stack property), it should also expose
+   * > those on DOMException objects
+   *
+   * Firefox respects this and has DOMException.stack. But Safari and Chrome do
+   * not. Hence the special check here for DOMException.
+   */
+  SET_FLAG_IF(IS_ERROR,
+    (
+      hasProperty(obj, "name")
+      && hasProperty(obj, "message")
+      && (
+        hasProperty(obj, "stack")
+        || constructorName === "DOMException"
+      )
+    ) && !(type_flags & (IS_CALLABLE)));
 
   return type_flags;
 });
