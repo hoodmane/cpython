@@ -86,6 +86,9 @@ _Static_assert(sizeof(PyBaseExceptionObject) ==
 #define JsMethod_THIS(x) JsRef_toVal(JsMethod_THIS_REF(x))
 #define JsMethod_VECTORCALL(x) (((JsProxy*)x)->tf.mf.vectorcall)
 
+#define JsException_ARGS(x) (((JsProxy*)x)->tf.ef.args)
+
+
 int
 JsProxy_getflags(PyObject* self)
 {
@@ -1042,6 +1045,15 @@ JsProxy_create_with_type(int type_flags,
   if (type_flags & IS_CALLABLE) {
     FAIL_IF_NONZERO(JsMethod_cinit(result, this));
   }
+  if (type_flags & IS_ERROR) {
+    PyObject* arg =
+      JsProxy_create_with_type(type_flags & (~IS_ERROR), object, this);
+    FAIL_IF_NULL(arg);
+    PyObject* args = PyTuple_Pack(1, arg);
+    Py_CLEAR(arg);
+    FAIL_IF_NULL(args);
+    JsException_ARGS(result) = args;
+  }
 
   success = true;
 finally:
@@ -1071,7 +1083,7 @@ JsProxy_create_with_this(JsVal object,
   return JsProxy_create_with_type(type_flags, object, this);
 }
 
-PyObject*
+EMSCRIPTEN_KEEPALIVE PyObject*
 JsProxy_create(JsVal object)
 {
   return JsProxy_create_with_this(object, JS_NULL);

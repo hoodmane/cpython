@@ -1,10 +1,12 @@
 from unittest import TestCase
 from _pyodide_core import run_js
 
+JsError = type(run_js("new Error()"))
+
 class PyodideTest(TestCase):
     def test_run_js(self):
         self.assertEqual(run_js("3 + 4"), 7)
-        with self.assertRaisesRegex(RuntimeError, "Error: Hi!"):
+        with self.assertRaisesRegex(JsError, "Error: Hi!"):
             run_js("throw new Error('Hi!')")
 
     def test_jsproxy_call(self):
@@ -91,7 +93,7 @@ class PyodideTest(TestCase):
 
     def test_jsproxy_construct(self):
         URL = run_js("URL")
-        with self.assertRaises(RuntimeError):
+        with self.assertRaises(JsError):
             URL("http://example.com")
         r = URL.new("http://example.com/a/b?c=2")
         self.assertEqual(r.origin, "http://example.com")
@@ -134,7 +136,7 @@ class PyodideTest(TestCase):
 
         try:
             f()
-        except Exception as e:
+        except JsError as e:
             err = e
         else:
             assert False
@@ -142,5 +144,4 @@ class PyodideTest(TestCase):
         self.assertEqual(err.name, "TypeError")
         self.assertEqual(err.message, "hi!")
         self.assertHasAttr(err, "stack")
-
 

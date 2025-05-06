@@ -2351,7 +2351,8 @@ AS_CASE([$ac_sys_system],
     AS_VAR_APPEND([LINKFORSHARED], ["_PyUnicode_New,"])
     dnl some hiwire functions
     AS_VAR_APPEND([LINKFORSHARED], ["_hiwire_intern,"])
-    AS_VAR_APPEND([LINKFORSHARED], ["_hiwire_get"])
+    AS_VAR_APPEND([LINKFORSHARED], ["_hiwire_get,"])
+    AS_VAR_APPEND([LINKFORSHARED], ["_JsProxy_create"])
 
 
     AS_VAR_APPEND([LINKFORSHARED], [" -sSTACK_SIZE=5MB"])
