@@ -62,3 +62,59 @@ JsvNum_fromDigits,
   return result;
 });
 
+
+EM_JS_VAL(JsVal,
+JsvObject_toString, (JsVal obj), {
+  if (hasMethod(obj, "toString")) {
+    return obj.toString();
+  }
+  return Object.prototype.toString.call(obj);
+});
+
+EM_JS_BOOL(bool, JsvArray_Check, (JsVal obj), {
+  if (Array.isArray(obj)) {
+    return true;
+  }
+  const typeTag = getTypeTag(obj);
+  // We want to treat some standard array-like objects as Array.
+  // clang-format off
+  if (typeTag === "[object HTMLCollection]" || typeTag === "[object NodeList]") {
+    // clang-format on
+    return true;
+  }
+  // What if it's a TypedArray?
+  // clang-format off
+  if (ArrayBuffer.isView(obj) && obj.constructor.name !== "DataView") {
+    // clang-format on
+    return true;
+  }
+  return false;
+});
+
+EM_JS(void, jslib_toplevel_helpers, (void), {}
+const nullToUndefined = (x) => (x === null ? undefined : x);
+const getTypeTag = (x) => {
+  try {
+    return Object.prototype.toString.call(x);
+  } catch (e) {
+    return "";
+  }
+};
+
+/**
+ * Observe whether a method exists or not
+ *
+ * Invokes getters but catches any error produced by a getter and throws it away.
+ * Never throws an error
+ *
+ * obj: an object
+ * prop: a string or symbol
+ */
+const hasMethod = (obj, prop) => {
+  try {
+    return typeof obj[prop] === "function";
+  } catch (e) {
+    return false;
+  }
+};
+)

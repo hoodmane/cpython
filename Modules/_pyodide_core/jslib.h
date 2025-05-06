@@ -1,5 +1,6 @@
 #include <sys/types.h>
 #include <hiwire.h>
+#include <emscripten.h>
 
 typedef __externref_t JsVal;
 typedef HwRef JsRef;
@@ -26,6 +27,13 @@ extern const JsRef Jsr_false;
 #define false (!!0)
 #define true (!!1)
 
+#define hiwire_CLEAR(x)                                                        \
+  do {                                                                         \
+    hiwire_decref(x);                                                          \
+    x = NULL;                                                                  \
+  } while (0)
+
+
 
 int
 Jsv_type(JsVal obj, char* buf, int size);
@@ -38,3 +46,9 @@ JsvNum_fromDouble(double x);
 
 JsVal
 JsvNum_fromDigits(const unsigned int* digits, size_t ndigits);
+
+JsVal
+JsvObject_toString(JsVal obj);
+
+bool
+JsvArray_Check(JsVal obj);
