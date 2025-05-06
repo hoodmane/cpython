@@ -47,6 +47,12 @@ JsvNum_fromDouble(double x);
 JsVal
 JsvNum_fromDigits(const unsigned int* digits, size_t ndigits);
 
+bool
+Jsv_equal(JsVal a, JsVal b);
+
+bool
+Jsv_not_equal(JsVal a, JsVal b);
+
 JsVal
 JsvObject_toString(JsVal obj);
 
