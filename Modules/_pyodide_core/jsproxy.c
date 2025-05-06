@@ -576,6 +576,12 @@ JsProxy_Check(PyObject* x)
   return PyObject_TypeCheck(x, &JsProxyType);
 }
 
+JsVal
+JsProxy_Val(PyObject* x)
+{
+  return JsProxy_VAL(x);
+}
+
 
 int
 jsproxy_init(PyObject* core_module)
