@@ -131,4 +131,7 @@ JsvArray_Check(JsVal obj);
 int
 JsvArray_Push(JsVal obj, JsVal val);
 
+void __attribute__((__noreturn__))
+JsvError_Throw(JsVal e);
+
 #endif // JSLIB_H

@@ -3,6 +3,7 @@
 #include "error_handling.h"
 #include "jsmemops.h"
 #include "jsproxy.h"
+#include "pyproxy.h"
 
 ///////////////////////////////////////////////////////////////////////////////
 //
@@ -136,6 +137,5 @@ python2js(PyObject* x)
   } else if (JsProxy_Check(x)) {
     return JsProxy_Val(x);
   }
-  PyErr_Format(PyExc_TypeError, "No JavaScript conversion known for Python object: %R.", x);
-  return JS_NULL;
+  return pyproxy_new(x);
 }

@@ -193,3 +193,5 @@ EM_JS_BOOL(bool, JsvArray_Check, (JsVal obj), {
 EM_JS(int, JsvArray_Push, (JsVal arr, JsVal obj), {
   return arr.push(obj);
 });
+
+EM_JS(void __attribute__((__noreturn__)), JsvError_Throw, (JsVal e), { throw e; })
