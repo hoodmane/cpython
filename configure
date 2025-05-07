@@ -9620,7 +9620,12 @@ fi
     as_fn_append LINKFORSHARED "_PyUnicode_New,"
         as_fn_append LINKFORSHARED "_hiwire_intern,"
     as_fn_append LINKFORSHARED "_hiwire_get,"
-    as_fn_append LINKFORSHARED "_JsProxy_create"
+    as_fn_append LINKFORSHARED "_JsProxy_create,"
+    as_fn_append LINKFORSHARED "_Py_IncRef,"
+    as_fn_append LINKFORSHARED "_Py_DecRef,"
+    as_fn_append LINKFORSHARED "_pythonexc2js,"
+    as_fn_append LINKFORSHARED "__pyproxy_type,"
+    as_fn_append LINKFORSHARED "__pyproxy_str"
 
 
     as_fn_append LINKFORSHARED " -sSTACK_SIZE=5MB"

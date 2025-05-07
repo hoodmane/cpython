@@ -166,9 +166,8 @@ sed -e 's/[ 	]*#.*//' -e '/^[ 	]*$/d' |
 			*.a)		libs="$libs $arg";;
 			*.so)		libs="$libs $arg";;
 			*.sl)		libs="$libs $arg";;
-			/*.o)		libs="$libs $arg";;
+			*.o)		libs="$libs $arg";;
 			*.def)		libs="$libs $arg";;
-			*.o)		srcs="$srcs `basename $arg .o`.c";;
 			*.[cCs])	srcs="$srcs $arg";;
 			*.m)		srcs="$srcs $arg";; # Objective-C src
 			*.cc)		srcs="$srcs $arg";;

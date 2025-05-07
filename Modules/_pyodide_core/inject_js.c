@@ -6,6 +6,8 @@ __attribute__((section("em_js"),
         // "()=>{}" in ascii.
     40, 41, 60, 58, 58, 62, 123, 125,
     #embed "jslib.js"
+    ,
+    #embed "pyproxy.gen.js"
     // Null byte to end string
     , 0
 };
