@@ -804,7 +804,7 @@ build_wasm: check-clean-src $(BUILDPYTHON) platform sharedmods \
 		python-config checksharedmods
 
 .PHONY: build_emscripten
-build_emscripten: build_wasm web_example
+build_emscripten: build_wasm web_example d8
 
 # Check that the source is clean when building out of source.
 .PHONY: check-clean-src
@@ -1125,6 +1125,24 @@ web_example/python.mjs web_example/python.wasm: $(BUILDPYTHON)
 
 .PHONY: web_example
 web_example: web_example/python.mjs web_example/python.worker.mjs web_example/python.html web_example/server.py $(WEB_STDLIB)
+
+D8_STDLIB=d8/python$(VERSION)$(ABI_THREAD).zip
+$(D8_STDLIB): $(srcdir)/Lib/*.py $(srcdir)/Lib/*/*.py \
+	    $(WEBEX_DIR)/wasm_assets.py \
+	    Makefile pybuilddir.txt Modules/Setup.local
+	$(PYTHON_FOR_BUILD) $(WEBEX_DIR)/wasm_assets.py \
+	    --buildroot . --prefix $(prefix) -o $@
+
+d8/python.mjs d8/python.wasm: $(BUILDPYTHON)
+	@if test $(HOST_GNU_TYPE) != 'wasm32-unknown-emscripten' ; then \
+		echo "Can only build when target is Emscripten" ;\
+		exit 1 ;\
+	fi
+	cp python.mjs d8/python.mjs
+	cp python.wasm d8/python.wasm
+
+.PHONY: d8
+d8: d8/python.mjs d8/python.wasm $(D8_STDLIB)
 
 ############################################################################
 # Header files
