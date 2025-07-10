@@ -227,6 +227,7 @@ def configure_emscripten_python(context, working_dir):
         "--enable-big-digits=30",
         "--enable-wasm-dynamic-linking",
         f"--prefix={PREFIX_DIR}",
+        "--with-tail-call-interp",
     ]
     if pydebug:
         configure.append("--with-pydebug")
