@@ -9605,8 +9605,9 @@ fi
     as_fn_append LINKFORSHARED " -sEXPORTED_FUNCTIONS=_main,_Py_Version,__PyRuntime,__PyEM_EMSCRIPTEN_COUNT_ARGS_OFFSET,_PyGILState_GetThisThreadState,__Py_DumpTraceback"
     as_fn_append LINKFORSHARED " -s ENVIRONMENT=web,webview,worker,node,shell"
     as_fn_append LINKFORSHARED " -sSTACK_SIZE=5MB"
-    as_fn_append LINKFORSHARED " -g2"
+        as_fn_append LINKFORSHARED " -g2"
     as_fn_append CFLAGS_NODIST " -g2"
+        as_fn_append CFLAGS_NODIST " -mtail-call"
 
     if test "x$enable_wasm_dynamic_linking" = xyes
 then :
