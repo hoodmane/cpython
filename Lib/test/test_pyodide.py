@@ -53,6 +53,13 @@ class PyodideTest(TestCase):
         self.assertEqual(run_js('false'), False)
         self.assertEqual(run_js('true'), True)
 
+    def test_js2python_integers(self):
+        x = 77015781075109876017131518
+        while x != 0:
+            self.assertEqual(run_js(f'{x}n'), x)
+            self.assertEqual(run_js(f'-{x}n'), -x)
+            x >>= 1
+
     def test_jsproxy(self):
         o = run_js('[7, 11, -1]')
         self.assertEqual(repr(o), '7,11,-1')
