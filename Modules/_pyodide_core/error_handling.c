@@ -40,7 +40,6 @@ new_error,
 EMSCRIPTEN_KEEPALIVE JsVal
 wrap_exception(void)
 {
-  bool success = false;
   PyObject* typestr = NULL;
   PyObject* exc = NULL;
   JsVal jserror = JS_ERROR;

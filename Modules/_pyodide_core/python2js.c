@@ -139,9 +139,9 @@ _python2js_unicode(PyObject* x)
       return _python2js_ucs2(data, length);
     case PyUnicode_4BYTE_KIND:
       return _python2js_ucs4(data, length);
-    default:
-      assert(false /* invalid Unicode kind */);
   }
+  PyErr_SetString(PyExc_SystemError, "Invalid unicode object");
+  return JS_ERROR;
 }
 
 JsVal
