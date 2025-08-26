@@ -143,7 +143,7 @@ console_error(char* msg);
     }                                                                          \
   } while (0)
 
-#define FAIL_IF_JS_NULL(ref)                                                   \
+#define FAIL_IF_JS_ERROR(ref)                                                   \
   do {                                                                         \
     if (JsvNull_Check(ref)) {                                                  \
       FAIL();                                                                  \

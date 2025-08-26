@@ -8,7 +8,7 @@
 typedef __externref_t JsVal;
 typedef HwRef JsRef;
 
-#define JS_NULL __builtin_wasm_ref_null_extern()
+#define JS_ERROR __builtin_wasm_ref_null_extern()
 int JsvNull_Check(JsVal);
 
 // Special JsRefs for singleton constants.
@@ -67,12 +67,12 @@ Jsv_not_equal(JsVal a, JsVal b);
 
 // ==================== Conversions between JsRef and JsVal ====================
 
-// Like hiwire_new except if the argument is JS_NULL it returns NULL instead of crashing.
+// Like hiwire_new except if the argument is JS_ERROR it returns NULL instead of crashing.
 // Upstream to hiwire?
 JsRef
 JsRef_new(JsVal v);
 
-// Like hiwire_get except if the argument is NULL it returns JS_NULL instead of crashing.
+// Like hiwire_get except if the argument is NULL it returns JS_ERROR instead of crashing.
 // Upstream to hiwire?
 JsVal
 JsRef_toVal(JsRef ref);

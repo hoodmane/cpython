@@ -67,7 +67,7 @@ JsVal
 JsRef_toVal(JsRef ref)
 {
   if (ref == NULL) {
-    return JS_NULL;
+    return JS_ERROR;
   }
   return hiwire_get(ref);
 }

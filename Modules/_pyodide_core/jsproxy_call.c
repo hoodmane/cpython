@@ -18,7 +18,7 @@ JsMethod_ConvertArgs(PyObject* const* pyargs,
   // present positional arguments
   for (Py_ssize_t i = 0; i < nargs; ++i) {
     JsVal arg = python2js(pyargs[i]);
-    FAIL_IF_JS_NULL(arg);
+    FAIL_IF_JS_ERROR(arg);
     JsvArray_Push(jsargs, arg);
   }
   // Keyword arguments
@@ -29,13 +29,13 @@ JsMethod_ConvertArgs(PyObject* const* pyargs,
   }
   // store kwargs into an object which we'll use as the last argument.
   JsVal kwargs = JsvObject_New();
-  FAIL_IF_JS_NULL(kwargs);
+  FAIL_IF_JS_ERROR(kwargs);
   for (int64_t i = 0, k = nargs; i < nkwargs; ++i, ++k) {
     PyObject* pyname = PyTuple_GET_ITEM(kwnames, i);
     JsVal jsname = python2js(pyname);
-    FAIL_IF_JS_NULL(jsname);
+    FAIL_IF_JS_ERROR(jsname);
     JsVal arg = python2js(pyargs[k]);
-    FAIL_IF_JS_NULL(arg);
+    FAIL_IF_JS_ERROR(arg);
     FAIL_IF_MINUS_ONE(JsvObject_SetAttr(kwargs, jsname, arg));
   }
   JsvArray_Push(jsargs, kwargs);
@@ -46,7 +46,7 @@ JsMethod_ConvertArgs(PyObject* const* pyargs,
 success:
   return jsargs;
 finally:
-  return JS_NULL;
+  return JS_ERROR;
 }
 
 
@@ -61,16 +61,16 @@ JsMethod_Vectorcall_impl(JsVal func,
                          PyObject* kwnames)
 {
   bool success = false;
-  JsVal jsresult = JS_NULL;
+  JsVal jsresult = JS_ERROR;
   PyObject* pyresult = NULL;
 
   // Recursion error?
   FAIL_IF_NONZERO(Py_EnterRecursiveCall(" while calling a JavaScript object"));
   JsVal jsargs =
     JsMethod_ConvertArgs(pyargs, nargsf, kwnames);
-  FAIL_IF_JS_NULL(jsargs);
+  FAIL_IF_JS_ERROR(jsargs);
   jsresult = JsvFunction_CallBound(func, receiver, jsargs);
-  FAIL_IF_JS_NULL(jsresult);
+  FAIL_IF_JS_ERROR(jsresult);
   pyresult = js2python(jsresult);
   FAIL_IF_NULL(pyresult);
 
@@ -96,9 +96,9 @@ JsMethod_Construct_impl(JsVal func,
   FAIL_IF_NONZERO(Py_EnterRecursiveCall(" in JsMethod_Construct"));
 
   JsVal jsargs = JsMethod_ConvertArgs(pyargs, nargs, kwnames);
-  FAIL_IF_JS_NULL(jsargs);
+  FAIL_IF_JS_ERROR(jsargs);
   JsVal jsresult = JsvFunction_Construct(func, jsargs);
-  FAIL_IF_JS_NULL(jsresult);
+  FAIL_IF_JS_ERROR(jsresult);
   pyresult = js2python(jsresult);
   FAIL_IF_NULL(pyresult);
 
