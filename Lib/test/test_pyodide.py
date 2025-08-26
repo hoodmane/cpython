@@ -25,6 +25,23 @@ class PyodideTest(TestCase):
         self.assertTrue(run_js("(x) => x === '碘化物'")("碘化物"))
         self.assertTrue(run_js("(x) => x === '🐍'")("🐍"))
 
+    def test_python2js_integers(self):
+        x = 77015781075109876017131518
+        js_str = run_js(f"(x) => x.toString()")
+        js_typeof = run_js(f"(x) => typeof x")
+        for _ in range(33):
+            self.assertEqual(js_str(x), str(x))
+            self.assertEqual(js_str(-x), str(-x))
+            self.assertEqual(js_typeof(x), "bigint")
+            self.assertEqual(js_typeof(-x), "bigint")
+            x >>= 1
+        for _ in range(32):
+            self.assertEqual(js_str(x), str(x))
+            self.assertEqual(js_str(-x), str(-x))
+            self.assertEqual(js_typeof(x), "number")
+            self.assertEqual(js_typeof(-x), "number")
+            x >>= 1
+
     def  test_js2python(self):
         self.assertEqual(run_js('"pyodidé"'), "pyodidé")
         self.assertEqual(run_js('"碘化物"'), "碘化物")

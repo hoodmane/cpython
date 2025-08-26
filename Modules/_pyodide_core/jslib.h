@@ -59,9 +59,6 @@ JsvNum_fromInt(int x);
 JsVal
 JsvNum_fromDouble(double x);
 
-JsVal
-JsvNum_fromDigits(const unsigned int* digits, size_t ndigits);
-
 bool
 Jsv_equal(JsVal a, JsVal b);
 
