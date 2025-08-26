@@ -2352,10 +2352,11 @@ AS_CASE([$ac_sys_system],
     AS_VAR_APPEND([LINKFORSHARED], ["__Py_DumpTraceback,"])
     AS_VAR_APPEND([LINKFORSHARED], ["_PyLong_FromDouble,"])
     AS_VAR_APPEND([LINKFORSHARED], ["_PyFloat_FromDouble,"])
-    AS_VAR_APPEND([LINKFORSHARED], ["__PyLong_FromByteArray,"])
     AS_VAR_APPEND([LINKFORSHARED], ["_PyErr_Occurred,"])
     AS_VAR_APPEND([LINKFORSHARED], ["_PyErr_Print,"])
     AS_VAR_APPEND([LINKFORSHARED], ["_PyUnicode_New,"])
+    AS_VAR_APPEND([LINKFORSHARED], ["_PyLongWriter_Create,"])
+    AS_VAR_APPEND([LINKFORSHARED], ["_PyLongWriter_Finish,"])
     dnl some hiwire functions
     AS_VAR_APPEND([LINKFORSHARED], ["_hiwire_intern,"])
     AS_VAR_APPEND([LINKFORSHARED], ["_hiwire_get,"])
