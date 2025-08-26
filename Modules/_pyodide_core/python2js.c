@@ -26,32 +26,58 @@ _python2js_float(PyObject* x)
 #error "Expected PYLONG_BITS_IN_DIGIT == 30"
 #endif
 
+EM_JS(JsVal, _python2js_long_js_small, (int64_t x), {
+  if (-Number.MAX_SAFE_INTEGER < x && x < Number.MAX_SAFE_INTEGER) {
+    return Number(x);
+  }
+  return x;
+})
+
+EM_JS_MACROS(JsVal,
+_python2js_long_js_big, (const unsigned int *digits, size_t ndigits, uint8_t negative,
+                         uint8_t bits_per_digit, uint8_t digit_size),
+{
+  let result = BigInt(0);
+  if (digit_size === 16) {
+    for (let i = 0; i < ndigits; i++) {
+      result += BigInt(DEREF_U16(digits, i))
+        << BigInt(bits_per_digit * i);
+    }
+  } else {
+    for (let i = 0; i < ndigits; i++) {
+      result += BigInt(DEREF_U32(digits, i))
+        << BigInt(bits_per_digit * i);
+    }
+  }
+  if (negative) {
+    result *= -1n;
+  }
+  if (-Number.MAX_SAFE_INTEGER < result &&
+    result < Number.MAX_SAFE_INTEGER) {
+    result = Number(result);
+  }
+  return result;
+});
+
 static JsVal
 _python2js_long(PyObject* x)
 {
-  int overflow;
-  long x_long = PyLong_AsLongAndOverflow(x, &overflow);
-  if (x_long == -1 && !overflow && PyErr_Occurred()) {
+  PyLongExport export_long;
+  if (PyLong_Export(x, &export_long) == -1) {
     return JS_NULL;
   }
-  if (!overflow) {
-    return JsvNum_fromInt(x_long);
+  JsVal result;
+  if (export_long.digits == NULL) {
+    result = _python2js_long_js_small(export_long.value);
+  } else {
+    const PyLongLayout *layout = PyLong_GetNativeLayout();
+    result = _python2js_long_js_big(export_long.digits, export_long.ndigits,
+                                    export_long.negative,
+                                    layout->bits_per_digit, layout->digit_size);
   }
-  // We want to group into u32 chunks for convenience of
-  // JsvNum_fromDigits. If the number of bits is evenly divisible by
-  // 32, we overestimate the number of needed u32s by one.
-  size_t nbits = _PyLong_NumBits(x);
-  size_t ndigits = (nbits >> 5) + 1;
-  unsigned int digits[ndigits];
-  FAIL_IF_MINUS_ONE(_PyLong_AsByteArray((PyLongObject*)x,
-                                        (unsigned char*)digits,
-                                        4 * ndigits,
-                                        true /* little endian */,
-                                        true /* signed */,
-                                        true /* with_exceptions */));
-  return JsvNum_fromDigits(digits, ndigits);
-finally:
-  return JS_NULL;
+
+  PyLong_FreeExport(&export_long);
+  return result;
 }
 
 // python2js string conversion

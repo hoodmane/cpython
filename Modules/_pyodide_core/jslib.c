@@ -48,25 +48,6 @@ EM_JS(JsVal, JsvNum_fromDouble, (double val), {
   return val;
 });
 
-
-EM_JS_MACROS(JsVal,
-JsvNum_fromDigits,
-(const unsigned int* digits, size_t ndigits),
-{
-  let result = BigInt(0);
-  for (let i = 0; i < ndigits; i++) {
-    result += BigInt(DEREF_U32(digits, i)) << BigInt(32 * i);
-  }
-  result += BigInt(DEREF_U32(digits, ndigits - 1) & 0x80000000)
-            << BigInt(1 + 32 * (ndigits - 1));
-  if (-Number.MAX_SAFE_INTEGER < result &&
-      result < Number.MAX_SAFE_INTEGER) {
-    result = Number(result);
-  }
-  return result;
-});
-
-
 EM_JS_BOOL(bool, Jsv_equal, (JsVal a, JsVal b), { return !!(a === b); });
 EM_JS_BOOL(bool, Jsv_not_equal, (JsVal a, JsVal b), { return !!(a !== b); });
 
