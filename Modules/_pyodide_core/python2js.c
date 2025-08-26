@@ -31,26 +31,25 @@ _python2js_long(PyObject* x)
 {
   int overflow;
   long x_long = PyLong_AsLongAndOverflow(x, &overflow);
-  if (x_long == -1) {
-    if (!overflow) {
-      FAIL_IF_ERR_OCCURRED();
-    } else {
-      // We want to group into u32 chunks for convenience of
-      // JsvNum_fromDigits. If the number of bits is evenly divisible by
-      // 32, we overestimate the number of needed u32s by one.
-      size_t nbits = _PyLong_NumBits(x);
-      size_t ndigits = (nbits >> 5) + 1;
-      unsigned int digits[ndigits];
-      FAIL_IF_MINUS_ONE(_PyLong_AsByteArray((PyLongObject*)x,
-                                            (unsigned char*)digits,
-                                            4 * ndigits,
-                                            true /* little endian */,
-                                            true /* signed */,
-                                            true /* with_exceptions */));
-      return JsvNum_fromDigits(digits, ndigits);
-    }
+  if (x_long == -1 && !overflow && PyErr_Occurred()) {
+    return JS_NULL;
   }
-  return JsvNum_fromInt(x_long);
+  if (!overflow) {
+    return JsvNum_fromInt(x_long);
+  }
+  // We want to group into u32 chunks for convenience of
+  // JsvNum_fromDigits. If the number of bits is evenly divisible by
+  // 32, we overestimate the number of needed u32s by one.
+  size_t nbits = _PyLong_NumBits(x);
+  size_t ndigits = (nbits >> 5) + 1;
+  unsigned int digits[ndigits];
+  FAIL_IF_MINUS_ONE(_PyLong_AsByteArray((PyLongObject*)x,
+                                        (unsigned char*)digits,
+                                        4 * ndigits,
+                                        true /* little endian */,
+                                        true /* signed */,
+                                        true /* with_exceptions */));
+  return JsvNum_fromDigits(digits, ndigits);
 finally:
   return JS_NULL;
 }
