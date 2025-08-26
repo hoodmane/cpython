@@ -62,7 +62,7 @@ _pyodide_core_exec(PyObject *m)
 
   FAIL_IF_MINUS_ONE(jsproxy_init(m));
   JsVal eval = _pyodide_core_get_eval();
-  FAIL_IF_JS_NULL(eval);
+  FAIL_IF_JS_ERROR(eval);
   FAIL_IF_MINUS_ONE(
     PyModule_Add(m, "run_js", JsProxy_create(eval)));
 

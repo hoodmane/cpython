@@ -17,7 +17,7 @@ _python2js_float(PyObject* x)
 {
   double x_double = PyFloat_AsDouble(x);
   if (x_double == -1.0 && PyErr_Occurred()) {
-    return JS_NULL;
+    return JS_ERROR;
   }
   return JsvNum_fromDouble(x_double);
 }
@@ -64,7 +64,7 @@ _python2js_long(PyObject* x)
 {
   PyLongExport export_long;
   if (PyLong_Export(x, &export_long) == -1) {
-    return JS_NULL;
+    return JS_ERROR;
   }
   JsVal result;
   if (export_long.digits == NULL) {

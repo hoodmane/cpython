@@ -43,7 +43,7 @@ wrap_exception(void)
   bool success = false;
   PyObject* typestr = NULL;
   PyObject* exc = NULL;
-  JsVal jserror = JS_NULL;
+  JsVal jserror = JS_ERROR;
 
   exc = PyErr_GetRaisedException();
   PyErr_SetRaisedException(Py_NewRef(exc));

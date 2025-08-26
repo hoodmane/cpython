@@ -12,7 +12,7 @@ EMSCRIPTEN_KEEPALIVE JsVal
 _pyproxy_str(PyObject* pyobj)
 {
   PyObject* pystr = NULL;
-  JsVal jsrepr = JS_NULL;
+  JsVal jsrepr = JS_ERROR;
 
   pystr = PyObject_Str(pyobj);
   FAIL_IF_NULL(pystr);

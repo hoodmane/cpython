@@ -43,29 +43,29 @@ JSFILE(() => {
   }
 
   function js2python_bigint(value) {
-    let value_orig = value;
-    let length = 0;
-    if (value < 0) {
-      value = -value;
+    const negative = value < 0;
+    if (negative) {
+      value *= -1n;
     }
-    value <<= BigInt(1);
+    const value_orig = value;
+    let ndigits = 0;
     while (value) {
-      length++;
-      value >>= BigInt(32);
+      ndigits++;
+      value >>= 30n;
     }
     return withStackSave(() => {
-        let ptr = stackAlloc(length * 4);
-        value = value_orig;
-        for (let i = 0; i < length; i++) {
-            ASSIGN_U32(ptr, i, Number(value & BigInt(0xffffffff)));
-            value >>= BigInt(32);
+        const digitsPtrPtr = stackAlloc(4);
+        const longWriter = _PyLongWriter_Create(negative, ndigits, digitsPtrPtr);
+        if (longWriter === 0) {
+          throw new PropagateError();
         }
-        return __PyLong_FromByteArray(
-            ptr,
-            length * 4 /* length in bytes */,
-            true /* little endian */,
-            true /* signed? */,
-        );
+        const digitsPtr = DEREF_U32(digitsPtrPtr, 0);
+        value = value_orig;
+        for (let i = 0; i < ndigits; i++) {
+            ASSIGN_U32(digitsPtr, i, Number(value & 0x3fffffffn));
+            value >>= 30n;
+        }
+        return _PyLongWriter_Finish(longWriter);
     });
   }
 
