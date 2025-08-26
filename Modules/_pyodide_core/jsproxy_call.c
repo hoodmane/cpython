@@ -12,9 +12,7 @@ JsMethod_ConvertArgs(PyObject* const* pyargs,
                      Py_ssize_t nargsf,
                      PyObject* kwnames)
 {
-  JsVal kwargs;
   JsVal jsargs = JsvArray_New();
-  bool success = false;
 
   int nargs = PyVectorcall_NARGS(nargsf);
   // present positional arguments
@@ -24,17 +22,16 @@ JsMethod_ConvertArgs(PyObject* const* pyargs,
     JsvArray_Push(jsargs, arg);
   }
   // Keyword arguments
-  // Can skip if there are no keyword arguments
+  // Skip if there are no keyword arguments
   Py_ssize_t nkwargs = kwnames == NULL ? 0 : PyTuple_GET_SIZE(kwnames);
-  bool has_kwargs = (nkwargs > 0);
-  if (!has_kwargs) {
+  if (nkwargs == 0) {
     goto success;
   }
   // store kwargs into an object which we'll use as the last argument.
-  kwargs = JsvObject_New();
+  JsVal kwargs = JsvObject_New();
   FAIL_IF_JS_NULL(kwargs);
   for (int64_t i = 0, k = nargs; i < nkwargs; ++i, ++k) {
-    PyObject* pyname = PyTuple_GET_ITEM(kwnames, i); /* borrowed! */
+    PyObject* pyname = PyTuple_GET_ITEM(kwnames, i);
     JsVal jsname = python2js(pyname);
     FAIL_IF_JS_NULL(jsname);
     JsVal arg = python2js(pyargs[k]);
@@ -47,15 +44,9 @@ JsMethod_ConvertArgs(PyObject* const* pyargs,
   goto success;
 
 success:
-  success = true;
-finally:
-  if (!success) {
-    jsargs = JS_NULL;
-    if (!PyErr_Occurred()) {
-      PyErr_SetString(PyExc_SystemError, "Oops");
-    }
-  }
   return jsargs;
+finally:
+  return JS_NULL;
 }
 
 
