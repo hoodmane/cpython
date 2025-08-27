@@ -62,7 +62,7 @@
     catch (e) {                                                                \
         LOG_EM_JS_ERROR(func_name, e);                                         \
         Module.handle_js_error(e);                                             \
-        return null;                                                           \
+        return JS_ERROR;                                                       \
     }                                                                          \
     errNoRet();                                                                \
   })
@@ -145,7 +145,7 @@ console_error(char* msg);
 
 #define FAIL_IF_JS_ERROR(ref)                                                   \
   do {                                                                         \
-    if (JsvNull_Check(ref)) {                                                  \
+    if (JsvError_Check(ref)) {                                                  \
       FAIL();                                                                  \
     }                                                                          \
   } while (0)

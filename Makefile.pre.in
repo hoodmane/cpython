@@ -3167,6 +3167,12 @@ Python/emscripten_trampoline_inner.wasm: $(srcdir)/Python/emscripten_trampoline_
 Python/emscripten_trampoline_wasm.c: Python/emscripten_trampoline_inner.wasm
 	$(PYTHON_FOR_REGEN) $(srcdir)/Tools/wasm/emscripten/prepare_external_wasm.py $< $@ getWasmTrampolineModule
 
+Modules/_pyodide_core/jserror_wasm.c: $(srcdir)/Modules/_pyodide_core/jserror.wat
+	$(PYTHON_FOR_REGEN) $(srcdir)/Tools/wasm/emscripten/prepare_external_wasm.py $< $@ getJsErrorModule
+
+Modules/_pyodide_core/jserror_wasm.o: Modules/_pyodide_core/jserror_wasm.c
+	$(CC) -c $(PY_CORE_CFLAGS) -o $@ $<
+
 JIT_DEPS = \
 		$(srcdir)/Tools/jit/*.c \
 		$(srcdir)/Tools/jit/*.py \
@@ -3451,7 +3457,7 @@ MODULE__CODECS_KR_DEPS=$(srcdir)/Modules/cjkcodecs/mappings_kr.h $(CODECS_COMMON
 MODULE__CODECS_TW_DEPS=$(srcdir)/Modules/cjkcodecs/mappings_tw.h $(CODECS_COMMON_HEADERS)
 MODULE__MULTIBYTECODEC_DEPS=$(srcdir)/Modules/cjkcodecs/multibytecodec.h
 
-MODULE__PYODIDE_CORE_DEPS=$(srcdir)/Modules/_pyodide_core/error_handling.h $(srcdir)/Modules/_pyodide_core/jslib.h $(srcdir)/Modules/_pyodide_core/jsmemops.h $(srcdir)/Modules/_pyodide_core/js2python.h $(srcdir)/Modules/_pyodide_core/python2js.h $(srcdir)/Modules/_pyodide_core/jsproxy.h $(srcdir)/Modules/_pyodide_core/jsproxy_call.h Modules/_pyodide_core/inject_js.o
+MODULE__PYODIDE_CORE_DEPS=$(srcdir)/Modules/_pyodide_core/error_handling.h $(srcdir)/Modules/_pyodide_core/jslib.h $(srcdir)/Modules/_pyodide_core/jsmemops.h $(srcdir)/Modules/_pyodide_core/js2python.h $(srcdir)/Modules/_pyodide_core/python2js.h $(srcdir)/Modules/_pyodide_core/jsproxy.h $(srcdir)/Modules/_pyodide_core/jsproxy_call.h Modules/_pyodide_core/inject_js.o Modules/_pyodide_core/inject_js.o Modules/_pyodide_core/jserror_wasm.o
 
 # IF YOU PUT ANYTHING HERE IT WILL GO AWAY
 # Local Variables:

@@ -8,7 +8,11 @@
 typedef __externref_t JsVal;
 typedef HwRef JsRef;
 
-#define JS_ERROR __builtin_wasm_ref_null_extern()
+JsVal JsvError_Create(void);
+int JsvError_Check(JsVal);
+
+#define JS_ERROR JsvError_Create()
+
 #define JsvNull_Check(v) __builtin_wasm_ref_is_null_extern(v)
 
 // Special JsRefs for singleton constants.
