@@ -38,3 +38,11 @@ const hasProperty = (obj, prop)  => {
   } catch (e) {}
   return false;
 }
+
+function hexStringToUTF8Array(hex) {
+  const bytes = [];
+  for (let i = 0; i < hex.length; i += 2) {
+    bytes.push(parseInt(hex.substr(i, 2), 16));
+  }
+  return new Uint8Array(bytes);
+}

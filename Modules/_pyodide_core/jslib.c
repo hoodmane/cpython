@@ -13,7 +13,8 @@ bool tracerefs = false;
 #define JS_INIT_CONSTS()                                                       \
   JS_BUILTIN(undefined)                                                        \
   JS_BUILTIN(true)                                                             \
-  JS_BUILTIN(false)
+  JS_BUILTIN(false)                                                            \
+  JS_CONST(error, JsvError_Create())
 
 // we use HIWIRE_INIT_CONSTS once in C and once inside JS with different
 // definitions of HIWIRE_INIT_CONST to ensure everything lines up properly
@@ -27,6 +28,7 @@ JS_INIT_CONSTS();
 
 EM_JS_MACROS(void, jslib_init_js, (void), {
   JS_INIT_CONSTS();
+  Module.error = _hiwire_get(HEAP32[_Jsr_error / 4]);
 });
 
 
