@@ -2,6 +2,7 @@
 #include "Python.h"
 
 #include "error_handling.h"
+#include "python2js.h"
 #include "js2python.h"
 #include "jsproxy.h"
 
@@ -19,6 +20,13 @@ EMSCRIPTEN_KEEPALIVE PyObject*
 _js2python_none(void)
 {
   Py_RETURN_NONE;
+}
+
+EMSCRIPTEN_KEEPALIVE PyObject*
+_js2python_null(void)
+{
+  Py_INCREF(py_jsnull);
+  return py_jsnull;
 }
 
 EMSCRIPTEN_KEEPALIVE PyObject*

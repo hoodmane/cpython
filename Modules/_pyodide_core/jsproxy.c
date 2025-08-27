@@ -185,7 +185,7 @@ EM_JS_VAL(JsVal, JsProxy_GetAttr_js, (JsVal jsobj, const char* ptrkey), {
     // clang-format on
     return null;
   }
-  return nullToUndefined(result);
+  return result;
 });
 
 /**

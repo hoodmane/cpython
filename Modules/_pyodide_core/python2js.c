@@ -1,4 +1,5 @@
 #include "jslib.h"
+#include "python2js.h"
 #include "Python.h"
 #include "error_handling.h"
 #include "jsmemops.h"
@@ -153,6 +154,8 @@ python2js(PyObject* x)
     return Jsv_true;
   } else if (Py_IsFalse(x)) {
     return Jsv_false;
+  } else if (x == py_jsnull) {
+    return Jsv_null;
   } else if (PyLong_Check(x)) {
     return _python2js_long(x);
   } else if (PyFloat_Check(x)) {

@@ -13,4 +13,9 @@
 JsVal
 python2js(PyObject* x);
 
+int
+python2js_init(PyObject* core);
+
+extern PyObject* py_jsnull;
+
 #endif /* PYTHON2JS_H */

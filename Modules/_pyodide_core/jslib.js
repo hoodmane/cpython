@@ -1,7 +1,6 @@
 const API = {};
 Module.API = API;
 
-const nullToUndefined = (x) => (x === null ? undefined : x);
 const getTypeTag = (x) => {
   try {
     return Object.prototype.toString.call(x);

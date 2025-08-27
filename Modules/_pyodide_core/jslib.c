@@ -115,7 +115,7 @@ JsvObject_toString, (JsVal obj), {
 });
 
 EM_JS_VAL(JsVal, JsvObject_CallMethod_OneArg, (JsVal obj, JsVal meth, JsVal arg), {
-  return nullToUndefined(obj[meth](arg));
+  return obj[meth](arg);
 })
 
 JsVal
@@ -134,7 +134,7 @@ EM_JS_BOOL(bool, JsvFunction_Check, (JsVal obj), {
 });
 
 EM_JS_VAL(JsVal, JsvFunction_CallBound, (JsVal func, JsVal this_, JsVal args), {
-  return nullToUndefined(Function.prototype.apply.apply(func, [ this_, args ]));
+  return Function.prototype.apply.apply(func, [ this_, args ]);
 });
 
 // clang-format off
@@ -142,7 +142,7 @@ EM_JS_VAL(JsVal,
 JsvFunction_Construct,
 (JsVal func, JsVal args),
 {
-  return nullToUndefined(Reflect.construct(func, args));
+  return Reflect.construct(func, args);
 });
 // clang-format on
 
