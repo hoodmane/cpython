@@ -55,10 +55,18 @@ _pyodide_core_bad_hiwire_get_impl(PyObject *module, int select)
 int
 jsproxy_init(PyObject *m);
 
+PyObject* py_jsnull;
+
 static int
 _pyodide_core_exec(PyObject *m)
 {
   bool success = false;
+
+  PyObject* _pyodide = PyImport_ImportModule("_pyodide");
+  FAIL_IF_NULL(_pyodide);
+  py_jsnull = PyObject_GetAttrString(_pyodide, "jsnull");
+  FAIL_IF_NULL(py_jsnull);
+  Py_CLEAR(_pyodide);
 
   FAIL_IF_MINUS_ONE(jsproxy_init(m));
   JsVal eval = _pyodide_core_get_eval();

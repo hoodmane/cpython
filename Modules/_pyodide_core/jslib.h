@@ -23,7 +23,7 @@ extern const JsRef Jsr_false;
 #define Jsv_undefined hiwire_get(Jsr_undefined)
 #define Jsv_true hiwire_get(Jsr_true)
 #define Jsv_false hiwire_get(Jsr_false)
-
+#define Jsv_null __builtin_wasm_ref_null_extern()
 
 #undef false
 #undef true

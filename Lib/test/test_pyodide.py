@@ -1,5 +1,6 @@
 from unittest import TestCase
 from _pyodide_core import run_js
+from _pyodide import jsnull
 
 JsError = type(run_js("new Error()"))
 
@@ -19,6 +20,7 @@ class PyodideTest(TestCase):
         self.assertTrue(run_js("(x) => x === 77015781075109876017131518n")(77015781075109876017131518))
         self.assertTrue(run_js("(x) => x === 'abc'")("abc"))
         self.assertTrue(run_js("(x) => x === undefined")(None))
+        self.assertTrue(run_js("(x) => x === null")(jsnull))
         self.assertTrue(run_js("(x) => x === false")(False))
         self.assertTrue(run_js("(x) => x === true")(True))
         self.assertTrue(run_js("(x) => x === 'pyodidé'")("pyodidé"))
@@ -49,7 +51,7 @@ class PyodideTest(TestCase):
         self.assertEqual(run_js('2.3'), 2.3)
         self.assertEqual(run_js('77015781075109876017131518n'), 77015781075109876017131518)
         self.assertEqual(run_js('undefined'), None)
-        self.assertEqual(run_js('null'), None)
+        self.assertEqual(run_js('null'), jsnull)
         self.assertEqual(run_js('false'), False)
         self.assertEqual(run_js('true'), True)
 
