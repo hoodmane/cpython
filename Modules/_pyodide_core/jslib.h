@@ -113,6 +113,10 @@ JsvObject_CallMethod_OneArg(JsVal obj, JsVal name, JsVal arg);
 JsVal
 JsvObject_CallMethodId_OneArg(JsVal obj, Js_Identifier* name_id, JsVal arg);
 
+
+JsVal
+JsvObject_CallMethodId_TwoArgs(JsVal obj, Js_Identifier* name_id, JsVal arg1, JsVal arg2);
+
 // ==================== JsvFunction API  ====================
 
 bool

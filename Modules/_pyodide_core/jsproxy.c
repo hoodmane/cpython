@@ -14,6 +14,7 @@
 #define HAS_HAS            (1 << 1)
 #define HAS_INCLUDES       (1 << 2)
 #define HAS_LENGTH         (1 << 3)
+#define HAS_SET            (1 << 4)
 #define IS_CALLABLE        (1 << 6)
 #define IS_ERROR           (1 << 7)
 #define IS_ITERABLE        (1 << 9)
@@ -645,6 +646,44 @@ finally:
   return NULL;
 }
 
+
+/**
+ * __setitem__ / __delitem__ for JsProxies that have a "set" method (it's
+ * assumed that they'll also have a del method...). Translates `proxy[key] =
+ * value` to `obj.set(key, value)` and `del proxy[key]` to `obj.del(key)`.
+ * Controlled by HAS_SET.
+ */
+static int
+JsProxy_ass_subscript(PyObject* self, PyObject* pyidx, PyObject* pyvalue)
+{
+  bool success = false;
+
+  JsVal idx = python2js(pyidx);
+  FAIL_IF_JS_ERROR(idx);
+  if (pyvalue == NULL) {
+    Js_IDENTIFIER(delete);
+    JsVal result =
+      JsvObject_CallMethodId_OneArg(JsProxy_VAL(self), &JsId_delete, idx);
+    FAIL_IF_JS_ERROR(result);
+    if (!Jsv_to_bool(result)) {
+      if (!PyErr_Occurred()) {
+        PyErr_SetObject(PyExc_KeyError, pyidx);
+      }
+      FAIL();
+    }
+  } else {
+    JsVal value = python2js(pyvalue);
+    FAIL_IF_JS_ERROR(value);
+    Js_IDENTIFIER(set);
+    FAIL_IF_JS_ERROR(
+      JsvObject_CallMethodId_TwoArgs(JsProxy_VAL(self), &JsId_set, idx, value));
+  }
+  success = true;
+finally:
+  return success ? 0 : -1;
+}
+
+
 /*
  * Overload of the "in" operator for objects with a "has" method.
  * Translates `key in proxy` to `obj.has(key)`.
@@ -992,6 +1031,12 @@ JsProxy_create_subtype(int flags)
                                        .pfunc = (void*)JsProxy_subscript };
     tp_flags |= Py_TPFLAGS_MAPPING;
   }
+  if (flags & HAS_SET) {
+    // It's assumed that if HAS_SET then also HAS_DELETE.
+    // We will try to use `obj.delete("key")` to resolve `del proxy["key"]`
+    slots[cur_slot++] = (PyType_Slot){ .slot = Py_mp_ass_subscript,
+                                       .pfunc = (void*)JsProxy_ass_subscript };
+  }
   if (flags & HAS_HAS) {
     slots[cur_slot++] =
       (PyType_Slot){ .slot = Py_sq_contains, .pfunc = (void*)JsProxy_has };
@@ -1198,6 +1243,7 @@ EM_JS_NUM(int, JsProxy_compute_typeflags, (JsVal obj), {
   let type_flags = 0;
 
   SET_FLAG_IF_HAS_METHOD(HAS_GET, "get")
+  SET_FLAG_IF_HAS_METHOD(HAS_SET, "set");
   SET_FLAG_IF_HAS_METHOD(HAS_HAS, "has");
   SET_FLAG_IF_HAS_METHOD(HAS_INCLUDES, "includes");
   SET_FLAG_IF(HAS_LENGTH,

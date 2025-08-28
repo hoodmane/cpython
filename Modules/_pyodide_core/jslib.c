@@ -121,12 +121,25 @@ EM_JS_VAL(JsVal, JsvObject_CallMethod_OneArg, (JsVal obj, JsVal meth, JsVal arg)
   return obj[meth](arg);
 })
 
+EM_JS_VAL(JsVal, JsvObject_CallMethod_TwoArgs, (JsVal obj, JsVal meth, JsVal arg1, JsVal arg2), {
+  return obj[meth](arg1, arg2);
+})
+
 JsVal
 JsvObject_CallMethodId_OneArg(JsVal obj, Js_Identifier* name_id, JsVal arg)
 {
   return JsvObject_CallMethod_OneArg(obj, JsvString_FromId(name_id), arg);
 }
 
+
+JsVal
+JsvObject_CallMethodId_TwoArgs(JsVal obj,
+                               Js_Identifier* name_id,
+                               JsVal arg1,
+                               JsVal arg2)
+{
+  return JsvObject_CallMethod_TwoArgs(obj, JsvString_FromId(name_id), arg1, arg2);
+}
 
 // ==================== JsvFunction API  ====================
 
