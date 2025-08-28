@@ -10,10 +10,10 @@
 #include "internal/pycore_genobject.h"
 #include "pycore_setobject.h"     // _PySet_Update()
 
-#define IS_CALLABLE        (1 << 0)
-#define IS_ITERABLE        (1 << 1)
-#define IS_ITERATOR        (1 << 2)
-#define IS_ERROR           (1 << 3)
+#define IS_CALLABLE        (1 << 6)
+#define IS_ERROR           (1 << 7)
+#define IS_ITERABLE        (1 << 9)
+#define IS_ITERATOR        (1 << 10)
 
 _Py_IDENTIFIER(_js_type_flags);
 _Py_IDENTIFIER(__dir__);
