@@ -266,6 +266,52 @@ class JsProxyTest(TestCase):
         l = set(run_js("(o) => o.keys()")(o))
         self.assertEqual(l, {5, 7})
 
+    def test_array(self):
+        pyl = [5, 1, 2, 3]
+        jsl = run_js(str(pyl))
+        pyl2 = [7, -1, 66]
+        jsl2 = run_js(str(pyl2))
+        self.assertEqual(jsl[0], pyl[0])
+        self.assertEqual(jsl[-1], pyl[-1])
+        self.assertEqual(list(jsl), pyl)
+        jsl[0] = 25
+        pyl[0] = 25
+        self.assertEqual(list(jsl), pyl)
+        self.assertEqual(list(jsl[1:-2]), pyl[1:-2])
+        self.assertEqual(list(jsl[::2]), pyl[::2])
+        self.assertEqual(list(reversed(jsl)), list(reversed(pyl)))
+        jsl[3:3] = [1,2,3]
+        pyl[3:3] = [1,2,3]
+        self.assertEqual(list(jsl), pyl)
+        jsl += [7,6,5]
+        pyl += [7,6,5]
+        self.assertEqual(list(jsl), pyl)
+        self.assertEqual(list(jsl + jsl2), pyl + pyl2)
+        self.assertEqual(list(jsl * 2), pyl * 2)
+        jsl *= 2
+        pyl *= 2
+        self.assertEqual(list(jsl), pyl)
+        self.assertEqual(len(jsl), len(pyl))
+        def gen():
+            yield 6
+            yield -3
+            yield 52
+        jsl.extend(gen())
+        pyl.extend(gen())
+        self.assertEqual(list(jsl), pyl)
+        self.assertEqual(jsl.pop(), pyl.pop())
+        self.assertEqual(list(jsl), pyl)
+        jsl.append(-3)
+        pyl.append(-3)
+        self.assertEqual(list(jsl), pyl)
+        jsl.reverse()
+        pyl.reverse()
+        self.assertEqual(list(jsl), pyl)
+        jsl.insert(5, 22)
+        pyl.insert(5, 22)
+        self.assertEqual(list(jsl), pyl)
+        # TODO:
+        # index, count, remove
 
 class PyProxyTest(TestCase):
     def test_pyproxy(self):

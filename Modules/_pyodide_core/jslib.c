@@ -193,4 +193,81 @@ EM_JS(int, JsvArray_Push, (JsVal arr, JsVal obj), {
   return arr.push(obj);
 });
 
+EM_JS_VAL(JsVal, JsvArray_Get, (JsVal arr, int idx), {
+  const result = arr[idx];
+  // clang-format off
+  if (result === undefined && !(idx in arr)) {
+    // clang-format on
+    return Module.error;
+  }
+  return result;
+});
+
+EM_JS_NUM(int, JsvArray_Set, (JsVal arr, int idx, JsVal val), {
+  arr[idx] = val;
+});
+
+EM_JS_VAL(JsVal, JsvArray_Delete, (JsVal arr, int idx), {
+  // Weird edge case: allow deleting an empty entry, but we raise a key error if
+  // access is attempted.
+  if (idx < 0 || idx >= arr.length) {
+    return Module.error;
+  }
+  return arr.splice(idx, 1)[0];
+});
+
+EM_JS(void, JsvArray_Extend, (JsVal arr, JsVal vals), {
+  arr.push(...vals);
+});
+// clang-format on
+
+EM_JS_NUM(int, JsvArray_Insert, (JsVal arr, int idx, JsVal value), {
+  arr.splice(idx, 0, value);
+});
+
+EM_JS_NUM(JsVal, JsvArray_ShallowCopy, (JsVal arr), {
+  return ("slice" in arr) ? arr.slice() : Array.from(arr);
+})
+
+EM_JS_VAL(JsVal,
+JsvArray_slice,
+(JsVal obj, int length, int start, int stop, int step),
+{
+  let result;
+  if (step === 1) {
+    result = obj.slice(start, stop);
+  } else {
+    result = Array.from({ length }, (_, i) => obj[start + i * step]);
+  }
+  return result;
+});
+
+EM_JS_NUM(int,
+JsvArray_slice_assign,
+(JsVal obj, int slicelength, int start, int stop, int step, int values_length, PyObject **values),
+{
+  let jsvalues = [];
+  for (let i = 0; i < values_length; i++) {
+    const ref = _python2js(DEREF_U32(values, i));
+    if (ref === Module.error){
+      return -1;
+    }
+    jsvalues.push(ref);
+  }
+  if (step === 1) {
+    obj.splice(start, slicelength, ...jsvalues);
+  } else {
+    if (values !== 0) {
+      for (let i = 0; i < slicelength; i++) {
+        obj.splice(start + i * step, 1, jsvalues[i]);
+      }
+    } else {
+      for(let i = slicelength - 1; i >= 0; i --){
+        obj.splice(start + i * step, 1);
+      }
+    }
+  }
+});
+
+
 EM_JS(void __attribute__((__noreturn__)), JsvError_Throw, (JsVal e), { throw e; })
