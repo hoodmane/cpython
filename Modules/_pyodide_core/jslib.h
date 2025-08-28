@@ -4,6 +4,7 @@
 #include <sys/types.h>
 #include <hiwire.h>
 #include <emscripten.h>
+#include "Python.h"
 
 typedef __externref_t JsVal;
 typedef HwRef JsRef;
@@ -138,6 +139,37 @@ JsvArray_Check(JsVal obj);
 
 int
 JsvArray_Push(JsVal obj, JsVal val);
+
+
+JsVal
+JsvArray_Get(JsVal, int);
+
+int
+JsvArray_Set(JsVal, int, JsVal);
+
+JsVal
+JsvArray_Delete(JsVal, int);
+
+void JsvArray_Extend(JsVal, JsVal);
+
+int
+JsvArray_Insert(JsVal arr, int idx, JsVal value);
+
+JsVal
+JsvArray_ShallowCopy(JsVal obj);
+
+
+JsVal
+JsvArray_slice(JsVal obj, int length, int start, int stop, int step);
+
+int
+JsvArray_slice_assign(JsVal idobj,
+                      int slicelength,
+                      int start,
+                      int stop,
+                      int step,
+                      int values_length,
+                      PyObject** values);
 
 void __attribute__((__noreturn__))
 JsvError_Throw(JsVal e);
