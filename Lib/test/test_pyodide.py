@@ -4,7 +4,8 @@ from _pyodide import jsnull
 
 JsError = type(run_js("new Error()"))
 
-class PyodideTest(TestCase):
+
+class ConversionTest(TestCase):
     def test_run_js(self):
         self.assertEqual(run_js("3 + 4"), 7)
         with self.assertRaisesRegex(JsError, "Error: Hi!"):
@@ -14,10 +15,14 @@ class PyodideTest(TestCase):
         res = run_js("(x, y) => x + y")(1, 9)
         self.assertEqual(res, 10)
 
-    def  test_python2js(self):
+    def test_python2js(self):
         self.assertTrue(run_js("(x) => x === 7")(7))
         self.assertTrue(run_js("(x) => x === 2.3")(2.3))
-        self.assertTrue(run_js("(x) => x === 77015781075109876017131518n")(77015781075109876017131518))
+        self.assertTrue(
+            run_js("(x) => x === 77015781075109876017131518n")(
+                77015781075109876017131518
+            )
+        )
         self.assertTrue(run_js("(x) => x === 'abc'")("abc"))
         self.assertTrue(run_js("(x) => x === undefined")(None))
         self.assertTrue(run_js("(x) => x === null")(jsnull))
@@ -44,31 +49,35 @@ class PyodideTest(TestCase):
             self.assertEqual(js_typeof(-x), "number")
             x >>= 1
 
-    def  test_js2python(self):
+    def test_js2python(self):
         self.assertEqual(run_js('"pyodidé"'), "pyodidé")
         self.assertEqual(run_js('"碘化物"'), "碘化物")
         self.assertEqual(run_js('"🐍"'), "🐍")
-        self.assertEqual(run_js('2.3'), 2.3)
-        self.assertEqual(run_js('77015781075109876017131518n'), 77015781075109876017131518)
-        self.assertEqual(run_js('undefined'), None)
-        self.assertEqual(run_js('null'), jsnull)
-        self.assertEqual(run_js('false'), False)
-        self.assertEqual(run_js('true'), True)
+        self.assertEqual(run_js("2.3"), 2.3)
+        self.assertEqual(
+            run_js("77015781075109876017131518n"), 77015781075109876017131518
+        )
+        self.assertEqual(run_js("undefined"), None)
+        self.assertEqual(run_js("null"), jsnull)
+        self.assertEqual(run_js("false"), False)
+        self.assertEqual(run_js("true"), True)
 
     def test_js2python_integers(self):
         x = 77015781075109876017131518
         while x != 0:
-            self.assertEqual(run_js(f'{x}n'), x)
-            self.assertEqual(run_js(f'-{x}n'), -x)
+            self.assertEqual(run_js(f"{x}n"), x)
+            self.assertEqual(run_js(f"-{x}n"), -x)
             x >>= 1
 
+
+class JsProxyTest(TestCase):
     def test_jsproxy(self):
-        o = run_js('[7, 11, -1]')
-        self.assertEqual(repr(o), '7,11,-1')
+        o = run_js("[7, 11, -1]")
+        self.assertEqual(repr(o), "7,11,-1")
         self.assertEqual(o.length, 3)
 
-        o = run_js('globalThis.o = {a: 7, b: 92}; o')
-        self.assertEqual(repr(o), '[object Object]')
+        o = run_js("globalThis.o = {a: 7, b: 92}; o")
+        self.assertEqual(repr(o), "[object Object]")
         self.assertEqual(o.a, 7)
         self.assertEqual(o.b, 92)
         o.a = 13
@@ -172,30 +181,34 @@ class PyodideTest(TestCase):
         self.assertHasAttr(err, "stack")
 
     def test_jsproxy_get(self):
-        o = run_js('({get(x) {return x + 1;}})')
+        o = run_js("({get(x) {return x + 1;}})")
         self.assertEqual(o[5], 6)
         self.assertEqual(o[77], 78)
 
     def test_jsproxy_has(self):
-        o = run_js('({has(x) {return x === 3 || x === 5;}})')
+        o = run_js("({has(x) {return x === 3 || x === 5;}})")
         self.assertTrue(3 in o)
         self.assertTrue(5 in o)
         self.assertFalse(1 in o)
         self.assertFalse(7 in o)
 
     def test_jsproxy_includes(self):
-        o = run_js('({includes(x) {return x === 3 || x === 5;}})')
+        o = run_js("({includes(x) {return x === 3 || x === 5;}})")
         self.assertTrue(3 in o)
         self.assertTrue(5 in o)
         self.assertFalse(1 in o)
         self.assertFalse(7 in o)
 
     def test_jsproxy_prefer_has_over_includes(self):
-        o = run_js('({includes(x) {return x === 3;}, has(x) { return x === 5 }})')
+        o = run_js(
+            "({includes(x) {return x === 3;}, has(x) { return x === 5 }})"
+        )
         self.assertTrue(5 in o)
         self.assertFalse(3 in o)
 
+
+class PyProxyTest(TestCase):
     def test_pyproxy(self):
-        d = {1:7}
+        d = {1: 7}
         self.assertEqual(run_js("(x) => x.toString()")(d), str(d))
         self.assertEqual(run_js("(x) => x.type")(d), "dict")
