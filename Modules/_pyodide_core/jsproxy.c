@@ -13,6 +13,7 @@
 #define HAS_GET            (1 << 0)
 #define HAS_HAS            (1 << 1)
 #define HAS_INCLUDES       (1 << 2)
+#define HAS_LENGTH         (1 << 3)
 #define IS_CALLABLE        (1 << 6)
 #define IS_ERROR           (1 << 7)
 #define IS_ITERABLE        (1 << 9)
@@ -687,6 +688,97 @@ finally:
   return result;
 }
 
+#define ERR_NO_LENGTH -2
+#define ERR_NEGATIVE_LENGTH -3
+#define ERR_LENGTH_TOO_BIG -4
+
+EM_JS_NUM(int, get_length_helper, (JsVal val), {
+  // clang-format off
+  let result;
+  // Maybe we should allow it to return a BigInt?
+  if (typeof val.size === "number") {
+    result = val.size;
+  } else if (typeof val.length === "number") {
+    result = val.length;
+  } else {
+    return ERR_NO_LENGTH;
+  }
+  if (result < 0) {
+    return ERR_NEGATIVE_LENGTH;
+  }
+  if (result > INT_MAX) {
+    return ERR_LENGTH_TOO_BIG;
+  }
+  return result;
+  // clang-format on
+});
+
+// Needed to render the length accurately when there is an error
+EM_JS_REF(char*, get_length_string, (JsVal val), {
+  let result;
+  // clang-format off
+  if (typeof val.size === "number") {
+    result = val.size;
+  } else if (typeof val.length === "number") {
+    result = val.length;
+  }
+  // clang-format on
+  return stringToNewUTF8(" " + result.toString())
+})
+
+static int
+get_length(JsVal obj)
+{
+  int result = get_length_helper(obj);
+  if (result >= 0) {
+    return result;
+  }
+  // Something went wrong. Case work:
+  // * Either `val.size` or `val.length` was a getter which managed to raise an
+  //   error. Propagate this JS error.
+  if (result == -1) {
+    return -1;
+  }
+
+  // Doesn't have a length or size, or the typeof the returned value is not
+  // number
+  if (result == ERR_NO_LENGTH) {
+    PyErr_SetString(PyExc_TypeError, "object does not have a valid length");
+    return -1;
+  }
+
+  char* length_as_string_alloc = get_length_string(obj);
+  char* length_as_string = length_as_string_alloc;
+  if (length_as_string == NULL) {
+    // Really screwed up.
+    length_as_string = "";
+  }
+  if (result == ERR_NEGATIVE_LENGTH) {
+    PyErr_Format(
+      PyExc_ValueError, "length%s of object is negative", length_as_string);
+  }
+  if (result == ERR_LENGTH_TOO_BIG) {
+    PyErr_Format(PyExc_OverflowError,
+                 "length%s of object is larger than INT_MAX (%d)",
+                 length_as_string,
+                 INT_MAX);
+  }
+  if (length_as_string_alloc != NULL) {
+    free(length_as_string_alloc);
+  }
+  return -1;
+}
+
+/**
+ * len(proxy) overload for proxies of Js objects with `length` or `size` fields.
+ * Prefers `object.size` over `object.length`. Controlled by HAS_LENGTH.
+ */
+static Py_ssize_t
+JsProxy_length(PyObject* self)
+{
+  return get_length(JsProxy_VAL(self));
+}
+
 ////////////////////////////////////////////////////////////
 // JsMethod
 //
@@ -908,6 +1000,12 @@ JsProxy_create_subtype(int flags)
     slots[cur_slot++] =
       (PyType_Slot){ .slot = Py_sq_contains, .pfunc = (void*)JsProxy_includes };
   }
+  if (flags & HAS_LENGTH) {
+    // If the function has a `size` or `length` member, use this for
+    // `len(proxy)` Prefer `size` to `length`.
+    slots[cur_slot++] =
+      (PyType_Slot){ .slot = Py_mp_length, .pfunc = (void*)JsProxy_length };
+  }
 
   if ((flags & IS_ITERABLE) && !(flags & IS_ITERATOR)) {
     // If it is an iterator we should use SelfIter instead.
@@ -1102,6 +1200,9 @@ EM_JS_NUM(int, JsProxy_compute_typeflags, (JsVal obj), {
   SET_FLAG_IF_HAS_METHOD(HAS_GET, "get")
   SET_FLAG_IF_HAS_METHOD(HAS_HAS, "has");
   SET_FLAG_IF_HAS_METHOD(HAS_INCLUDES, "includes");
+  SET_FLAG_IF(HAS_LENGTH,
+    (hasProperty(obj, "size")) ||
+    (hasProperty(obj, "length") && typeof obj !== "function"));
   SET_FLAG_IF(IS_CALLABLE, typeof obj === "function");
   SET_FLAG_IF_HAS_METHOD(IS_ITERABLE, Symbol.iterator);
   SET_FLAG_IF(IS_ITERATOR, hasMethod(obj, "next") && (hasMethod(obj, Symbol.iterator) || !hasMethod(obj, Symbol.asyncIterator)));

@@ -206,6 +206,52 @@ class JsProxyTest(TestCase):
         self.assertTrue(5 in o)
         self.assertFalse(3 in o)
 
+    def test_jsproxy_len(self):
+        o = run_js("({length: 7})")
+        self.assertEqual(len(o), 7)
+        o = run_js("({size: 5})")
+        self.assertEqual(len(o), 5)
+        # Prefer size over length
+        o = run_js("({length: 7, size: 5})")
+        self.assertEqual(len(o), 5)
+        # Even though functions have a .length in JS, there is a special case
+        # that makes them not have a len.
+        f = run_js("(function(){})")
+        with self.assertRaisesRegex(
+            TypeError, "object of type 'pyodide.ffi.JsProxy' has no len()"
+        ):
+            len(f)
+
+    def test_jsproxy_len_errors(self):
+        o = run_js(f"({{length : []}})")
+        with self.assertRaises(
+            TypeError, msg="object does not have a valid length"
+        ):
+            len(o)
+
+        for n in [1 << 31, 1 << 32, 1 << 33, 1 << 63, 1 << 64, 1 << 65]:
+            o = run_js(f"({{length : {n}}})")
+            msg = f"length {n} of object is larger than INT_MAX (2147483647)"
+            with self.assertRaises(OverflowError, msg=msg):
+                len(o)
+
+        for n in [
+            -1,
+            -2,
+            -3,
+            -100,
+            -1 << 31,
+            -1 << 32,
+            -1 << 33,
+            -1 << 63,
+            -1 << 64,
+            -1 << 65,
+        ]:
+            o = run_js(f"({{length : {n}}})")
+            msg = f"length {n} of object is negative"
+            with self.assertRaises(ValueError, msg=msg):
+                len(o)
+
 
 class PyProxyTest(TestCase):
     def test_pyproxy(self):
