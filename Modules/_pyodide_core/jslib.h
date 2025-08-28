@@ -69,6 +69,9 @@ Jsv_equal(JsVal a, JsVal b);
 bool
 Jsv_not_equal(JsVal a, JsVal b);
 
+bool
+Jsv_to_bool(JsVal);
+
 // ==================== Conversions between JsRef and JsVal ====================
 
 // Like hiwire_new except if the argument is JS_ERROR it returns NULL instead of crashing.
