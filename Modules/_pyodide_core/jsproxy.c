@@ -10,6 +10,7 @@
 #include "internal/pycore_genobject.h"
 #include "pycore_setobject.h"     // _PySet_Update()
 
+#define HAS_GET            (1 << 0)
 #define IS_CALLABLE        (1 << 6)
 #define IS_ERROR           (1 << 7)
 #define IS_ITERABLE        (1 << 9)
@@ -602,6 +603,45 @@ static PyMethodDef JsGenerator_send_MethodDef = {
   METH_O,
 };
 
+
+// A helper method for jsproxy_subscript.
+EM_JS_VAL(JsVal, JsProxy_subscript_js, (JsVal obj, JsVal key), {
+  let result = obj.get(key);
+  // clang-format off
+  if (result === undefined) {
+    // Try to distinguish between undefined and missing:
+    // If the object has a "has" method and it returns false for this key, the
+    // key is missing. Otherwise, assume key present and value was undefined.
+    // TODO: in absence of a "has" method, should we return None or KeyError?
+    if (obj.has && typeof obj.has === "function" && !obj.has(key)) {
+      return Module.error;
+    }
+  }
+  // clang-format on
+  return result;
+});
+
+/**
+ * __getitem__ for JsProxies that have a "get" method. Translates proxy[key] to
+ * obj.get(key). Controlled by HAS_GET
+ */
+static PyObject*
+JsProxy_subscript(PyObject* self, PyObject* pyidx)
+{
+  JsVal idx = python2js(pyidx);
+  FAIL_IF_JS_ERROR(idx);
+  JsVal result = JsProxy_subscript_js(JsProxy_VAL(self), idx);
+  if (JsvError_Check(result)) {
+    if (!PyErr_Occurred()) {
+      PyErr_SetObject(PyExc_KeyError, pyidx);
+    }
+    FAIL();
+  }
+  return js2python(result);
+finally:
+  return NULL;
+}
+
 ////////////////////////////////////////////////////////////
 // JsMethod
 //
@@ -810,6 +850,12 @@ JsProxy_create_subtype(int flags)
 
   methods[cur_method++] = JsProxy_Dir_MethodDef;
 
+  if (flags & HAS_GET) {
+    slots[cur_slot++] = (PyType_Slot){ .slot = Py_mp_subscript,
+                                       .pfunc = (void*)JsProxy_subscript };
+    tp_flags |= Py_TPFLAGS_MAPPING;
+  }
+
   if ((flags & IS_ITERABLE) && !(flags & IS_ITERATOR)) {
     // If it is an iterator we should use SelfIter instead.
     slots[cur_slot++] =
@@ -1000,6 +1046,7 @@ finally:
 EM_JS_NUM(int, JsProxy_compute_typeflags, (JsVal obj), {
   let type_flags = 0;
 
+  SET_FLAG_IF_HAS_METHOD(HAS_GET, "get")
   SET_FLAG_IF(IS_CALLABLE, typeof obj === "function");
   SET_FLAG_IF_HAS_METHOD(IS_ITERABLE, Symbol.iterator);
   SET_FLAG_IF(IS_ITERATOR, hasMethod(obj, "next") && (hasMethod(obj, Symbol.iterator) || !hasMethod(obj, Symbol.asyncIterator)));
