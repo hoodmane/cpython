@@ -11,6 +11,7 @@
 #include "pycore_setobject.h"     // _PySet_Update()
 
 #define HAS_GET            (1 << 0)
+#define HAS_HAS            (1 << 1)
 #define IS_CALLABLE        (1 << 6)
 #define IS_ERROR           (1 << 7)
 #define IS_ITERABLE        (1 << 9)
@@ -642,6 +643,27 @@ finally:
   return NULL;
 }
 
+/*
+ * Overload of the "in" operator for objects with a "has" method.
+ * Translates `key in proxy` to `obj.has(key)`.
+ * Controlled by HAS_HAS.
+ */
+static int
+JsProxy_has(JsProxy* self, PyObject* obj)
+{
+  int result = -1;
+  JsVal jsobj = python2js(obj);
+  FAIL_IF_JS_ERROR(jsobj);
+  Js_IDENTIFIER(has);
+  JsVal jsresult =
+    JsvObject_CallMethodId_OneArg(JsProxy_VAL(self), &JsId_has, jsobj);
+  FAIL_IF_JS_ERROR(jsresult);
+  result = Jsv_to_bool(jsresult);
+
+finally:
+  return result;
+}
+
 ////////////////////////////////////////////////////////////
 // JsMethod
 //
@@ -855,6 +877,10 @@ JsProxy_create_subtype(int flags)
                                        .pfunc = (void*)JsProxy_subscript };
     tp_flags |= Py_TPFLAGS_MAPPING;
   }
+  if (flags & HAS_HAS) {
+    slots[cur_slot++] =
+      (PyType_Slot){ .slot = Py_sq_contains, .pfunc = (void*)JsProxy_has };
+  }
 
   if ((flags & IS_ITERABLE) && !(flags & IS_ITERATOR)) {
     // If it is an iterator we should use SelfIter instead.
@@ -1047,6 +1073,7 @@ EM_JS_NUM(int, JsProxy_compute_typeflags, (JsVal obj), {
   let type_flags = 0;
 
   SET_FLAG_IF_HAS_METHOD(HAS_GET, "get")
+  SET_FLAG_IF_HAS_METHOD(HAS_HAS, "has");
   SET_FLAG_IF(IS_CALLABLE, typeof obj === "function");
   SET_FLAG_IF_HAS_METHOD(IS_ITERABLE, Symbol.iterator);
   SET_FLAG_IF(IS_ITERATOR, hasMethod(obj, "next") && (hasMethod(obj, Symbol.iterator) || !hasMethod(obj, Symbol.asyncIterator)));

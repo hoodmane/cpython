@@ -172,9 +172,16 @@ class PyodideTest(TestCase):
         self.assertHasAttr(err, "stack")
 
     def test_jsproxy_get(self):
-        o = run_js('({get(x) {return x + 1}})')
+        o = run_js('({get(x) {return x + 1;}})')
         self.assertEqual(o[5], 6)
         self.assertEqual(o[77], 78)
+
+    def test_jsproxy_has(self):
+        o = run_js('({has(x) {return x === 3 || x === 5;}})')
+        self.assertTrue(3 in o)
+        self.assertTrue(5 in o)
+        self.assertFalse(1 in o)
+        self.assertFalse(7 in o)
 
     def test_pyproxy(self):
         d = {1:7}

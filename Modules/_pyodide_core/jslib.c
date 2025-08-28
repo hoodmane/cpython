@@ -53,6 +53,9 @@ EM_JS(JsVal, JsvNum_fromDouble, (double val), {
 EM_JS_BOOL(bool, Jsv_equal, (JsVal a, JsVal b), { return !!(a === b); });
 EM_JS_BOOL(bool, Jsv_not_equal, (JsVal a, JsVal b), { return !!(a !== b); });
 
+EM_JS(bool, Jsv_to_bool, (JsVal x), {
+  return !!x;
+})
 
 // ==================== Conversions between JsRef and JsVal ====================
 
