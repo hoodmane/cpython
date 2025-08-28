@@ -183,6 +183,18 @@ class PyodideTest(TestCase):
         self.assertFalse(1 in o)
         self.assertFalse(7 in o)
 
+    def test_jsproxy_includes(self):
+        o = run_js('({includes(x) {return x === 3 || x === 5;}})')
+        self.assertTrue(3 in o)
+        self.assertTrue(5 in o)
+        self.assertFalse(1 in o)
+        self.assertFalse(7 in o)
+
+    def test_jsproxy_prefer_has_over_includes(self):
+        o = run_js('({includes(x) {return x === 3;}, has(x) { return x === 5 }})')
+        self.assertTrue(5 in o)
+        self.assertFalse(3 in o)
+
     def test_pyproxy(self):
         d = {1:7}
         self.assertEqual(run_js("(x) => x.toString()")(d), str(d))
