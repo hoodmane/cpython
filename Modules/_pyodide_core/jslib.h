@@ -110,6 +110,8 @@ JsvObject_SetAttr(JsVal obj, JsVal attr, JsVal value);
 JsVal
 JsvObject_CallMethod_OneArg(JsVal obj, JsVal name, JsVal arg);
 
+JsVal
+JsvObject_CallMethodId_NoArgs(JsVal obj, Js_Identifier* name_id);
 
 JsVal
 JsvObject_CallMethodId_OneArg(JsVal obj, Js_Identifier* name_id, JsVal arg);

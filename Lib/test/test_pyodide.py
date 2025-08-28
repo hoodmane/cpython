@@ -69,6 +69,15 @@ class ConversionTest(TestCase):
             self.assertEqual(run_js(f"-{x}n"), -x)
             x >>= 1
 
+    def test_raise_through_js(self):
+        self.skipTest("TODO: Requires PyProxy of function to be callable")
+
+        def f():
+            1 / 0
+
+        with self.assertRaises(ZeroDivisionError):
+            run_js("((f) => f())")(f)
+
 
 class JsProxyTest(TestCase):
     def test_jsproxy(self):
@@ -280,11 +289,11 @@ class JsProxyTest(TestCase):
         self.assertEqual(list(jsl[1:-2]), pyl[1:-2])
         self.assertEqual(list(jsl[::2]), pyl[::2])
         self.assertEqual(list(reversed(jsl)), list(reversed(pyl)))
-        jsl[3:3] = [1,2,3]
-        pyl[3:3] = [1,2,3]
+        jsl[3:3] = [1, 2, 3]
+        pyl[3:3] = [1, 2, 3]
         self.assertEqual(list(jsl), pyl)
-        jsl += [7,6,5]
-        pyl += [7,6,5]
+        jsl += [7, 6, 5]
+        pyl += [7, 6, 5]
         self.assertEqual(list(jsl), pyl)
         self.assertEqual(list(jsl + jsl2), pyl + pyl2)
         self.assertEqual(list(jsl * 2), pyl * 2)
@@ -292,10 +301,12 @@ class JsProxyTest(TestCase):
         pyl *= 2
         self.assertEqual(list(jsl), pyl)
         self.assertEqual(len(jsl), len(pyl))
+
         def gen():
             yield 6
             yield -3
             yield 52
+
         jsl.extend(gen())
         pyl.extend(gen())
         self.assertEqual(list(jsl), pyl)
@@ -312,6 +323,46 @@ class JsProxyTest(TestCase):
         self.assertEqual(list(jsl), pyl)
         # TODO:
         # index, count, remove
+
+    def test_gen_close_throw(self):
+        f = run_js(
+            """
+            (function *() {
+                try {
+                    yield 1;
+                } finally {
+                    yield 2;
+                    console.log("finally");
+                }
+            })
+            """
+        )
+
+        g = f()
+        assert next(g) == 1
+        assert g.throw(TypeError("hi")) == 2
+        with self.assertRaises(TypeError, msg="hi"):
+            next(g)
+
+        g = f()
+        assert next(g) == 1
+        assert g.throw(TypeError, "hi") == 2
+        with self.assertRaises(TypeError, msg="hi"):
+            next(g)
+
+        f = run_js(
+            """
+            (function *() {
+                yield 1;
+                yield 2;
+                yield 3;
+            })
+            """
+        )
+        g = f()
+        assert next(g) == 1
+        g.close()
+
 
 class PyProxyTest(TestCase):
     def test_pyproxy(self):

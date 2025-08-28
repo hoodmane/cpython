@@ -2,25 +2,20 @@
 #include "jslib.h"
 
 /**
+ * Wrap the current Python exception in a JavaScript Error and return the
+ * result. Usually we use pythonexc2js instead, but for futures and for some
+ * internal error messages it's useful to have this separate.
+ */
+JsVal
+wrap_exception(void);
+
+/**
  * EM_JS Wrappers
  * Wrap EM_JS so that it produces functions that follow the Python return
  * conventions. We catch javascript errors and proxy them and use
  * `PyErr_SetObject` to hand them off to python. We need two variants, one
  * for functions that return pointers / references (return 0)
  * the other for functions that return numbers (return -1).
- *
- * WARNING: These wrappers around EM_JS cause macros in body to be expanded,
- * where this would be prevented by the ordinary EM_JS macro.
- * This causes trouble with true and false.
- * In types.h we provide nonstandard definitions:
- * false ==> (!!0)
- * true ==> (!!1)
- * These work as expected in both C and javascript.
- *
- * Note: this change in expansion behavior is unavoidable unless we copy the
- * definition of macro EM_JS into our code due to limitations of the C macro
- * engine. It is useful to be able to use macros in the EM_JS, but it might lead
- * to some unpleasant surprises down the road...
  */
 
 // clang-format off
