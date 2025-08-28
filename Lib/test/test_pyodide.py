@@ -252,6 +252,20 @@ class JsProxyTest(TestCase):
             with self.assertRaises(ValueError, msg=msg):
                 len(o)
 
+    def test_jsproxy_set(self):
+        o = run_js("({set(key, val) {this['$' + key] = val;} })")
+        o["x"] = 7
+        self.assertEqual(run_js("(o) => o.$x")(o), 7)
+
+    def test_jsproxy_map(self):
+        o = run_js("new Map([[3, 1], [5, 2]])")
+        self.assertEqual(o[3], 1)
+        self.assertEqual(o[5], 2)
+        o[7] = 9
+        del o[3]
+        l = set(run_js("(o) => o.keys()")(o))
+        self.assertEqual(l, {5, 7})
+
 
 class PyProxyTest(TestCase):
     def test_pyproxy(self):
