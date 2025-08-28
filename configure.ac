@@ -2366,7 +2366,8 @@ AS_CASE([$ac_sys_system],
     AS_VAR_APPEND([LINKFORSHARED], ["_pythonexc2js,"])
     AS_VAR_APPEND([LINKFORSHARED], ["__pyproxy_type,"])
     AS_VAR_APPEND([LINKFORSHARED], ["__pyproxy_str,"])
-    AS_VAR_APPEND([LINKFORSHARED], ["_python2js"])
+    AS_VAR_APPEND([LINKFORSHARED], ["_python2js,"])
+    AS_VAR_APPEND([LINKFORSHARED], ["_restore_sys_last_exception"])
 
 
     AS_VAR_APPEND([LINKFORSHARED], [" -sSTACK_SIZE=5MB"])

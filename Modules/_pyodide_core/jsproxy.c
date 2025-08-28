@@ -19,6 +19,7 @@
 #define IS_ARRAY           (1 << 5)
 #define IS_CALLABLE        (1 << 6)
 #define IS_ERROR           (1 << 7)
+#define IS_GENERATOR       (1 << 8)
 #define IS_ITERABLE        (1 << 9)
 #define IS_ITERATOR        (1 << 10)
 
@@ -95,6 +96,9 @@ _Static_assert(sizeof(PyBaseExceptionObject) ==
 
 #define JsException_ARGS(x) (((JsProxy*)x)->tf.ef.args)
 
+
+static PyTypeObject*
+JsProxy_get_subtype(int flags);
 
 int
 JsProxy_getflags(PyObject* self)
@@ -607,6 +611,169 @@ static PyMethodDef JsGenerator_send_MethodDef = {
   "send",
   (PyCFunction)JsGenerator_send,
   METH_O,
+};
+
+
+/**
+ * Shared logic between throw and async throw.
+ *
+ * Possibly "typ" is an exception instance and val and tb are null. Otherwise,
+ * it's an old style call "typ" should be an exception type, "val" an instance,
+ * and tb an optional traceback. Figure out which is the case and get an
+ * exception object.
+ *
+ * Then if the exception object is PyExc_GeneratorExit, call jsobj.return().
+ * Otherwise, convert it to js and call jsobj.throw(jsexc). Return the result of
+ * whichever of these two calls we make (or set the error flag and return NULL
+ * if something goes wrong).
+ */
+JsVal
+process_throw_args(PyObject* self, PyObject* typ, PyObject* val, PyObject* tb)
+{
+  if (Py_IsNone(tb)) {
+    tb = NULL;
+  } else if (tb != NULL && !PyTraceBack_Check(tb)) {
+    PyErr_SetString(PyExc_TypeError,
+                    "throw() third argument must be a traceback object");
+    return JS_ERROR;
+  }
+
+  Py_INCREF(typ);
+  Py_XINCREF(val);
+  Py_XINCREF(tb);
+
+  if (PyExceptionClass_Check(typ)) {
+    PyErr_NormalizeException(&typ, &val, &tb);
+    if (tb != NULL) {
+      PyException_SetTraceback(val, tb);
+    }
+  } else if (PyExceptionInstance_Check(typ)) {
+    /* Raising an instance.  The value should be a dummy. */
+    if (val && !Py_IsNone(val)) {
+      PyErr_SetString(PyExc_TypeError,
+                      "instance exception may not have a separate value");
+      goto failed_throw;
+    } else {
+      /* Normalize to raise <class>, <instance> */
+      Py_XDECREF(val);
+      val = typ;
+      typ = PyExceptionInstance_Class(typ);
+      Py_INCREF(typ);
+
+      if (tb == NULL)
+        /* Returns NULL if there's no traceback */
+        tb = PyException_GetTraceback(val);
+    }
+  } else {
+    /* Not something you can raise.  throw() fails. */
+    PyErr_Format(PyExc_TypeError,
+                 "exceptions must be classes or instances "
+                 "deriving from BaseException, not %s",
+                 Py_TYPE(typ)->tp_name);
+    goto failed_throw;
+  }
+
+  PyErr_Restore(typ, val, tb);
+  JsVal res;
+  if (PyErr_ExceptionMatches(PyExc_GeneratorExit)) {
+    PyErr_Clear();
+    Js_IDENTIFIER(return);
+    res = JsvObject_CallMethodId_NoArgs(JsProxy_VAL(self), &JsId_return);
+  } else {
+    JsVal exc;
+    static PyObject* JsException = NULL;
+    if (JsException == NULL) {
+      JsException = (PyObject*)JsProxy_get_subtype(IS_ERROR);
+    }
+    if (PyErr_ExceptionMatches(JsException)) {
+      PyErr_Fetch(&typ, &val, &tb);
+      exc = JsProxy_VAL(val);
+      Py_CLEAR(typ);
+      Py_CLEAR(val);
+      Py_CLEAR(tb);
+    } else {
+      exc = wrap_exception(); // cannot fail.
+    }
+    Js_IDENTIFIER(throw);
+    res = JsvObject_CallMethodId_OneArg(JsProxy_VAL(self), &JsId_throw, exc);
+  }
+  return res;
+
+failed_throw:
+  /* Didn't use our arguments, so restore their original refcounts */
+  Py_DECREF(typ);
+  Py_XDECREF(val);
+  Py_XDECREF(tb);
+  return JS_ERROR;
+}
+
+static PyObject*
+JsGenerator_throw_inner(PyObject* self,
+                        PyObject* typ,
+                        PyObject* val,
+                        PyObject* tb)
+{
+  PyObject* result = NULL;
+  JsVal throw_res = process_throw_args(self, typ, val, tb);
+  FAIL_IF_JS_ERROR(throw_res);
+  PySendResult ret = handle_next_result(throw_res, &result);
+  if (ret == PYGEN_RETURN) {
+    if (Py_IsNone(result)) {
+      PyErr_SetNone(PyExc_StopIteration);
+    } else {
+      _PyGen_SetStopIterationValue(result);
+    }
+    Py_CLEAR(result);
+  }
+finally:
+  return result;
+}
+
+static PyObject*
+JsGenerator_throw(PyObject* self, PyObject* const* args, Py_ssize_t nargs)
+{
+  PyObject* typ;
+  PyObject* val = NULL;
+  PyObject* tb = NULL;
+
+  if (!_PyArg_ParseStack(args, nargs, "O|OO:throw", &typ, &val, &tb)) {
+    return NULL;
+  }
+
+  return JsGenerator_throw_inner(self, typ, val, tb);
+}
+
+static PyMethodDef JsGenerator_throw_MethodDef = {
+  "throw",
+  (PyCFunction)JsGenerator_throw,
+  METH_FASTCALL,
+};
+
+static PyObject*
+JsGenerator_close(PyObject* self, PyObject* ignored)
+{
+  PyObject* result =
+    JsGenerator_throw_inner(self, PyExc_GeneratorExit, NULL, NULL);
+  if (result != NULL) {
+    // We could also just return it, but this matches Python. Generators that do
+    // shenanigans stuff in "finally" blocks are hard to work with so we might
+    // as well yell at people for using them.
+    PyErr_SetString(PyExc_RuntimeError, "JavaScript generator ignored return");
+    Py_DECREF(result);
+    return NULL;
+  }
+  if (PyErr_ExceptionMatches(PyExc_StopIteration) ||
+      PyErr_ExceptionMatches(PyExc_GeneratorExit)) {
+    PyErr_Clear(); /* ignore these errors */
+    Py_RETURN_NONE;
+  }
+  return NULL;
+}
+
+static PyMethodDef JsGenerator_close_MethodDef = {
+  "close",
+  (PyCFunction)JsGenerator_close,
+  METH_NOARGS,
 };
 
 
@@ -1646,6 +1813,15 @@ JsProxy_create_subtype(int flags)
     methods[cur_method++] = JsArray_insert_MethodDef;
   }
 
+  if (flags & IS_GENERATOR) {
+    // throw and close need "throw" and "return" methods to work. We currently
+    // don't trust that an object with "next", "throw", and "return" is a
+    // generator though -- we require that it actually have it's toStringTag set
+    // to Generator.
+    methods[cur_method++] = JsGenerator_throw_MethodDef;
+    methods[cur_method++] = JsGenerator_close_MethodDef;
+  }
+
   if ((flags & IS_ITERABLE) && !(flags & IS_ITERATOR)) {
     // If it is an iterator we should use SelfIter instead.
     slots[cur_slot++] =
@@ -1705,6 +1881,7 @@ JsProxy_create_subtype(int flags)
     slots[cur_slot++] =
       (PyType_Slot){ .slot = Py_tp_init, .pfunc = JsException_init };
   }
+
 
   members[cur_member++] = (PyMemberDef){ 0 };
   methods[cur_method++] = (PyMethodDef){ 0 };
@@ -1841,6 +2018,7 @@ EM_JS_NUM(int, JsProxy_compute_typeflags, (JsVal obj), {
       return cb();
     } catch(e) {}
   }
+  const typeTag = getTypeTag(obj);
 
   SET_FLAG_IF_HAS_METHOD(HAS_GET, "get")
   SET_FLAG_IF_HAS_METHOD(HAS_SET, "set");
@@ -1851,6 +2029,7 @@ EM_JS_NUM(int, JsProxy_compute_typeflags, (JsVal obj), {
     (hasProperty(obj, "length") && typeof obj !== "function"));
   SET_FLAG_IF(IS_CALLABLE, typeof obj === "function");
   SET_FLAG_IF(IS_ARRAY, safeCall(() => Array.isArray(obj)));
+  SET_FLAG_IF(IS_GENERATOR, typeTag === "[object Generator]");
   SET_FLAG_IF_HAS_METHOD(IS_ITERABLE, Symbol.iterator);
   SET_FLAG_IF(IS_ITERATOR, hasMethod(obj, "next") && (hasMethod(obj, Symbol.iterator) || !hasMethod(obj, Symbol.asyncIterator)));
   /**

@@ -45,3 +45,25 @@ function hexStringToUTF8Array(hex) {
   }
   return new Uint8Array(bytes);
 }
+
+
+class PythonError extends Error {
+  /**
+   * The address of the error we are wrapping. We may later compare this
+   * against sys.last_exc.
+   * WARNING: we don't own a reference to this pointer, dereferencing it
+   * may be a use-after-free error!
+   * @private
+   */
+  __error_address;
+  /**
+   * The name of the Python error class, e.g, :py:exc:`RuntimeError` or
+   * :py:exc:`KeyError`.
+   */
+  type;
+  constructor(type, message, error_address) {
+    super(message);
+    this.type = type;
+    this.__error_address = error_address;
+  }
+}
