@@ -171,6 +171,11 @@ class PyodideTest(TestCase):
         self.assertEqual(err.message, "hi!")
         self.assertHasAttr(err, "stack")
 
+    def test_jsproxy_get(self):
+        o = run_js('({get(x) {return x + 1}})')
+        self.assertEqual(o[5], 6)
+        self.assertEqual(o[77], 78)
+
     def test_pyproxy(self):
         d = {1:7}
         self.assertEqual(run_js("(x) => x.toString()")(d), str(d))
