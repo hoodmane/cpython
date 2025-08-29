@@ -1592,7 +1592,7 @@ Modules/_pyodide_core/node_modules/.installed : $(srcdir)/Modules/_pyodide_core/
 	cd Modules/_pyodide_core/ && npm ci
 	touch $@
 
-Modules/_pyodide_core/pyproxy.gen.ts: Modules/_pyodide_core/pyproxy.ts Modules/_pyodide_core/pyproxy.c
+Modules/_pyodide_core/pyproxy: Modules/_pyodide_core/pyproxy.ts Modules/_pyodide_core/pyproxy.c
 	# We can't input a js/ts file directly because CC will be unhappy about the file
 	# extension. Instead cat it and have CC read from stdin.
 	# -E : Only apply prepreocessor
@@ -1612,7 +1612,7 @@ Modules/_pyodide_core/pyproxy.gen.ts: Modules/_pyodide_core/pyproxy.ts Modules/_
 	echo "// Do not edit it directly!" >> $@
 	cat $< | \
 		sed '/^\/\/\s*pyodide-skip/,/^\/\/\s*end-pyodide-skip/d' | \
-		$(CC) -E -C -P -imacros $(srcdir)/Modules/_pyodide_core/pyproxy.c - -I$(srcdir)/Include -IInclude | \
+		$(CC) -E -C -P -imacros $(srcdir)/Modules/_pyodide_core/pyproxy.c - -I$(srcdir)/Include -I. | \
 		sed 's/^#pragma clang.*//g' \
 		>> $@
 

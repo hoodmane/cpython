@@ -42,6 +42,11 @@ _pyproxy_type(PyObject* ptrobj)
   return JsvUTF8ToString(Py_TYPE(ptrobj)->tp_name);
 }
 
+EMSCRIPTEN_KEEPALIVE int
+pyproxy_getflags(PyObject* pyobj)
+{
+  return 0;
+}
 
 #define Py_ENTER()
 #define Py_EXIT()
