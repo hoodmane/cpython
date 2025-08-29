@@ -10,6 +10,7 @@ declare function _Py_DecRef(ptr: number): void;
 declare function _pythonexc2js(): never;
 declare function __pyproxy_type(ptr: number): string;
 declare function __pyproxy_str(ptr: number): string;
+declare function _pyproxy_getflags(ptr: number): number;
 
 // pyodide-skip
 
@@ -24,23 +25,18 @@ declare function __pyproxy_str(ptr: number): string;
 // removed from the preprocessed version.
 
 // This also has the benefit that it makes intellisense happy.
-declare var IS_CALLABLE: number;
-declare var HAS_LENGTH: number;
 declare var HAS_GET: number;
+declare var HAS_HAS: number;
+declare var HAS_INCLUDES: number;
+declare var HAS_LENGTH: number;
 declare var HAS_SET: number;
-declare var HAS_CONTAINS: number;
+declare var IS_ARRAY: number;
+declare var IS_CALLABLE: number;
+declare var IS_ERROR: number;
+declare var IS_GENERATOR: number;
 declare var IS_ITERABLE: number;
 declare var IS_ITERATOR: number;
-declare var IS_AWAITABLE: number;
-declare var IS_BUFFER: number;
-declare var IS_ASYNC_ITERABLE: number;
-declare var IS_ASYNC_ITERATOR: number;
-declare var IS_GENERATOR: number;
-declare var IS_ASYNC_GENERATOR: number;
-declare var IS_SEQUENCE: number;
-declare var IS_MUTABLE_SEQUENCE: number;
-declare var IS_JSON_ADAPTOR_DICT: number;
-declare var IS_JSON_ADAPTOR_SEQUENCE: number;
+
 
 declare function DEREF_U32(ptr: number, offset: number): number;
 declare function Py_ENTER(): void;
@@ -84,6 +80,16 @@ type PyProxyAttrs = {
 
 const pyproxyAttrsSymbol = Symbol("pyproxy.attrs");
 
+function pyproxy_getflags(ptrobj: number) {
+  Py_ENTER();
+  try {
+    return _pyproxy_getflags(ptrobj);
+  } finally {
+    Py_EXIT();
+  }
+}
+
+
 /**
  * Create a new PyProxy wrapping ptrobj which is a PyObject*.
  *
@@ -106,16 +112,27 @@ const pyproxyAttrsSymbol = Symbol("pyproxy.attrs");
 function pyproxy_new(
   ptr: number,
   {
+    flags: flags_arg,
     props,
     shared,
     gcRegister,
   }: {
+    flags?: number;
     shared?: PyProxyShared;
     props?: any;
     gcRegister?: boolean;
   } = {},
 ): PyProxy {
-  const cls = PyProxy;
+  if (gcRegister === undefined) {
+    // register by default
+    gcRegister = true;
+  }
+  const flags =
+    flags_arg !== undefined ? flags_arg : pyproxy_getflags(ptr);
+  if (flags === -1) {
+    _pythonexc2js();
+  }
+  const cls = getPyProxyClass(flags);
   let target: any;
   target = Object.create(cls.prototype);
 
@@ -175,6 +192,23 @@ Module.PyProxy_getAttrs = _getAttrs;
 function _getPtr(jsobj: any) {
   return _getAttrs(jsobj).shared.ptr;
 }
+
+function _getFlags(jsobj: any): number {
+  return Object.getPrototypeOf(jsobj).$$flags;
+}
+
+let pyproxyClassMap = new Map();
+/**
+ * Retrieve the appropriate mixins based on the features requested in flags.
+ * Used by pyproxy_new. The "flags" variable is produced by the C function
+ * pyproxy_getflags. Multiple PyProxies with the same set of feature flags
+ * will share the same prototype, so the memory footprint of each individual
+ * PyProxy is minimal.
+ */
+function getPyProxyClass(flags: number) {
+  return PyProxy;
+};
+
 
 class PyProxy {
   /** @private */
