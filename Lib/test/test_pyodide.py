@@ -369,3 +369,7 @@ class PyProxyTest(TestCase):
         d = {1: 7}
         self.assertEqual(run_js("(x) => x.toString()")(d), str(d))
         self.assertEqual(run_js("(x) => x.type")(d), "dict")
+
+    def test_pyproxy_to_py(self):
+        x = [1, 2, 3]
+        self.assertIs(run_js("(x) => x")(x), x)

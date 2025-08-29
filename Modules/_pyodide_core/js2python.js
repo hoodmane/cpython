@@ -116,6 +116,15 @@ JSFILE(() => {
       return __js2python_true();
     } else if (value === false) {
       return __js2python_false();
+    } else if (API.isPyProxy(value)) {
+      debugger;
+      const { props, shared } = API.PyProxy_getAttrs(value);
+      if (props.roundtrip) {
+        return _JsProxy_create(value);
+      } else {
+        _Py_IncRef(shared.ptr);
+        return shared.ptr;
+      }
     }
     return undefined;
   }
