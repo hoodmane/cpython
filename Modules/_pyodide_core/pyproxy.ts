@@ -187,7 +187,7 @@ function _getAttrs(jsobj: any): PyProxyAttrs {
   }
   return attrs;
 }
-Module.PyProxy_getAttrs = _getAttrs;
+API.PyProxy_getAttrs = _getAttrs;
 
 function _getPtr(jsobj: any) {
   return _getAttrs(jsobj).shared.ptr;
