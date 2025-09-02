@@ -35,7 +35,9 @@ declare function __pyproxy_apply(
   num_kwargs: number,
 ): any;
 declare function __pyproxy_iter_next(ptr: number): any;
-declare function __pyproxyGen_Send(ptr: number, arg: any): IteratorResult<any>
+declare function __pyproxyGen_Send(ptr: number, arg: any): IteratorResult<any>;
+declare function __pyproxyGen_return(ptr: number, arg: any): IteratorResult<any>;
+declare function __pyproxyGen_throw(ptr: number, arg: any): IteratorResult<any>;
 
 // pyodide-skip
 
@@ -56,6 +58,7 @@ declare var HAS_LENGTH: number;
 declare var HAS_SET: number;
 declare var IS_CALLABLE: number;
 declare var IS_DICT: number;
+declare var IS_GENERATOR: number;
 declare var IS_ITERABLE: number;
 declare var IS_ITERATOR: number;
 
@@ -301,6 +304,7 @@ function getPyProxyClass(flags: number) {
     [HAS_LENGTH, PyLengthMethods],
     [HAS_SET, PySetItemMethods],
     [IS_CALLABLE, PyCallableMethods],
+    [IS_GENERATOR, PyGeneratorMethods],
     [IS_ITERABLE, PyIterableMethods],
     [IS_ITERATOR, PyIteratorMethods],
   ];
@@ -1227,6 +1231,83 @@ function* iter_helper(
   } catch (e) {}
   if (_PyErr_Occurred()) {
     _pythonexc2js();
+  }
+}
+
+
+/**
+ * A :js:class:`~pyodide.ffi.PyProxy` whose proxied Python object is a :std:term:`generator`
+ * (i.e., it is an instance of :py:class:`~collections.abc.Generator`).
+ */
+class PyGenerator extends PyProxy {
+  /** @private */
+  static [Symbol.hasInstance](obj: any): obj is PyProxy {
+    return API.isPyProxy(obj) && !!(_getFlags(obj) & IS_GENERATOR);
+  }
+}
+
+interface PyGenerator extends PyGeneratorMethods {}
+
+class PyGeneratorMethods {
+  /**
+   * Throws an exception into the Generator.
+   *
+   * See the documentation for :js:meth:`Generator.throw`.
+   *
+   * @param exc Error The error to throw into the generator. Must be an
+   * instanceof ``Error``.
+   * @returns An Object with two properties: ``done`` and ``value``. When the
+   * generator yields ``some_value``, ``return`` returns ``{done : false, value
+   * : some_value}``. When the generator raises a
+   * ``StopIteration(result_value)`` exception, ``return`` returns ``{done :
+   * true, value : result_value}``.
+   */
+  throw(exc: any): IteratorResult<any, any> {
+    let result;
+    try {
+      Py_ENTER();
+      result = __pyproxyGen_throw(_getPtr(this), exc);
+      Py_EXIT();
+    } catch (e) {
+      API.fatal_error(e);
+    }
+    if (result === Module.error) {
+      _pythonexc2js();
+    }
+    return result;
+  }
+
+  /**
+   * Throws a :py:exc:`GeneratorExit` into the generator and if the
+   * :py:exc:`GeneratorExit` is not caught returns the argument value ``{done:
+   * true, value: v}``. If the generator catches the :py:exc:`GeneratorExit` and
+   * returns or yields another value the next value of the generator this is
+   * returned in the normal way. If it throws some error other than
+   * :py:exc:`GeneratorExit` or :py:exc:`StopIteration`, that error is propagated. See
+   * the documentation for :js:meth:`Generator.return`.
+   *
+   * @param v The value to return from the generator.
+   * @returns An Object with two properties: ``done`` and ``value``. When the
+   * generator yields ``some_value``, ``return`` returns ``{done : false, value
+   * : some_value}``. When the generator raises a
+   * ``StopIteration(result_value)`` exception, ``return`` returns ``{done :
+   * true, value : result_value}``.
+   */
+  return(v: any): IteratorResult<any, any> {
+    // Note: arg is optional, if arg is not supplied, it will be undefined
+    // which gets converted to "Py_None". This is as intended.
+    let result: IteratorResult<any, any>;
+    try {
+      Py_ENTER();
+      result = __pyproxyGen_return(_getPtr(this), v);
+      Py_EXIT();
+    } catch (e) {
+      API.fatal_error(e);
+    }
+    if (result === Module.error) {
+      _pythonexc2js();
+    }
+    return result;
   }
 }
 
