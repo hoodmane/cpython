@@ -7,12 +7,14 @@ declare var API: {
 
 declare function _Py_IncRef(ptr: number): void;
 declare function _Py_DecRef(ptr: number): void;
+declare function _PyErr_Occurred(): number;
 declare function _pythonexc2js(): never;
 declare function __pyproxy_type(ptr: number): string;
 declare function __pyproxy_str(ptr: number): string;
 declare function _pyproxy_getflags(ptr: number): number;
 
 declare function __pyproxy_contains(ptr: number, key: any): number;
+declare function __pyproxy_getitem(ptr: number, key: any): any;
 declare function __pyproxy_apply(
   ptr: number,
   jsargs: any[],
@@ -265,6 +267,7 @@ function getPyProxyClass(flags: number) {
 
   const FLAG_TYPE_PAIRS: [number, any][] = [
     [HAS_CONTAINS, PyContainsMethods],
+    [HAS_GET, PyGetItemMethods],
     [IS_CALLABLE, PyCallableMethods],
   ];
   for (let [feature_flag, methods] of FLAG_TYPE_PAIRS) {
@@ -440,6 +443,51 @@ class PyContainsMethods {
     return result === 1;
   }
 }
+
+class PyProxyWithGet extends PyProxy {
+  /** @private */
+  static [Symbol.hasInstance](obj: any): obj is PyProxy {
+    return API.isPyProxy(obj) && !!(_getFlags(obj) & HAS_GET);
+  }
+}
+
+interface PyProxyWithGet extends PyGetItemMethods {}
+
+
+// Controlled by HAS_GET, appears for any class with __getitem__,
+// mp_subscript, or sq_item methods
+export class PyGetItemMethods {
+  /**
+   * This translates to the Python code ``obj[key]``.
+   *
+   * @param key The key to look up.
+   * @returns The corresponding value.
+   */
+  get(key: any): any {
+    const { shared } = _getAttrs(this);
+    let result;
+    try {
+      Py_ENTER();
+      // Cache is only used if isJsonAdaptor is true.
+      result = __pyproxy_getitem(
+        shared.ptr,
+        key,
+      );
+      Py_EXIT();
+    } catch (e) {
+      API.fatal_error(e);
+    }
+    if (result === Module.error) {
+      if (_PyErr_Occurred()) {
+        _pythonexc2js();
+      } else {
+        return undefined;
+      }
+    }
+    return result;
+  }
+}
+
 
 function _adjustArgs(proxyobj: any, jsthis: any, jsargs: any[]): any[] {
   const { captureThis, boundArgs, boundThis, isBound } =

@@ -2460,6 +2460,7 @@ AS_CASE([$ac_sys_system],
     AS_VAR_APPEND([LINKFORSHARED], ["_JsProxy_create,"])
     AS_VAR_APPEND([LINKFORSHARED], ["_Py_IncRef,"])
     AS_VAR_APPEND([LINKFORSHARED], ["_Py_DecRef,"])
+    AS_VAR_APPEND([LINKFORSHARED], ["_PyErr_Occurred,"])
     AS_VAR_APPEND([LINKFORSHARED], ["_pythonexc2js,"])
     AS_VAR_APPEND([LINKFORSHARED], ["__pyproxy_type,"])
     AS_VAR_APPEND([LINKFORSHARED], ["__pyproxy_str,"])

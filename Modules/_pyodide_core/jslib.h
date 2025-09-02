@@ -12,7 +12,7 @@ typedef HwRef JsRef;
 JsVal JsvError_Create(void);
 int JsvError_Check(JsVal);
 
-#define JS_ERROR JsvError_Create()
+#define JS_ERROR hiwire_get(Jsr_error)
 
 #define JsvNull_Check(v) __builtin_wasm_ref_is_null_extern(v)
 
@@ -20,6 +20,7 @@ int JsvError_Check(JsVal);
 extern const JsRef Jsr_undefined;
 extern const JsRef Jsr_true;
 extern const JsRef Jsr_false;
+extern const JsRef Jsr_error;
 
 #define Jsv_undefined hiwire_get(Jsr_undefined)
 #define Jsv_true hiwire_get(Jsr_true)
