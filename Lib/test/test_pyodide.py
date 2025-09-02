@@ -3,6 +3,7 @@ from _pyodide_core import run_js
 from _pyodide import jsnull
 
 JsError = type(run_js("new Error()"))
+Array = run_js("Array")
 
 
 class ConversionTest(TestCase):
@@ -676,3 +677,210 @@ class PyProxyTest(TestCase):
         self.assertTrue(p[1].done)
         self.assertEqual(p[0].value, 1)
         self.assertEqual(p[1].value, 3)
+
+    def test_pyproxy_of_list_index(self):
+        pylist = [9, 8, 7]
+        jslist = run_js(
+            """
+            (p) => {
+                return [p[0], p[1], p[2]]
+            }
+            """
+        )(pylist)
+        self.assertEqual(list(jslist), pylist)
+
+    def test_pyproxy_of_list_join(self):
+        a = ["Wind", "Water", "Fire"]
+        ajs = Array.from_(a)
+        func = run_js("((a, k) => a.join(k))")
+
+        self.assertEqual(func(a, None), func(ajs, None))
+        self.assertEqual(func(a, ", "), func(ajs, ", "))
+        self.assertEqual(func(a, " "), func(ajs, " "))
+
+    def test_pyproxy_of_list_slice(self):
+        a = ["ant", "bison", "camel", "duck", "elephant"]
+        ajs = Array.from_(a)
+
+        func_strs = [
+            "a.slice(2)",
+            "a.slice(2, 4)",
+            "a.slice(1, 5)",
+            "a.slice(-2)",
+            "a.slice(2, -1)",
+            "a.slice()",
+        ]
+        for func_str in func_strs:
+            func = run_js(f"(a) => {func_str}")
+            self.assertEqual(list(func(a)), list(func(ajs)))
+
+    def test_pyproxy_of_list_indexOf(self):
+        a = ["ant", "bison", "camel", "duck", "bison"]
+        ajs = Array.from_(a)
+
+        func_strs = [
+            "beasts.indexOf('bison')",
+            "beasts.indexOf('bison', 2)",
+            "beasts.indexOf('bison', -4)",
+            "beasts.indexOf('bison', 3)",
+            "beasts.indexOf('giraffe')",
+        ]
+        for func_str in func_strs:
+            func = run_js(f"(beasts) => {func_str}")
+            self.assertEqual(func(a), func(ajs))
+
+    def test_pyproxy_of_list_lastIndexOf(self):
+        a = ["ant", "bison", "camel", "duck", "bison"]
+        ajs = Array.from_(a)
+
+        func_strs = [
+            "beasts.lastIndexOf('bison')",
+            "beasts.lastIndexOf('bison', 2)",
+            "beasts.lastIndexOf('bison', -4)",
+            "beasts.lastIndexOf('bison', 3)",
+            "beasts.lastIndexOf('giraffe')",
+        ]
+        for func_str in func_strs:
+            func = run_js(f"(beasts) => {func_str}")
+            self.assertEqual(func(a), func(ajs))
+
+    def test_pyproxy_of_list_forEach(self):
+        a = ["a", "b", "c"]
+        ajs = Array.from_(a)
+
+        func = run_js(
+            """
+            ((a) => {
+                let s = "";
+                a.forEach((elt, idx, list) => {
+                    s += "::";
+                    s += idx;
+                    s += elt;
+                    s += this[elt];
+                },
+                    {a: 6, b: 9, c: 22}
+                );
+                return s;
+            })
+            """
+        )
+
+        self.assertEqual(func(a), func(ajs))
+
+    def test_pyproxy_of_list_map(self):
+        a = ["a", "b", "c"]
+        ajs = Array.from_(a)
+        func = run_js(
+            """
+            (a) => a.map(
+                function (elt, idx, list){
+                    return [elt, idx, this[elt]]
+                },
+                {a: 6, b: 9, c: 22}
+            )
+            """
+        )
+        self.assertEqual(
+            [list(x) for x in func(a)], [list(x) for x in func(ajs)]
+        )
+
+    def test_pyproxy_of_list_filter(self):
+        a = list(range(20, 0, -2))
+        ajs = Array.from_(a)
+        func = run_js(
+            """
+            (a) => a.filter(
+                function (elt, idx){
+                    return elt + idx > 12
+                }
+            )
+            """
+        )
+        self.assertEqual(list(func(a)), list(func(ajs)))
+
+    def test_pyproxy_of_list_reduce(self):
+        a = list(range(20, 0, -2))
+        ajs = Array.from_(a)
+        func = run_js(
+            """
+            (a) => a.reduce((l, r) => l + 2*r)
+            """
+        )
+        self.assertEqual(func(a), func(ajs))
+
+    def test_pyproxy_of_list_reduceRight(self):
+        a = list(range(20, 0, -2))
+        ajs = Array.from_(a)
+        func = run_js(
+            """
+            (a) => a.reduceRight((l, r) => l + 2*r)
+            """
+        )
+        self.assertEqual(func(a), func(ajs))
+
+    def test_pyproxy_of_list_some(self):
+        func = run_js(
+            "(a) => a.some((element, idx) => (element + idx) % 2 === 0)"
+        )
+        for a in [
+            [1, 2, 3, 4, 5],
+            [2, 3, 4, 5],
+            [1, 3, 5],
+            [1, 4, 5],
+            [4, 5],
+        ]:
+            self.assertEqual(func(a), func(Array.from_(a)))
+
+    def test_pyproxy_of_list_every(self):
+        func = run_js(
+            "(a) => a.every((element, idx) => (element + idx) % 2 === 0)"
+        )
+        for a in [
+            [1, 2, 3, 4, 5],
+            [2, 3, 4, 5],
+            [1, 3, 5],
+            [1, 4, 5],
+            [4, 5],
+        ]:
+            self.assertEqual(func(a), func(Array.from_(a)))
+
+    def test_pyproxy_of_list_at(self):
+        a = [5, 12, 8, 130, 44]
+        ajs = Array.from_(a)
+
+        func = run_js("(a, idx) => a.at(idx)")
+        for idx in [2, 3, 4, -2, -3, -4, 5, 7, -7]:
+            self.assertEqual(func(a, idx), func(ajs, idx))
+
+    def test_pyproxy_of_list_concat(self):
+        self.skipTest("TODO: to_js()")
+        a = [[5, 12, 8], [130, 44], [6, 7, 7]]
+        ajs = to_js(a)
+
+        func = run_js("(a, b, c) => a.concat(b, c)")
+        self.assertEqual(func(*a).to_py(), func(*ajs).to_py())
+
+    def test_pyproxy_of_list_includes(self):
+        a = [5, 12, 8, 130, 44, 6, 7, 7]
+        ajs = Array.from_(a)
+
+        func = run_js("(a, n) => a.includes(n)")
+        for n in range(4, 10):
+            self.assertEqual(func(a, n), func(ajs, n))
+
+    def test_pyproxy_of_list_entries(self):
+        self.skipTest("TODO: to_py()")
+        a = [5, 12, 8, 130, 44, 6, 7, 7]
+        ajs = Array.from_(a)
+
+        func = run_js("(a, k) => Array.from(a[k]())")
+        for k in ["entries", "keys", "values"]:
+            self.assertEqual(func(a, k).to_py(), func(ajs, k).to_py())
+
+    def test_pyproxy_of_list_find(self):
+        a = [5, 12, 8, 130, 44, 6, 7, 7]
+        ajs = Array.from_(a)
+
+        func = run_js("(a, k) => a[k](element => element > 10)")
+        for k in ["find", "findIndex"]:
+            self.assertEqual(func(a, k), func(ajs, k))
