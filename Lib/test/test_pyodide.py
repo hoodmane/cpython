@@ -374,13 +374,17 @@ class PyProxyTest(TestCase):
 
     def test_pyproxy_call_simple(self):
         def f(x):
-            return x*x + 7
+            return x * x + 7
+
         self.assertEqual(run_js("(f) => f(7)")(f), f(7))
 
     def test_pyproxy_call_kwargs(self):
         def f(*, x, y):
-            return x*x + y*y
-        self.assertEqual(run_js("(f) => f.callKwargs({x: 7, y: 3})")(f), f(x=7, y=3))
+            return x * x + y * y
+
+        self.assertEqual(
+            run_js("(f) => f.callKwargs({x: 7, y: 3})")(f), f(x=7, y=3)
+        )
 
     def test_pyproxy_call_full(self):
         def f(x=2, y=3):
@@ -391,18 +395,32 @@ class PyProxyTest(TestCase):
         self.assertEqual(list(run_js("(f) => f(7, -1)")(f)), [7, -1])
         self.assertEqual(list(run_js("(f) => f.callKwargs({})")(f)), [2, 3])
         self.assertEqual(list(run_js("(f) => f.callKwargs(7, {})")(f)), [7, 3])
-        self.assertEqual(list(run_js("(f) => f.callKwargs(7, -1, {})")(f)), [7, -1])
-        self.assertEqual(list(run_js("(f) => f.callKwargs({ y : 4 })")(f)), [2, 4])
-        self.assertEqual(list(run_js("(f) => f.callKwargs({ y : 4, x : 9 })")(f)), [9, 4])
-        self.assertEqual(list(run_js("(f) => f.callKwargs(8, { y : 4 })")(f)), [8, 4])
+        self.assertEqual(
+            list(run_js("(f) => f.callKwargs(7, -1, {})")(f)), [7, -1]
+        )
+        self.assertEqual(
+            list(run_js("(f) => f.callKwargs({ y : 4 })")(f)), [2, 4]
+        )
+        self.assertEqual(
+            list(run_js("(f) => f.callKwargs({ y : 4, x : 9 })")(f)), [9, 4]
+        )
+        self.assertEqual(
+            list(run_js("(f) => f.callKwargs(8, { y : 4 })")(f)), [8, 4]
+        )
 
-        with self.assertRaisesRegex(JsError, "TypeError: callKwargs requires at least one argument"):
+        with self.assertRaisesRegex(
+            JsError, "TypeError: callKwargs requires at least one argument"
+        ):
             run_js("(f) => f.callKwargs()")(f)
-        
-        with self.assertRaisesRegex(TypeError, r"f\(\) got an unexpected keyword argument 'z'"):
+
+        with self.assertRaisesRegex(
+            TypeError, r"f\(\) got an unexpected keyword argument 'z'"
+        ):
             run_js("(f) => f.callKwargs({z : 6})")(f)
 
-        with self.assertRaisesRegex(TypeError, r"f\(\) got multiple values for argument 'x'"):
+        with self.assertRaisesRegex(
+            TypeError, r"f\(\) got multiple values for argument 'x'"
+        ):
             run_js("(f) => f.callKwargs(76, {x : 6})")(f)
 
     def test_pyproxy_this1(self):
@@ -423,17 +441,20 @@ class PyProxyTest(TestCase):
 
     def test_pyproxy_bind(self):
         self.skipTest("TODO")
-    
 
     def test_pyproxy_contains(self):
-        d = {1, 'a'}
-        resjs = run_js("(x) => [x.has(1), x.has(2), x.has('a'), x.has('b')]")(d)
+        d = {1, "a"}
+        resjs = run_js("(x) => [x.has(1), x.has(2), x.has('a'), x.has('b')]")(
+            d
+        )
         self.assertEqual(list(resjs), [True, False, True, False])
 
         with self.assertRaisesRegex(TypeError, "unhashable type"):
             run_js("(x) => x.has({})")(d)
 
     def test_pyproxy_get(self):
-        d = {1: 2, 'a': 'q'}
-        resjs = run_js("(x) => [x.get(1), x.get(2), x.get('a'), x.get('b')]")(d)
-        self.assertEqual(list(resjs), [2, None, 'q', None])
+        d = {1: 2, "a": "q"}
+        resjs = run_js("(x) => [x.get(1), x.get(2), x.get('a'), x.get('b')]")(
+            d
+        )
+        self.assertEqual(list(resjs), [2, None, "q", None])
