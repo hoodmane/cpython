@@ -5,6 +5,7 @@
 #include "error_handling.h"
 
 #define HAS_CONTAINS           (1 << 0)
+#define HAS_GET                (1 << 1)
 #define IS_CALLABLE            (1 << 4)
 
 EM_JS_VAL(JsVal, pyproxy_new, (PyObject * ptrobj), {
@@ -52,6 +53,10 @@ type_getflags(PyTypeObject* obj_type)
   PySequenceMethods* seq_proto =
     obj_type->tp_as_sequence ? obj_type->tp_as_sequence : &null_seq_proto;
 
+  PyMappingMethods null_map_proto = { 0 };
+  PyMappingMethods* map_proto =
+    obj_type->tp_as_mapping ? obj_type->tp_as_mapping : &null_map_proto;
+
 #define SET_FLAG_IF(flag, cond)                                                \
   if (cond) {                                                                  \
     result |= flag;                                                            \
@@ -59,6 +64,9 @@ type_getflags(PyTypeObject* obj_type)
 
   int result = 0;
   SET_FLAG_IF(HAS_CONTAINS, seq_proto->sq_contains);
+  if (map_proto->mp_subscript || seq_proto->sq_item) {
+    result |= HAS_GET;
+  }
   SET_FLAG_IF(IS_CALLABLE, obj_type->tp_call);
   return result;
 
@@ -89,6 +97,37 @@ finally:
   Py_CLEAR(pykey);
   return result;
 }
+
+
+EMSCRIPTEN_KEEPALIVE JsVal
+_pyproxy_getitem(PyObject* pyobj,
+                 JsVal jskey)
+{
+  bool success = false;
+  PyObject* pykey = NULL;
+  PyObject* pyresult = NULL;
+  JsVal result;
+
+  pykey = js2python(jskey);
+  FAIL_IF_NULL(pykey);
+  pyresult = PyObject_GetItem(pyobj, pykey);
+  FAIL_IF_NULL(pyresult);
+  result = python2js(pyresult);
+  FAIL_IF_JS_ERROR(result);
+
+  success = true;
+finally:
+  if (!success && (PyErr_ExceptionMatches(PyExc_KeyError) ||
+                   PyErr_ExceptionMatches(PyExc_IndexError))) {
+    PyErr_Clear();
+  }
+  Py_CLEAR(pykey);
+  Py_CLEAR(pyresult);
+  if (!success) {
+    return JS_ERROR;
+  }
+  return result;
+};
 
 /**
  * This sets up a call to _PyObject_Vectorcall. It's a helper function for

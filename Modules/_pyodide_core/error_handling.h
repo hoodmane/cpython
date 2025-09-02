@@ -57,7 +57,7 @@ wrap_exception(void);
     catch (e) {                                                                \
         LOG_EM_JS_ERROR(func_name, e);                                         \
         Module.handle_js_error(e);                                             \
-        return JS_ERROR;                                                       \
+        return Module.error;                                                   \
     }                                                                          \
     errNoRet();                                                                \
   })
