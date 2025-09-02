@@ -6,6 +6,7 @@
 
 #define HAS_CONTAINS           (1 << 0)
 #define HAS_GET                (1 << 1)
+#define HAS_LENGTH             (1 << 2)
 #define IS_CALLABLE            (1 << 4)
 
 EM_JS_VAL(JsVal, pyproxy_new, (PyObject * ptrobj), {
@@ -67,6 +68,7 @@ type_getflags(PyTypeObject* obj_type)
   if (map_proto->mp_subscript || seq_proto->sq_item) {
     result |= HAS_GET;
   }
+  SET_FLAG_IF(HAS_LENGTH, seq_proto->sq_length || map_proto->mp_length);
   SET_FLAG_IF(IS_CALLABLE, obj_type->tp_call);
   return result;
 

@@ -444,9 +444,8 @@ class PyProxyTest(TestCase):
 
     def test_pyproxy_contains(self):
         d = {1, "a"}
-        resjs = run_js("(x) => [x.has(1), x.has(2), x.has('a'), x.has('b')]")(
-            d
-        )
+        f = run_js("(x) => [x.has(1), x.has(2), x.has('a'), x.has('b')]")
+        resjs = f(d)
         self.assertEqual(list(resjs), [True, False, True, False])
 
         with self.assertRaisesRegex(TypeError, "unhashable type"):
@@ -454,7 +453,11 @@ class PyProxyTest(TestCase):
 
     def test_pyproxy_get(self):
         d = {1: 2, "a": "q"}
-        resjs = run_js("(x) => [x.get(1), x.get(2), x.get('a'), x.get('b')]")(
-            d
-        )
+        f = run_js("(x) => [x.get(1), x.get(2), x.get('a'), x.get('b')]")
+        resjs = f(d)
         self.assertEqual(list(resjs), [2, None, "q", None])
+
+    def test_pyproxy_length(self):
+        f = run_js("(x) => x.length")
+        for x in [{"x", "y", "z"}, [1,2,3], (1, "x"), {"x":2}]:
+            self.assertEqual(f(x), len(x))

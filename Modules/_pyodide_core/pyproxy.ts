@@ -8,6 +8,10 @@ declare var API: {
 declare function _Py_IncRef(ptr: number): void;
 declare function _Py_DecRef(ptr: number): void;
 declare function _PyErr_Occurred(): number;
+declare function _PyObject_Size(ptr: number): number;
+
+
+
 declare function _pythonexc2js(): never;
 declare function __pyproxy_type(ptr: number): string;
 declare function __pyproxy_str(ptr: number): string;
@@ -268,6 +272,7 @@ function getPyProxyClass(flags: number) {
   const FLAG_TYPE_PAIRS: [number, any][] = [
     [HAS_CONTAINS, PyContainsMethods],
     [HAS_GET, PyGetItemMethods],
+    [HAS_LENGTH, PyLengthMethods],
     [IS_CALLABLE, PyCallableMethods],
   ];
   for (let [feature_flag, methods] of FLAG_TYPE_PAIRS) {
@@ -485,6 +490,38 @@ export class PyGetItemMethods {
       }
     }
     return result;
+  }
+}
+
+class PyProxyWithLength extends PyProxy {
+  /** @private */
+  static [Symbol.hasInstance](obj: any): obj is PyProxy {
+    return API.isPyProxy(obj) && !!(_getFlags(obj) & HAS_LENGTH);
+  }
+}
+
+interface PyProxyWithLength extends PyLengthMethods {}
+
+// Controlled by HAS_LENGTH, appears for any object with __len__ or sq_length
+// or mp_length methods
+export class PyLengthMethods {
+  /**
+   * The length of the object.
+   */
+  get length(): number {
+    let ptrobj = _getPtr(this);
+    let length;
+    try {
+      Py_ENTER();
+      length = _PyObject_Size(ptrobj);
+      Py_EXIT();
+    } catch (e) {
+      API.fatal_error(e);
+    }
+    if (length === -1) {
+      _pythonexc2js();
+    }
+    return length;
   }
 }
 
