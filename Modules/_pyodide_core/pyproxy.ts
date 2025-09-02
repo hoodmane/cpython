@@ -9,7 +9,7 @@ declare function _Py_IncRef(ptr: number): void;
 declare function _Py_DecRef(ptr: number): void;
 declare function _PyErr_Occurred(): number;
 declare function _PyObject_Size(ptr: number): number;
-
+declare function _PyObject_GetIter(ptr: number): number;
 
 
 declare function _pythonexc2js(): never;
@@ -34,6 +34,7 @@ declare function __pyproxy_apply(
   kwargs_names: string[],
   num_kwargs: number,
 ): any;
+declare function __pyproxy_iter_next(ptr: number): any;
 declare function __pyproxyGen_Send(ptr: number, arg: any): IteratorResult<any>
 
 // pyodide-skip
@@ -299,6 +300,7 @@ function getPyProxyClass(flags: number) {
     [HAS_LENGTH, PyLengthMethods],
     [HAS_SET, PySetItemMethods],
     [IS_CALLABLE, PyCallableMethods],
+    [IS_ITERABLE, PyIterableMethods],
     [IS_ITERATOR, PyIteratorMethods],
   ];
   for (let [feature_flag, methods] of FLAG_TYPE_PAIRS) {
@@ -1039,6 +1041,112 @@ function callPyObjectKwargs(ptrobj: number, jsargs: any[], kwargs: any) {
 
 function callPyObject(ptrobj: number, jsargs: any) {
   return callPyObjectKwargs(ptrobj, jsargs, {});
+}
+
+
+/**
+ * A helper for [Symbol.iterator].
+ *
+ * Because "it is possible for a generator to be garbage collected without
+ * ever running its finally block", we take extra care to try to ensure that
+ * we don't leak the iterator. We register it with the finalizationRegistry,
+ * but if the finally block is executed, we decref the pointer and unregister.
+ *
+ * In order to do this, we create the generator with this inner method,
+ * register the finalizer, and then return it.
+ *
+ * Quote from:
+ * https://hacks.mozilla.org/2015/07/es6-in-depth-generators-continued/
+ *
+ */
+function* iter_helper(
+  iterptr: number,
+  token: {},
+): Generator<any> {
+  const to_destroy = [];
+  try {
+    while (true) {
+      Py_ENTER();
+      const item = __pyproxy_iter_next(iterptr);
+      Py_EXIT();
+      if (item === Module.error) {
+        break;
+      }
+      yield item;
+      // This is necessary to get JSON.stringify to work correctly.
+      if (API.isPyProxy(item)) {
+        to_destroy.push(item);
+      }
+    }
+  } catch (e) {
+    API.fatal_error(e);
+  } finally {
+    Module.finalizationRegistry.unregister(token);
+    _Py_DecRef(iterptr);
+  }
+  try {
+    to_destroy.forEach((e) =>
+      Module.pyproxy_destroy(
+        e,
+        "This borrowed proxy was automatically destroyed when an iterator was exhausted.",
+      ),
+    );
+  } catch (e) {}
+  if (_PyErr_Occurred()) {
+    _pythonexc2js();
+  }
+}
+
+/**
+ * A :js:class:`~pyodide.ffi.PyProxy` whose proxied Python object is :std:term:`iterable`
+ * (i.e., it has an :meth:`~object.__iter__` method).
+ */
+export class PyIterable extends PyProxy {
+  /** @private */
+  static [Symbol.hasInstance](obj: any): obj is PyProxy {
+    return (
+      API.isPyProxy(obj) && !!(_getFlags(obj) & (IS_ITERABLE | IS_ITERATOR))
+    );
+  }
+}
+
+export interface PyIterable extends PyIterableMethods {}
+
+// Controlled by IS_ITERABLE, appears for any object with __iter__ or tp_iter,
+// unless they are iterators. See: https://docs.python.org/3/c-api/iter.html
+// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Iteration_protocols
+// This avoids allocating a PyProxy wrapper for the temporary iterator.
+export class PyIterableMethods {
+  /**
+   * This translates to the Python code ``iter(obj)``. Return an iterator
+   * associated to the proxy. See the documentation for
+   * :js:data:`Symbol.iterator`.
+   *
+   * This will be used implicitly by ``for(let x of proxy){}``.
+   */
+  [Symbol.iterator](): Iterator<any, any, any> {
+    const { shared } = _getAttrs(this);
+    let token = {};
+    let iterptr;
+    try {
+      Py_ENTER();
+      iterptr = _PyObject_GetIter(shared.ptr);
+      Py_EXIT();
+    } catch (e) {
+      API.fatal_error(e);
+    }
+    if (iterptr === 0) {
+      _pythonexc2js();
+    }
+
+    // Cache is only used if isJsonAdaptor is true.
+    let result = iter_helper(
+      iterptr,
+      token,
+    );
+    Module.finalizationRegistry.register(result, [iterptr, undefined], token);
+    return result;
+  }
 }
 
 
