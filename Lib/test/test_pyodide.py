@@ -70,8 +70,6 @@ class ConversionTest(TestCase):
             x >>= 1
 
     def test_raise_through_js(self):
-        self.skipTest("TODO: Requires PyProxy of function to be callable")
-
         def f():
             1 / 0
 
@@ -373,3 +371,59 @@ class PyProxyTest(TestCase):
     def test_pyproxy_to_py(self):
         x = [1, 2, 3]
         self.assertIs(run_js("(x) => x")(x), x)
+
+    def test_pyproxy_call_simple(self):
+        def f(x):
+            return x*x + 7
+        self.assertEqual(run_js("(f) => f(7)")(f), f(7))
+
+    def test_pyproxy_call_kwargs(self):
+        def f(*, x, y):
+            return x*x + y*y
+        self.assertEqual(run_js("(f) => f.callKwargs({x: 7, y: 3})")(f), f(x=7, y=3))
+
+    def test_pyproxy_call_full(self):
+        def f(x=2, y=3):
+            return [x, y]
+
+        print(run_js("(f) => f()")(f))
+        self.assertEqual(list(run_js("(f) => f()")(f)), [2, 3])
+        self.assertEqual(list(run_js("(f) => f(7)")(f)), [7, 3])
+        self.assertEqual(list(run_js("(f) => f(7, -1)")(f)), [7, -1])
+        self.assertEqual(list(run_js("(f) => f.callKwargs({})")(f)), [2, 3])
+        self.assertEqual(list(run_js("(f) => f.callKwargs(7, {})")(f)), [7, 3])
+        self.assertEqual(list(run_js("(f) => f.callKwargs(7, -1, {})")(f)), [7, -1])
+        self.assertEqual(list(run_js("(f) => f.callKwargs({ y : 4 })")(f)), [2, 4])
+        self.assertEqual(list(run_js("(f) => f.callKwargs({ y : 4, x : 9 })")(f)), [9, 4])
+        self.assertEqual(list(run_js("(f) => f.callKwargs(8, { y : 4 })")(f)), [8, 4])
+
+        with self.assertRaisesRegex(JsError, "TypeError: callKwargs requires at least one argument"):
+            run_js("(f) => f.callKwargs()")(f)
+        
+        with self.assertRaisesRegex(TypeError, "f\(\) got an unexpected keyword argument 'z'"):
+            run_js("(f) => f.callKwargs({z : 6})")(f)
+
+        with self.assertRaisesRegex(TypeError, "f\(\) got multiple values for argument 'x'"):
+            run_js("(f) => f.callKwargs(76, {x : 6})")(f)
+
+    def test_pyproxy_this1(self):
+        def f(self, x):
+            return getattr(self, x)
+
+        res = run_js(
+            """
+            (f) => {
+                const x = {};
+                x.f = f.captureThis();
+                x.a = 7;
+                return x.f("a");
+            }
+            """
+        )(f)
+        self.assertEqual(res, 7)
+
+    def test_pyproxy_bind(self):
+        self.skipTest("TODO")
+    
+    
+

@@ -26,7 +26,7 @@ const hasMethod = (obj, prop) => {
   }
 };
 
-const hasProperty = (obj, prop)  => {
+const hasProperty = (obj, prop) => {
   try {
     while (obj) {
       if (Object.getOwnPropertyDescriptor(obj, prop)) {
@@ -36,7 +36,7 @@ const hasProperty = (obj, prop)  => {
     }
   } catch (e) {}
   return false;
-}
+};
 
 function hexStringToUTF8Array(hex) {
   const bytes = [];
@@ -45,7 +45,6 @@ function hexStringToUTF8Array(hex) {
   }
   return new Uint8Array(bytes);
 }
-
 
 class PythonError extends Error {
   /**
@@ -67,3 +66,8 @@ class PythonError extends Error {
     this.__error_address = error_address;
   }
 }
+
+API.fatal_error = function (e) {
+  console.log("Fatal error", e);
+  throw e;
+};
