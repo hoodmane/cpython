@@ -237,6 +237,34 @@ finally:
   return success ? 0 : -1;
 }
 
+EMSCRIPTEN_KEEPALIVE JsVal
+_pyproxy_ownKeys(PyObject* pyobj)
+{
+  bool success = false;
+  PyObject* pydir = NULL;
+
+  pydir = PyObject_Dir(pyobj);
+  FAIL_IF_NULL(pydir);
+
+  JsVal dir = JsvArray_New();
+  Py_ssize_t n = PyList_Size(pydir);
+  FAIL_IF_MINUS_ONE(n);
+  for (Py_ssize_t i = 0; i < n; ++i) {
+    PyObject* pyentry = PyList_GetItem(pydir, i); /* borrowed */
+    JsVal entry = python2js(pyentry);
+    FAIL_IF_JS_ERROR(entry);
+    JsvArray_Push(dir, entry);
+  }
+
+  success = true;
+finally:
+  Py_CLEAR(pydir);
+  if (!success) {
+    return JS_ERROR;
+  }
+  return dir;
+}
+
 EMSCRIPTEN_KEEPALIVE int
 _pyproxy_contains(PyObject* pyobj, JsVal idkey)
 {
