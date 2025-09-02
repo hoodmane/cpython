@@ -19,6 +19,8 @@ declare function _pyproxy_getflags(ptr: number): number;
 
 declare function __pyproxy_contains(ptr: number, key: any): number;
 declare function __pyproxy_getitem(ptr: number, key: any): any;
+declare function __pyproxy_setitem(ptr: number, key: any, val: any): number;
+declare function __pyproxy_delitem(ptr: number, key: any): number;
 declare function __pyproxy_apply(
   ptr: number,
   jsargs: any[],
@@ -273,6 +275,7 @@ function getPyProxyClass(flags: number) {
     [HAS_CONTAINS, PyContainsMethods],
     [HAS_GET, PyGetItemMethods],
     [HAS_LENGTH, PyLengthMethods],
+    [HAS_SET, PySetItemMethods],
     [IS_CALLABLE, PyCallableMethods],
   ];
   for (let [feature_flag, methods] of FLAG_TYPE_PAIRS) {
@@ -504,7 +507,7 @@ interface PyProxyWithLength extends PyLengthMethods {}
 
 // Controlled by HAS_LENGTH, appears for any object with __len__ or sq_length
 // or mp_length methods
-export class PyLengthMethods {
+class PyLengthMethods {
   /**
    * The length of the object.
    */
@@ -525,6 +528,52 @@ export class PyLengthMethods {
   }
 }
 
+
+
+interface PyProxyWithSet extends PySetItemMethods {}
+// Controlled by HAS_SET, appears for any class with __setitem__, __delitem__,
+// mp_ass_subscript,  or sq_ass_item.
+class PySetItemMethods {
+  /**
+   * This translates to the Python code ``obj[key] = value``.
+   *
+   * @param key The key to set.
+   * @param value The value to set it to.
+   */
+  set(key: any, value: any) {
+    let ptrobj = _getPtr(this);
+    let err;
+    try {
+      Py_ENTER();
+      err = __pyproxy_setitem(ptrobj, key, value);
+      Py_EXIT();
+    } catch (e) {
+      API.fatal_error(e);
+    }
+    if (err === -1) {
+      _pythonexc2js();
+    }
+  }
+  /**
+   * This translates to the Python code ``del obj[key]``.
+   *
+   * @param key The key to delete.
+   */
+  delete(key: any) {
+    let ptrobj = _getPtr(this);
+    let err;
+    try {
+      Py_ENTER();
+      err = __pyproxy_delitem(ptrobj, key);
+      Py_EXIT();
+    } catch (e) {
+      API.fatal_error(e);
+    }
+    if (err === -1) {
+      _pythonexc2js();
+    }
+  }
+}
 
 function _adjustArgs(proxyobj: any, jsthis: any, jsargs: any[]): any[] {
   const { captureThis, boundArgs, boundThis, isBound } =
