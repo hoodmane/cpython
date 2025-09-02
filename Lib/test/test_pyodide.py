@@ -459,5 +459,16 @@ class PyProxyTest(TestCase):
 
     def test_pyproxy_length(self):
         f = run_js("(x) => x.length")
-        for x in [{"x", "y", "z"}, [1,2,3], (1, "x"), {"x":2}]:
+        for x in [{"x", "y", "z"}, [1, 2, 3], (1, "x"), {"x": 2}]:
             self.assertEqual(f(x), len(x))
+
+    def test_pyproxy_set_del(self):
+        d = {"x": 2}
+        run_js("(d) => d.set('y', 3)")(d)
+        self.assertEqual(d["x"], 2)
+        self.assertEqual(d["y"], 3)
+        run_js("(d) => d.set('x', 7)")(d)
+        self.assertEqual(d["x"], 7)
+        self.assertEqual(d["y"], 3)
+        run_js("(d) => d.delete('x')")(d)
+        self.assertNotIn("x", d)

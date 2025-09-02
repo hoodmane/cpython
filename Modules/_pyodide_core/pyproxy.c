@@ -7,6 +7,7 @@
 #define HAS_CONTAINS           (1 << 0)
 #define HAS_GET                (1 << 1)
 #define HAS_LENGTH             (1 << 2)
+#define HAS_SET                (1 << 3)
 #define IS_CALLABLE            (1 << 4)
 
 EM_JS_VAL(JsVal, pyproxy_new, (PyObject * ptrobj), {
@@ -69,6 +70,7 @@ type_getflags(PyTypeObject* obj_type)
     result |= HAS_GET;
   }
   SET_FLAG_IF(HAS_LENGTH, seq_proto->sq_length || map_proto->mp_length);
+  SET_FLAG_IF(HAS_SET, map_proto->mp_ass_subscript || seq_proto->sq_ass_item);
   SET_FLAG_IF(IS_CALLABLE, obj_type->tp_call);
   return result;
 
@@ -129,7 +131,44 @@ finally:
     return JS_ERROR;
   }
   return result;
-};
+}
+
+EMSCRIPTEN_KEEPALIVE int
+_pyproxy_setitem(PyObject* pyobj, JsVal jskey, JsVal jsval)
+{
+  bool success = false;
+  PyObject* pykey = NULL;
+  PyObject* pyval = NULL;
+
+  pykey = js2python(jskey);
+  FAIL_IF_NULL(pykey);
+  pyval = js2python(jsval);
+  FAIL_IF_NULL(pyval);
+  FAIL_IF_MINUS_ONE(PyObject_SetItem(pyobj, pykey, pyval));
+
+  success = true;
+finally:
+  Py_CLEAR(pykey);
+  Py_CLEAR(pyval);
+  return success ? 0 : -1;
+}
+
+EMSCRIPTEN_KEEPALIVE int
+_pyproxy_delitem(PyObject* pyobj, JsVal idkey)
+{
+  bool success = false;
+  PyObject* pykey = NULL;
+
+  pykey = js2python(idkey);
+  FAIL_IF_NULL(pykey);
+  FAIL_IF_MINUS_ONE(PyObject_DelItem(pyobj, pykey));
+
+  success = true;
+finally:
+  Py_CLEAR(pykey);
+  return success ? 0 : -1;
+}
+
 
 /**
  * This sets up a call to _PyObject_Vectorcall. It's a helper function for
