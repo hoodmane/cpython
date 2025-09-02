@@ -12,6 +12,8 @@
 #define HAS_LENGTH             (1 << 2)
 #define HAS_SET                (1 << 3)
 #define IS_CALLABLE            (1 << 4)
+#define IS_ITERABLE            (1 << 7)
+#define IS_ITERATOR            (1 << 8)
 
 EM_JS_VAL(JsVal, pyproxy_new, (PyObject * ptrobj), {
   return Module.pyproxy_new(ptrobj);
@@ -80,6 +82,15 @@ type_getflags(PyTypeObject* obj_type)
   SET_FLAG_IF(HAS_LENGTH, seq_proto->sq_length || map_proto->mp_length);
   SET_FLAG_IF(HAS_SET, map_proto->mp_ass_subscript || seq_proto->sq_ass_item);
   SET_FLAG_IF(IS_CALLABLE, obj_type->tp_call);
+  SET_FLAG_IF(IS_ITERABLE, obj_type->tp_iter || seq_proto->sq_item);
+
+  extern PyObject* _PyObject_NextNotImplemented(PyObject *);
+  if (obj_type->tp_iternext != NULL &&
+      obj_type->tp_iternext != &_PyObject_NextNotImplemented) {
+    result &= ~IS_ITERABLE;
+    result |= IS_ITERATOR;
+  }
+
   return result;
 
 #undef SET_FLAG_IF
@@ -431,3 +442,32 @@ finally:
   return result;
 }
 
+EM_JS(JsVal, _pyproxyGen_make_result, (bool done, JsVal value), {
+  return { done : !!done, value };
+})
+
+EMSCRIPTEN_KEEPALIVE JsVal
+_pyproxyGen_Send(PyObject* receiver, JsVal jsval)
+{
+  bool success = false;
+  PyObject* v = NULL;
+  PyObject* retval = NULL;
+
+  v = js2python(jsval);
+  FAIL_IF_NULL(v);
+  PySendResult status = PyIter_Send(receiver, v, &retval);
+  if (status == PYGEN_ERROR) {
+    FAIL();
+  }
+  JsVal result = python2js(retval);
+  FAIL_IF_JS_ERROR(result);
+
+  success = true;
+finally:
+  Py_CLEAR(v);
+  Py_CLEAR(retval);
+  if (!success) {
+    return JS_ERROR;
+  }
+  return _pyproxyGen_make_result(status == PYGEN_RETURN, result);
+}
