@@ -400,10 +400,10 @@ class PyProxyTest(TestCase):
         with self.assertRaisesRegex(JsError, "TypeError: callKwargs requires at least one argument"):
             run_js("(f) => f.callKwargs()")(f)
         
-        with self.assertRaisesRegex(TypeError, "f\(\) got an unexpected keyword argument 'z'"):
+        with self.assertRaisesRegex(TypeError, r"f\(\) got an unexpected keyword argument 'z'"):
             run_js("(f) => f.callKwargs({z : 6})")(f)
 
-        with self.assertRaisesRegex(TypeError, "f\(\) got multiple values for argument 'x'"):
+        with self.assertRaisesRegex(TypeError, r"f\(\) got multiple values for argument 'x'"):
             run_js("(f) => f.callKwargs(76, {x : 6})")(f)
 
     def test_pyproxy_this1(self):
@@ -425,5 +425,14 @@ class PyProxyTest(TestCase):
     def test_pyproxy_bind(self):
         self.skipTest("TODO")
     
-    
+
+    def test_pyproxy_contains(self):
+        d = {1, 'a'}
+        resjs = run_js("(x) => [x.has(1), x.has(2), x.has('a'), x.has('b')]")(d)
+        self.assertEqual(list(resjs), [True, False, True, False])
+
+        with self.assertRaisesRegex(TypeError, "unhashable type"):
+            run_js("(x) => x.has({})")(d)
+
+
 

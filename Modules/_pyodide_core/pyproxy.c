@@ -4,6 +4,7 @@
 #include "emscripten.h"
 #include "error_handling.h"
 
+#define HAS_CONTAINS           (1 << 0)
 #define IS_CALLABLE            (1 << 4)
 
 EM_JS_VAL(JsVal, pyproxy_new, (PyObject * ptrobj), {
@@ -47,12 +48,17 @@ _pyproxy_type(PyObject* ptrobj)
 static int
 type_getflags(PyTypeObject* obj_type)
 {
+  PySequenceMethods null_seq_proto = { 0 };
+  PySequenceMethods* seq_proto =
+    obj_type->tp_as_sequence ? obj_type->tp_as_sequence : &null_seq_proto;
+
 #define SET_FLAG_IF(flag, cond)                                                \
   if (cond) {                                                                  \
     result |= flag;                                                            \
   }
 
   int result = 0;
+  SET_FLAG_IF(HAS_CONTAINS, seq_proto->sq_contains);
   SET_FLAG_IF(IS_CALLABLE, obj_type->tp_call);
   return result;
 
@@ -69,6 +75,20 @@ pyproxy_getflags(PyObject* pyobj)
 #define Py_ENTER()
 #define Py_EXIT()
 
+EMSCRIPTEN_KEEPALIVE int
+_pyproxy_contains(PyObject* pyobj, JsVal idkey)
+{
+  PyObject* pykey = NULL;
+  int result = -1;
+
+  pykey = js2python(idkey);
+  FAIL_IF_NULL(pykey);
+  result = PySequence_Contains(pyobj, pykey);
+
+finally:
+  Py_CLEAR(pykey);
+  return result;
+}
 
 /**
  * This sets up a call to _PyObject_Vectorcall. It's a helper function for
