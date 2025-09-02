@@ -52,14 +52,10 @@ declare function __pyproxyGen_Send(ptr: number, arg: any): IteratorResult<any>
 // This also has the benefit that it makes intellisense happy.
 declare var HAS_CONTAINS: number;
 declare var HAS_GET: number;
-declare var HAS_HAS: number;
-declare var HAS_INCLUDES: number;
 declare var HAS_LENGTH: number;
 declare var HAS_SET: number;
-declare var IS_ARRAY: number;
 declare var IS_CALLABLE: number;
-declare var IS_ERROR: number;
-declare var IS_GENERATOR: number;
+declare var IS_DICT: number;
 declare var IS_ITERABLE: number;
 declare var IS_ITERATOR: number;
 
@@ -187,6 +183,7 @@ function pyproxy_new(
   if (flags === -1) {
     _pythonexc2js();
   }
+  const is_dict = flags & IS_DICT;
   const cls = getPyProxyClass(flags);
   let target: any;
   if (flags & IS_CALLABLE) {
@@ -234,7 +231,11 @@ function pyproxy_new(
     props,
   );
   let handlers;
-  handlers = PyProxyHandlers;
+  if (is_dict) {
+    handlers = PyProxyDictHandlers;
+  } else {
+    handlers = PyProxyHandlers;
+  }
   let proxy = new Proxy(target, handlers);
   if (!isAlias && gcRegister) {
     // we need to register only once for a set of aliases. we can't register the
@@ -582,6 +583,138 @@ const PyProxyHandlers = {
   },
 };
 
+
+
+const PyProxyDictHandlersSet = new Set([
+  "copy",
+  "constructor",
+  "$$flags",
+  "toString",
+  "destroy",
+]);
+
+interface PythonError {
+  type: string;
+}
+
+function isPythonError(e: any): e is PythonError {
+  return (
+    e &&
+    typeof e === "object" &&
+    e.constructor &&
+    e.constructor.name === "PythonError"
+  );
+}
+
+const PyProxyDictHandlers = {
+  isExtensible(): boolean {
+    return true;
+  },
+  has(jsobj: PyProxy, jskey: string | symbol): boolean {
+    if (PyContainsMethods.prototype.has.call(jsobj, jskey)) {
+      return true;
+    }
+    if (typeof jskey === "string" && /^[0-9]+$/.test(jskey)) {
+      return PyContainsMethods.prototype.has.call(jsobj, Number(jskey));
+    }
+    return false;
+  },
+  get(jsobj: PyProxy, jskey: string | symbol): any {
+    if (
+      typeof jskey === "symbol" ||
+      PyProxyDictHandlersSet.has(jskey)
+    ) {
+      // @ts-ignore
+      return Reflect.get(...arguments);
+    }
+    const result = PyGetItemMethods.prototype.get.call(jsobj, jskey);
+    if (
+      result !== undefined ||
+      PyContainsMethods.prototype.has.call(jsobj, jskey)
+    ) {
+      return result;
+    }
+    if (typeof jskey === "string" && /^[0-9]+$/.test(jskey)) {
+      return PyGetItemMethods.prototype.get.call(jsobj, Number(jskey));
+    }
+    // @ts-ignore
+    return Reflect.get(...arguments);
+  },
+  set(jsobj: PyProxy, jskey: string | symbol | number, jsval: any): boolean {
+    if (typeof jskey === "symbol") {
+      return false;
+    }
+    if (
+      !PyContainsMethods.prototype.has.call(jsobj, jskey) &&
+      typeof jskey === "string" &&
+      /^[0-9]+$/.test(jskey)
+    ) {
+      jskey = Number(jskey);
+    }
+    try {
+      PySetItemMethods.prototype.set.call(jsobj, jskey, jsval);
+      return true;
+    } catch (e) {
+      if (isPythonError(e) && e.type === "KeyError") {
+        return false;
+      }
+      throw e;
+    }
+  },
+  deleteProperty(jsobj: PyProxy, jskey: string | symbol | number): boolean {
+    if (typeof jskey === "symbol") {
+      return false;
+    }
+    if (
+      !PyContainsMethods.prototype.has.call(jsobj, jskey) &&
+      typeof jskey === "string" &&
+      /^[0-9]+$/.test(jskey)
+    ) {
+      jskey = Number(jskey);
+    }
+    try {
+      PySetItemMethods.prototype.delete.call(jsobj, jskey);
+      return true;
+    } catch (e) {
+      if (isPythonError(e) && e.type === "KeyError") {
+        return false;
+      }
+      throw e;
+    }
+  },
+  getOwnPropertyDescriptor(jsobj: PyProxy, prop: any) {
+    if (!PyProxyDictHandlers.has(jsobj, prop)) {
+      return undefined;
+    }
+    const value = PyProxyDictHandlers.get(jsobj, prop);
+    return {
+      configurable: true,
+      enumerable: true,
+      value,
+      writable: true,
+    };
+  },
+  ownKeys(jsobj: PyProxy): (string | symbol)[] {
+    const result: Set<string | symbol> = new Set();
+    dictOwnKeysHelper(jsobj, result);
+    return Array.from(result);
+  },
+};
+
+function dictOwnKeysHelper(jsobj: PyProxy, result: Set<string | symbol>): void {
+  const dictKeysView: Iterable<any> & PyProxy = PyProxyHandlers.get(
+    jsobj,
+    "keys",
+  )();
+  for (const key of dictKeysView) {
+    if (typeof key === "string") {
+      result.add(key);
+    } else if (typeof key === "number") {
+      result.add(key.toString());
+    }
+  }
+  dictKeysView.destroy();
+}
 
 // Another layer of boilerplate. The PyProxyHandlers have some annoying logic to
 // deal with straining out the spurious "Function" properties "prototype",
