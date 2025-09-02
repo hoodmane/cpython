@@ -372,6 +372,19 @@ class PyProxyTest(TestCase):
         x = [1, 2, 3]
         self.assertIs(run_js("(x) => x")(x), x)
 
+    def test_pyproxy_getattr(self):
+        class T:
+            a = 7
+            b = "zz"
+
+        self.assertEqual(run_js("(o) => o.a")(T), 7)
+        self.assertEqual(run_js("(o) => o.b")(T), "zz")
+        self.assertEqual(run_js("(o) => o.c")(T), None)
+        run_js("(o) => {delete o.a}")(T)
+        self.assertFalse(hasattr(T, "a"))
+        run_js("(o) => {o.a = 72}")(T)
+        self.assertTrue(T.a == 72)
+
     def test_pyproxy_call_simple(self):
         def f(x):
             return x * x + 7
