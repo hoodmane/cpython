@@ -69,6 +69,7 @@ _pyproxy_type(PyObject* ptrobj)
 
 static PyObject* Generator;
 static PyObject* Sequence;
+static PyObject* MutableSequence;
 
 static int
 type_getflags(PyTypeObject* obj_type)
@@ -110,8 +111,13 @@ type_getflags(PyTypeObject* obj_type)
   // of these settings is missing, can skip the IsInstance check.
   if (((~result) & (HAS_LENGTH | HAS_GET | HAS_CONTAINS | IS_ITERABLE)) == 0) {
     int is_sequence = PyObject_IsSubclass((PyObject*)obj_type, Sequence);
-
+    FAIL_IF_MINUS_ONE(is_sequence);
+    int is_mutable_sequence =
+      is_sequence ? PyObject_IsSubclass((PyObject*)obj_type, MutableSequence)
+                  : 0;
+    FAIL_IF_MINUS_ONE(is_mutable_sequence);
     SET_FLAG_IF(IS_SEQUENCE, is_sequence);
+    SET_FLAG_IF(IS_MUTABLE_SEQUENCE, is_mutable_sequence);
   }
 
   return result;
@@ -608,10 +614,77 @@ pyproxy_init(PyObject* core)
   Generator = PyObject_GetAttrString(collections_abc, "Generator");
   FAIL_IF_NULL(Generator);
   Sequence = PyObject_GetAttrString(collections_abc, "Sequence");
-  FAIL_IF_NULL(Generator);
+  FAIL_IF_NULL(Sequence);
+  MutableSequence = PyObject_GetAttrString(collections_abc, "MutableSequence");
+  FAIL_IF_NULL(MutableSequence);
   
   success = true;
 finally:
   Py_CLEAR(collections_abc);
   return success ? 0 : -1;
 }
+
+
+// EMSCRIPTEN_KEEPALIVE JsVal
+// _pyproxy_slice_assign(PyObject* pyobj,
+//                       Py_ssize_t start,
+//                       Py_ssize_t stop,
+//                       JsVal val)
+// {
+//   PyObject* pyval = NULL;
+//   PyObject* pyresult = NULL;
+//   JsVal jsresult = JS_ERROR;
+
+//   pyval = js2python(val);
+
+//   Py_ssize_t len = PySequence_Length(pyobj);
+//   if (len <= stop) {
+//     stop = len;
+//   }
+//   pyresult = PySequence_GetSlice(pyobj, start, stop);
+//   FAIL_IF_NULL(pyresult);
+//   FAIL_IF_MINUS_ONE(PySequence_SetSlice(pyobj, start, stop, pyval));
+//   JsVal proxies = JsvArray_New();
+//   jsresult = python2js_with_depth(pyresult, 1, proxies);
+
+// finally:
+//   Py_CLEAR(pyresult);
+//   Py_CLEAR(pyval);
+//   return jsresult;
+// }
+
+EMSCRIPTEN_KEEPALIVE JsVal
+_pyproxy_pop(PyObject* pyobj, bool pop_start)
+{
+  PyObject* idx = NULL;
+  PyObject* pyresult = NULL;
+  PyObject* pop = NULL;
+  JsVal jsresult = JS_ERROR;
+  
+  pop = PyUnicode_FromString("pop");
+  FAIL_IF_NULL(pop);
+  if (pop_start) {
+    idx = PyLong_FromLong(0);
+    FAIL_IF_NULL(idx);
+    pyresult = PyObject_CallMethodOneArg(pyobj, pop, idx);
+  } else {
+    pyresult = PyObject_CallMethodNoArgs(pyobj, pop);
+  }
+  if (pyresult != NULL) {
+    jsresult = python2js(pyresult);
+    FAIL_IF_JS_ERROR(jsresult);
+  } else {
+    if (PyErr_ExceptionMatches(PyExc_IndexError)) {
+      PyErr_Clear();
+      jsresult = Jsv_undefined;
+    } else {
+      FAIL();
+    }
+  }
+finally:
+  Py_CLEAR(idx);
+  Py_CLEAR(pop);
+  Py_CLEAR(pyresult);
+  return jsresult;
+}
+
