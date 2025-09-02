@@ -182,7 +182,7 @@ class JsProxyTest(TestCase):
         except JsError as e:
             err = e
         else:
-            assert False
+            self.fail()
 
         self.assertEqual(err.name, "TypeError")
         self.assertEqual(err.message, "hi!")
@@ -338,14 +338,14 @@ class JsProxyTest(TestCase):
         )
 
         g = f()
-        assert next(g) == 1
-        assert g.throw(TypeError("hi")) == 2
+        self.assertEqual(next(g), 1)
+        self.assertEqual(g.throw(TypeError("hi")), 2)
         with self.assertRaises(TypeError, msg="hi"):
             next(g)
 
         g = f()
-        assert next(g) == 1
-        assert g.throw(TypeError, "hi") == 2
+        self.assertEqual(next(g), 1)
+        self.assertEqual(g.throw(TypeError, "hi"), 2)
         with self.assertRaises(TypeError, msg="hi"):
             next(g)
 
@@ -359,7 +359,7 @@ class JsProxyTest(TestCase):
             """
         )
         g = f()
-        assert next(g) == 1
+        self.assertEqual(next(g), 1)
         g.close()
 
 
@@ -884,3 +884,213 @@ class PyProxyTest(TestCase):
         func = run_js("(a, k) => a[k](element => element > 10)")
         for k in ["find", "findIndex"]:
             self.assertEqual(func(a, k), func(ajs, k))
+
+    def test_pyproxy_of_list_sort(self):
+        self.skipTest("TODO: Implement sort")
+        # from
+        # https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array/sort#creating_displaying_and_sorting_an_array
+        # Yes, JavaScript sort is weird.
+
+        stringArray = ["Blue", "Humpback", "Beluga"]
+        numberArray = [40, None, 1, 5, 200]
+        numericStringArray = ["80", "9", "700"]
+        mixedNumericArray = ["80", "9", "700", 40, 1, 5, 200]
+
+        run_js("globalThis.compareNumbers = (a, b) => a - b")
+
+        self.assertEqual(
+            run_js("((a) => a.join())")(stringArray), "Blue,Humpback,Beluga"
+        )
+        self.assertIs(run_js("((a) => a.sort())")(stringArray), stringArray)
+        self.assertEqual(stringArray, ["Beluga", "Blue", "Humpback"])
+
+        self.assertEqual(
+            run_js("((a) => a.join())")(numberArray), "40,,1,5,200"
+        )
+        self.assertEqual(
+            run_js("((a) => a.sort())")(numberArray), [1, 200, 40, 5, None]
+        )
+        self.assertEqual(
+            run_js("((a) => a.sort(compareNumbers))")(numberArray),
+            [
+                1,
+                5,
+                40,
+                200,
+                None,
+            ],
+        )
+
+        self.assertEqual(
+            run_js("((a) => a.join())")(numericStringArray), "80,9,700"
+        )
+        self.assertEqual(
+            run_js("((a) => a.sort())")(numericStringArray), ["700", "80", "9"]
+        )
+        self.assertEqual(
+            run_js("((a) => a.sort(compareNumbers))")(numericStringArray),
+            [
+                "9",
+                "80",
+                "700",
+            ],
+        )
+
+        self.assertEqual(
+            run_js("((a) => a.join())")(mixedNumericArray),
+            "80,9,700,40,1,5,200",
+        )
+        self.assertEqual(
+            run_js("((a) => a.sort())")(mixedNumericArray),
+            [
+                1,
+                200,
+                40,
+                5,
+                "700",
+                "80",
+                "9",
+            ],
+        )
+        self.assertEqual(
+            run_js("((a) => a.sort(compareNumbers))")(mixedNumericArray),
+            [
+                1,
+                5,
+                "9",
+                40,
+                "80",
+                200,
+                "700",
+            ],
+        )
+
+    def test_pyproxy_of_list_reverse(self):
+        a = [3, 2, 4, 1, 5]
+        ajs = Array.from_(a)
+
+        func = run_js("((a) => a.reverse())")
+        self.assertIs(func(a), a)
+        func(ajs)
+        self.assertEqual(list(ajs), a)
+
+    def test_pyproxy_of_list_splice(self):
+        self.skipTest("TODO: implement splice")
+        for func in [
+            'splice(2, 0, "drum")',
+            'splice(2, 0, "drum", "guitar")',
+            "splice(3, 1)",
+            'splice(2, 1, "trumpet")',
+            'splice(0, 2, "parrot", "anemone", "blue")',
+            "splice(2, 2)",
+            "splice(-2, 1)",
+            "splice(2)",
+            "splice()",
+        ]:
+            a = ["angel", "clown", "mandarin", "sturgeon"]
+            ajs = Array.from_(a)
+
+            func = run_js(f"((a) => a.{func})")
+            self.assertEqual(func(a).to_py(), func(ajs).to_py())
+            self.assertEqual(a, list(ajs))
+
+    def test_pyproxy_of_list_push(self):
+        a = [4, 5, 6]
+        ajs = Array.from_(a)
+
+        func = run_js("(a) => a.push(1, 2, 3)")
+        self.assertEqual(func(a), func(ajs))
+        self.assertEqual(list(ajs), a)
+
+        a = [4, 5, 6]
+        ajs = Array.from_(a)
+        func = run_js(
+            """
+            (a) => {
+                a.push(1);
+                a.push(2);
+                return a.push(3);
+            }
+            """
+        )
+        self.assertEqual(func(a), func(ajs))
+        self.assertEqual(list(ajs), a)
+
+    def test_pyproxy_of_list_pop(self):
+        func = run_js("((a) => a.pop())")
+
+        for a in [
+            [],
+            ["broccoli", "cauliflower", "cabbage", "kale", "tomato"],
+        ]:
+            ajs = Array.from_(a)
+            self.assertEqual(func(a), func(ajs))
+            self.assertEqual(list(ajs), a)
+
+    def test_pyproxy_of_list_shift(self):
+        a = ["Andrew", "Tyrone", "Paul", "Maria", "Gayatri"]
+        ajs = Array.from_(a)
+
+        func = run_js(
+            """
+            (a) => {
+                let result = [];
+                while (typeof (i = a.shift()) !== "undefined") {
+                    result.push(i);
+                }
+                return result;
+            }
+            """
+        )
+        self.assertEqual(list(func(a)), list(func(ajs)))
+        self.assertEqual(a, [])
+        self.assertEqual(list(ajs), [])
+
+    def test_pyproxy_of_list_unshift(self):
+        a = [4, 5, 6]
+        ajs = Array.from_(a)
+
+        func = run_js("(a) => a.unshift(1, 2, 3)")
+        self.assertEqual(func(a), func(ajs))
+        self.assertEqual(list(ajs), a)
+
+        a = [4, 5, 6]
+        ajs = Array.from_(a)
+        func = run_js(
+            """
+            (a) => {
+                a.unshift(1);
+                a.unshift(2);
+                return a.unshift(3);
+            }
+            """
+        )
+        self.assertEqual(func(a), func(ajs))
+        self.assertEqual(list(ajs), a)
+
+    def test_pyproxy_of_list_copyWithin(self):
+        for func in [
+            "copyWithin(-2)",
+            "copyWithin(0, 3)",
+            "copyWithin(0, 3, 4)",
+            "copyWithin(-2, -3, -1)",
+        ]:
+            a = ["a", "b", "c", "d", "e"]
+            ajs = Array.from_(a)
+            func = run_js(f"(a) => a.{func}")
+            self.assertIs(func(a), a)
+            func(ajs)
+            self.assertEqual(a, list(ajs))
+
+    def test_pyproxy_of_list_fill(self):
+        for func in [
+            "fill(0, 2, 4)",
+            "fill(5, 1)",
+            "fill(6)",
+        ]:
+            a = ["a", "b", "c", "d", "e"]
+            ajs = Array.from_(a)
+            func = run_js(f"(a) => a.{func}")
+            self.assertIs(func(a), a)
+            func(ajs)
+            self.assertEqual(a, list(ajs))

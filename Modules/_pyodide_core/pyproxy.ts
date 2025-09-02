@@ -38,6 +38,8 @@ declare function __pyproxy_iter_next(ptr: number): any;
 declare function __pyproxyGen_Send(ptr: number, arg: any): IteratorResult<any>;
 declare function __pyproxyGen_return(ptr: number, arg: any): IteratorResult<any>;
 declare function __pyproxyGen_throw(ptr: number, arg: any): IteratorResult<any>;
+declare function __pyproxy_pop(ptr: number, pop_start: boolean): number;
+declare function __pyproxy_slice_assign(ptr: number, start: number, stop: number, value: any): any;
 
 // pyodide-skip
 
@@ -62,6 +64,7 @@ declare var IS_GENERATOR: number;
 declare var IS_ITERABLE: number;
 declare var IS_ITERATOR: number;
 declare var IS_SEQUENCE: number;
+declare var IS_MUTABLE_SEQUENCE: number;
 
 declare function DEREF_U32(ptr: number, offset: number): number;
 declare function Py_ENTER(): void;
@@ -312,6 +315,7 @@ function getPyProxyClass(flags: number) {
     [IS_ITERABLE, PyIterableMethods],
     [IS_ITERATOR, PyIteratorMethods],
     [IS_SEQUENCE, PySequenceMethods],
+    [IS_MUTABLE_SEQUENCE, PyMutableSequenceMethods],
   ];
   for (let [feature_flag, methods] of FLAG_TYPE_PAIRS) {
     if (flags & feature_flag) {
@@ -1493,18 +1497,18 @@ class PyIteratorMethods {
  * A :js:class:`~pyodide.ffi.PyProxy` whose proxied Python object is an
  * :py:class:`~collections.abc.Sequence` (i.e., a :py:class:`list`)
  */
-export class PySequence extends PyProxy {
+class PySequence extends PyProxy {
   /** @private */
   static [Symbol.hasInstance](obj: any): obj is PyProxy {
     return API.isPyProxy(obj) && !!(_getFlags(obj) & IS_SEQUENCE);
   }
 }
 
-export interface PySequence extends PySequenceMethods {}
+interface PySequence extends PySequenceMethods {}
 
 // Missing:
 // flatMap, flat,
-export class PySequenceMethods {
+class PySequenceMethods {
   /** @hidden */
   get [Symbol.isConcatSpreadable]() {
     return true;
@@ -1760,5 +1764,233 @@ export class PySequenceMethods {
 
   toJSON(this: any) {
     return Array.from(this);
+  }
+}
+
+
+/**
+ * A :js:class:`~pyodide.ffi.PyProxy` whose proxied Python object is an
+ * :py:class:`~collections.abc.MutableSequence` (i.e., a :py:class:`list`)
+ */
+class PyMutableSequence extends PyProxy {
+  /** @private */
+  static [Symbol.hasInstance](obj: any): obj is PyProxy {
+    return API.isPyProxy(obj) && !!(_getFlags(obj) & IS_SEQUENCE);
+  }
+}
+
+interface PyMutableSequence extends PyMutableSequenceMethods {}
+
+
+// JS default comparison is to convert to strings and compare lexicographically
+function defaultCompareFunc(a: any, b: any): number {
+  const astr = a.toString();
+  const bstr = b.toString();
+  if (astr === bstr) {
+    return 0;
+  }
+  if (astr < bstr) {
+    return -1;
+  }
+  return 1;
+}
+
+
+
+// function python_slice_assign(
+//   jsobj: any,
+//   start: number,
+//   stop: number,
+//   val: any,
+// ): any[] {
+//   let ptrobj = _getPtr(jsobj);
+//   let res;
+//   try {
+//     Py_ENTER();
+//     res = __pyproxy_slice_assign(ptrobj, start, stop, val);
+//     Py_EXIT();
+//   } catch (e) {
+//     API.fatal_error(e);
+//   }
+//   if (res === Module.error) {
+//     _pythonexc2js();
+//   }
+//   return res;
+// }
+
+function python_pop(jsobj: any, pop_start: boolean): any {
+  let ptrobj = _getPtr(jsobj);
+  let res;
+  try {
+    Py_ENTER();
+    res = __pyproxy_pop(ptrobj, pop_start);
+    Py_EXIT();
+  } catch (e) {
+    API.fatal_error(e);
+  }
+  if (res === Module.error) {
+    _pythonexc2js();
+  }
+  return res;
+}
+
+class PyMutableSequenceMethods {
+  /**
+   * The :js:meth:`Array.reverse` method reverses a :js:class:`PyMutableSequence` in
+   * place.
+   * @returns A reference to the same :js:class:`PyMutableSequence`
+   */
+  reverse(): PyMutableSequence {
+    // @ts-ignore
+    this.$reverse();
+    // @ts-ignore
+    return this;
+  }
+  // TODO: make sort() work
+  // /**
+  //  * The :js:meth:`Array.sort` method sorts the elements of a
+  //  * :js:class:`PyMutableSequence` in place.
+  //  * @param compareFn A function that defines the sort order.
+  //  * @returns A reference to the same :js:class:`PyMutableSequence`
+  //  */
+  // sort(compareFn?: (a: any, b: any) => number): PyMutableSequence {
+  //   // Copy the behavior of sort described here:
+  //   // https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array/sort#creating_displaying_and_sorting_an_array
+  //   // Yes JS sort is weird.
+
+  //   // We need this adaptor to convert from js comparison function to Python key
+  //   // function.
+  //   const functools = API.public_api.pyimport("functools");
+  //   const cmp_to_key = functools.cmp_to_key;
+  //   let cf: (a: any, b: any) => number;
+  //   if (compareFn) {
+  //     cf = compareFn;
+  //   } else {
+  //     cf = defaultCompareFunc;
+  //   }
+  //   // spec says arguments to compareFunc "Will never be undefined."
+  //   // and undefined values should get sorted to end of list.
+  //   // Make wrapper to ensure this
+  //   function wrapper(a: any, b: any) {
+  //     if (a === undefined && b === undefined) {
+  //       return 0;
+  //     }
+  //     if (a === undefined) {
+  //       return 1;
+  //     }
+  //     if (b === undefined) {
+  //       return -1;
+  //     }
+  //     return cf(a, b);
+  //   }
+  //   let key;
+  //   try {
+  //     key = cmp_to_key(wrapper);
+  //     // @ts-ignore
+  //     this.$sort.callKwargs({ key });
+  //   } finally {
+  //     key?.destroy();
+  //     cmp_to_key.destroy();
+  //     functools.destroy();
+  //   }
+  //   // @ts-ignore
+  //   return this;
+  // }
+  // TODO: make slice_assign work
+  // /**
+  //  * The :js:meth:`Array.splice` method changes the contents of a
+  //  * :js:class:`PyMutableSequence` by removing or replacing existing elements and/or
+  //  * adding new elements in place.
+  //  * @param start Zero-based index at which to start changing the
+  //  * :js:class:`PyMutableSequence`.
+  //  * @param deleteCount An integer indicating the number of elements in the
+  //  * :js:class:`PyMutableSequence` to remove from ``start``.
+  //  * @param items The elements to add to the :js:class:`PyMutableSequence`, beginning from
+  //  * ``start``.
+  //  * @returns An array containing the deleted elements.
+  //  */
+  // splice(start: number, deleteCount?: number, ...items: any[]) {
+  //   if (deleteCount === undefined) {
+  //     // Max ssize
+  //     deleteCount = 1 << (31 - 1);
+  //   }
+  //   return python_slice_assign(this, start, start + deleteCount, items);
+  // }
+  /**
+   * The :js:meth:`Array.push` method adds the specified elements to the end of
+   * a :js:class:`PyMutableSequence`.
+   * @param elts The element(s) to add to the end of the :js:class:`PyMutableSequence`.
+   * @returns The new length property of the object upon which the method was
+   * called.
+   */
+  push(...elts: any[]) {
+    for (let elt of elts) {
+      // @ts-ignore
+      this.append(elt);
+    }
+    // @ts-ignore
+    return this.length;
+  }
+  /**
+   * The :js:meth:`Array.pop` method removes the last element from a
+   * :js:class:`PyMutableSequence`.
+   * @returns The removed element from the :js:class:`PyMutableSequence`; undefined if the
+   * :js:class:`PyMutableSequence` is empty.
+   */
+  pop() {
+    return python_pop(this, false);
+  }
+  /**
+   * The :js:meth:`Array.shift` method removes the first element from a
+   * :js:class:`PyMutableSequence`.
+   * @returns The removed element from the :js:class:`PyMutableSequence`; undefined if the
+   * :js:class:`PyMutableSequence` is empty.
+   */
+  shift() {
+    return python_pop(this, true);
+  }
+  /**
+   * The :js:meth:`Array.unshift` method adds the specified elements to the
+   * beginning of a :js:class:`PyMutableSequence`.
+   * @param elts The elements to add to the front of the :js:class:`PyMutableSequence`.
+   * @returns The new length of the :js:class:`PyMutableSequence`.
+   */
+  unshift(...elts: any[]) {
+    elts.forEach((elt, idx) => {
+      // @ts-ignore
+      this.insert(idx, elt);
+    });
+    // @ts-ignore
+    return this.length;
+  }
+  /**
+   * The :js:meth:`Array.copyWithin` method shallow copies part of a
+   * :js:class:`PyMutableSequence` to another location in the same :js:class:`PyMutableSequence`
+   * without modifying its length.
+   * @param target Zero-based index at which to copy the sequence to.
+   * @param start Zero-based index at which to start copying elements from.
+   * @param end Zero-based index at which to end copying elements from.
+   * @returns The modified :js:class:`PyMutableSequence`.
+   */
+  copyWithin(target: number, start?: number, end?: number): any;
+  copyWithin(...args: number[]): any {
+    // @ts-ignore
+    Array.prototype.copyWithin.apply(this, args);
+    return this;
+  }
+  /**
+   * The :js:meth:`Array.fill` method changes all elements in an array to a
+   * static value, from a start index to an end index.
+   * @param value Value to fill the array with.
+   * @param start Zero-based index at which to start filling. Default 0.
+   * @param end Zero-based index at which to end filling. Default
+   * ``list.length``.
+   * @returns
+   */
+  fill(value: any, start?: number, end?: number): any;
+  fill(...args: any[]): any {
+    // @ts-ignore
+    Array.prototype.fill.apply(this, args);
+    return this;
   }
 }
