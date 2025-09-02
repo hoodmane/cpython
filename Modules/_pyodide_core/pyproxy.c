@@ -13,8 +13,12 @@
 #define HAS_SET                (1 << 3)
 #define IS_CALLABLE            (1 << 4)
 #define IS_DICT                (1 << 5)
+#define IS_GENERATOR           (1 << 6)
 #define IS_ITERABLE            (1 << 7)
 #define IS_ITERATOR            (1 << 8)
+
+PyAPI_FUNC(int) _PyGen_FetchStopIterationValue(PyObject **);
+
 
 EM_JS_VAL(JsVal, pyproxy_new, (PyObject * ptrobj), {
   return Module.pyproxy_new(ptrobj);
@@ -59,6 +63,8 @@ _pyproxy_type(PyObject* ptrobj)
   return JsvUTF8ToString(Py_TYPE(ptrobj)->tp_name);
 }
 
+PyObject* Generator;
+
 static int
 type_getflags(PyTypeObject* obj_type)
 {
@@ -84,6 +90,9 @@ type_getflags(PyTypeObject* obj_type)
   SET_FLAG_IF(HAS_SET, map_proto->mp_ass_subscript || seq_proto->sq_ass_item);
   SET_FLAG_IF(IS_CALLABLE, obj_type->tp_call);
   SET_FLAG_IF(IS_DICT, Py_Is(obj_type, &PyDict_Type));
+  int isgen = PyObject_IsSubclass((PyObject*)obj_type, Generator);
+  FAIL_IF_MINUS_ONE(isgen);
+  SET_FLAG_IF(IS_GENERATOR, isgen);
   SET_FLAG_IF(IS_ITERABLE, obj_type->tp_iter || seq_proto->sq_item);
 
   extern PyObject* _PyObject_NextNotImplemented(PyObject *);
@@ -94,6 +103,8 @@ type_getflags(PyTypeObject* obj_type)
   }
 
   return result;
+finally:
+  return -1;
 
 #undef SET_FLAG_IF
 }
@@ -484,4 +495,109 @@ finally:
     return JS_ERROR;
   }
   return _pyproxyGen_make_result(status == PYGEN_RETURN, result);
+}
+
+
+EMSCRIPTEN_KEEPALIVE
+JsVal
+_pyproxyGen_return(PyObject* receiver, JsVal jsval)
+{
+  bool success = false;
+  PySendResult status = PYGEN_ERROR;
+  PyObject* throw = NULL;
+  PyObject* pyresult = NULL;
+
+  JsVal result;
+
+  throw = PyUnicode_FromString("throw");
+  FAIL_IF_NULL(throw);
+  // Throw GeneratorExit into generator
+  pyresult =
+    PyObject_CallMethodOneArg(receiver, throw, PyExc_GeneratorExit);
+  if (pyresult == NULL) {
+    if (PyErr_ExceptionMatches(PyExc_GeneratorExit)) {
+      // If GeneratorExit comes back out, return original value.
+      PyErr_Clear();
+      status = PYGEN_RETURN;
+      result = jsval;
+      success = true;
+      goto finally;
+    }
+    //
+    FAIL_IF_MINUS_ONE(_PyGen_FetchStopIterationValue(&pyresult));
+    status = PYGEN_RETURN;
+  } else {
+    status = PYGEN_NEXT;
+  }
+  result = python2js(pyresult);
+  FAIL_IF_JS_ERROR(result);
+  success = true;
+finally:
+  Py_CLEAR(throw);
+  Py_CLEAR(pyresult);
+  if (!success) {
+    return JS_ERROR;
+  }
+  return _pyproxyGen_make_result(status == PYGEN_RETURN, result);
+}
+
+EMSCRIPTEN_KEEPALIVE JsVal
+_pyproxyGen_throw(PyObject* receiver, JsVal jsval)
+{
+  bool success = false;
+  PyObject* throw = NULL;
+  PyObject* pyvalue = NULL;
+  PyObject* pyresult = NULL;
+  PySendResult status = PYGEN_ERROR;
+
+  JsVal result;
+
+  pyvalue = js2python(jsval);
+  FAIL_IF_NULL(pyvalue);
+  if (!PyExceptionInstance_Check(pyvalue)) {
+    /* Not something you can raise.  throw() fails. */
+    PyErr_Format(PyExc_TypeError,
+                 "exceptions must be classes or instances "
+                 "deriving from BaseException, not %s",
+                 Py_TYPE(pyvalue)->tp_name);
+    FAIL();
+  }
+  throw = PyUnicode_FromString("throw");
+  FAIL_IF_NULL(throw);
+  pyresult = PyObject_CallMethodOneArg(receiver, throw, pyvalue);
+  if (pyresult == NULL) {
+    FAIL_IF_MINUS_ONE(_PyGen_FetchStopIterationValue(&pyresult));
+    status = PYGEN_RETURN;
+  } else {
+    status = PYGEN_NEXT;
+  }
+  result = python2js(pyresult);
+  FAIL_IF_JS_ERROR(result);
+  success = true;
+finally:
+  Py_CLEAR(pyresult);
+  Py_CLEAR(pyvalue);
+  Py_CLEAR(throw);
+  if (!success) {
+    return JS_ERROR;
+  }
+  return _pyproxyGen_make_result(status == PYGEN_RETURN, result);
+}
+
+int
+pyproxy_init(PyObject* core)
+{
+  bool success = false;
+
+  PyObject* collections_abc = NULL;
+
+  collections_abc = PyImport_ImportModule("collections.abc");
+  FAIL_IF_NULL(collections_abc);
+  Generator = PyObject_GetAttrString(collections_abc, "Generator");
+  FAIL_IF_NULL(Generator);
+  
+  success = true;
+finally:
+  Py_CLEAR(collections_abc);
+  return success ? 0 : -1;
 }

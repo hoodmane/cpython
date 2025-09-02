@@ -55,6 +55,9 @@ _pyodide_core_bad_hiwire_get_impl(PyObject *module, int select)
 int
 jsproxy_init(PyObject *m);
 
+int
+pyproxy_init(PyObject *m);
+
 PyObject* py_jsnull;
 
 static int
@@ -69,6 +72,7 @@ _pyodide_core_exec(PyObject *m)
   Py_CLEAR(_pyodide);
 
   FAIL_IF_MINUS_ONE(jsproxy_init(m));
+  FAIL_IF_MINUS_ONE(pyproxy_init(m));
   JsVal eval = _pyodide_core_get_eval();
   FAIL_IF_JS_ERROR(eval);
   FAIL_IF_MINUS_ONE(

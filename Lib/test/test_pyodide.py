@@ -544,3 +544,135 @@ class PyProxyTest(TestCase):
         self.assertEqual(res[1].value, 21)
         self.assertEqual(res[2].value, 39)
         self.assertEqual(res[3].value, None)
+
+    def test_gen_return(self):
+        def g1():
+            yield 1
+            yield 2
+
+        p = run_js(
+            """
+            (g) => {
+                let r = [];
+                r.push(g.next());
+                r.push(g.return(5));
+                return r;
+            }
+        """
+        )(g1())
+        self.assertFalse(p[0].done)
+        self.assertTrue(p[1].done)
+        self.assertEqual(p[0].value, 1)
+        self.assertEqual(p[1].value, 5)
+
+        def g2():
+            try:
+                yield 1
+                yield 2
+            finally:
+                yield 3
+                return 5
+
+        p = run_js(
+            """
+            (g) => {
+                let r = [];
+                r.push(g.next());
+                r.push(g.return(5));
+                r.push(g.next());
+                return r;
+            }
+        """
+        )(g2())
+        self.assertFalse(p[0].done)
+        self.assertFalse(p[1].done)
+        self.assertTrue(p[2].done)
+        self.assertEqual(p[0].value, 1)
+        self.assertEqual(p[1].value, 3)
+        self.assertEqual(p[2].value, 5)
+
+        def g3():
+            try:
+                yield 1
+                yield 2
+            finally:
+                return 3
+
+        p = run_js(
+            """
+            (g) => {
+                let r = [];
+                r.push(g.next());
+                r.push(g.return(5));
+                return r;
+            }
+        """
+        )(g3())
+        self.assertFalse(p[0].done)
+        self.assertTrue(p[1].done)
+        self.assertEqual(p[0].value, 1)
+        self.assertEqual(p[1].value, 3)
+
+    def test_gen_throw(self):
+        def g1():
+            yield 1
+            yield 2
+
+        p = run_js(
+            """
+            (g) => {
+                g.next();
+                g.throw(new TypeError('hi'));
+            }
+        """
+        )
+        with self.assertRaisesRegex(JsError, "hi"):
+            p(g1())
+
+        def g2():
+            try:
+                yield 1
+                yield 2
+            finally:
+                yield 3
+                return 5
+
+        p = run_js(
+            """
+            (g) => {
+                let r = [];
+                r.push(g.next());
+                r.push(g.throw(new TypeError('hi')));
+                r.push(g.next());
+                return r;
+            }
+        """
+        )(g2())
+        self.assertFalse(p[0].done)
+        self.assertFalse(p[1].done)
+        self.assertTrue(p[2].done)
+        self.assertEqual(p[0].value, 1)
+        self.assertEqual(p[1].value, 3)
+        self.assertEqual(p[2].value, 5)
+
+        def g3():
+            try:
+                yield 1
+                yield 2
+            finally:
+                return 3
+
+        p = run_js(
+            """
+            (g) => {
+                let r = [];
+                r.push(g.next());
+                r.push(g.throw(new TypeError('hi')));
+                return r;
+            }
+        """
+        )(g3())
+        self.assertFalse(p[0].done)
+        self.assertTrue(p[1].done)
+        self.assertEqual(p[0].value, 1)
+        self.assertEqual(p[1].value, 3)
