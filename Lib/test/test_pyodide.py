@@ -397,6 +397,34 @@ class PyProxyTest(TestCase):
         )
         self.assertGreaterEqual(l, {"a", "b"})
 
+    def test_pyproxy_dict(self):
+        d = {"a": 7, "b": 2, 3: "99"}
+        l = set(
+            x
+            for x in run_js("(o) => Reflect.ownKeys(o)")(d)
+            if isinstance(x, str)
+        )
+        self.assertGreaterEqual(l, {"a", "b", "3"})
+
+        self.assertEqual(run_js("(o) => o.get('a')")(d), 7)
+        self.assertEqual(run_js("(o) => o.get(3)")(d), "99")
+        self.assertEqual(run_js("(o) => o.get('3')")(d), None)
+        self.assertEqual(run_js("(o) => o.a")(d), 7)
+        self.assertEqual(run_js("(o) => o['a']")(d), 7)
+        self.assertEqual(run_js("(o) => o[3]")(d), "99")
+
+        run_js("(o) => delete o[3]")(d)
+        self.assertNotIn(3, d)
+        run_js("(o) => o.delete('b')")(d)
+        self.assertNotIn("b", d)
+        run_js("(o) => o.z = 9")(d)
+        self.assertEqual(d["z"], 9)
+        run_js("(o) => o.set('q', 32)")(d)
+        self.assertEqual(d["q"], 32)
+
+        # TODO:
+        # self.assertEqual(list(run_js("(o) => o.items()")(d)), [])
+
     def test_pyproxy_call_simple(self):
         def f(x):
             return x * x + 7
@@ -500,9 +528,7 @@ class PyProxyTest(TestCase):
 
     def test_pyproxy_iterable(self):
         d = [7, 21, 39]
-        res = list(
-            run_js("(d) => Array.from(d)")(d)
-        )
+        res = list(run_js("(d) => Array.from(d)")(d))
         self.assertEqual(res, d)
 
     def test_pyproxy_iterator(self):

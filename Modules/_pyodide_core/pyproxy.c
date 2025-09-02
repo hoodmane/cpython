@@ -12,6 +12,7 @@
 #define HAS_LENGTH             (1 << 2)
 #define HAS_SET                (1 << 3)
 #define IS_CALLABLE            (1 << 4)
+#define IS_DICT                (1 << 5)
 #define IS_ITERABLE            (1 << 7)
 #define IS_ITERATOR            (1 << 8)
 
@@ -82,6 +83,7 @@ type_getflags(PyTypeObject* obj_type)
   SET_FLAG_IF(HAS_LENGTH, seq_proto->sq_length || map_proto->mp_length);
   SET_FLAG_IF(HAS_SET, map_proto->mp_ass_subscript || seq_proto->sq_ass_item);
   SET_FLAG_IF(IS_CALLABLE, obj_type->tp_call);
+  SET_FLAG_IF(IS_DICT, Py_Is(obj_type, &PyDict_Type));
   SET_FLAG_IF(IS_ITERABLE, obj_type->tp_iter || seq_proto->sq_item);
 
   extern PyObject* _PyObject_NextNotImplemented(PyObject *);
