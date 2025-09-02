@@ -3,6 +3,7 @@
 #include "js2python.h"
 #include "emscripten.h"
 #include "error_handling.h"
+#include "pytypedefs.h"
 
 #define Py_ENTER()
 #define Py_EXIT()
@@ -16,6 +17,9 @@
 #define IS_GENERATOR           (1 << 6)
 #define IS_ITERABLE            (1 << 7)
 #define IS_ITERATOR            (1 << 8)
+#define IS_MUTABLE_SEQUENCE    (1 << 9)
+#define IS_SEQUENCE            (1 << 10)
+
 
 PyAPI_FUNC(int) _PyGen_FetchStopIterationValue(PyObject **);
 
@@ -63,7 +67,8 @@ _pyproxy_type(PyObject* ptrobj)
   return JsvUTF8ToString(Py_TYPE(ptrobj)->tp_name);
 }
 
-PyObject* Generator;
+static PyObject* Generator;
+static PyObject* Sequence;
 
 static int
 type_getflags(PyTypeObject* obj_type)
@@ -100,6 +105,13 @@ type_getflags(PyTypeObject* obj_type)
       obj_type->tp_iternext != &_PyObject_NextNotImplemented) {
     result &= ~IS_ITERABLE;
     result |= IS_ITERATOR;
+  }
+  // A sequence has __len__, __getitem__, __contains__, and __iter__ so if any
+  // of these settings is missing, can skip the IsInstance check.
+  if (((~result) & (HAS_LENGTH | HAS_GET | HAS_CONTAINS | IS_ITERABLE)) == 0) {
+    int is_sequence = PyObject_IsSubclass((PyObject*)obj_type, Sequence);
+
+    SET_FLAG_IF(IS_SEQUENCE, is_sequence);
   }
 
   return result;
@@ -594,6 +606,8 @@ pyproxy_init(PyObject* core)
   collections_abc = PyImport_ImportModule("collections.abc");
   FAIL_IF_NULL(collections_abc);
   Generator = PyObject_GetAttrString(collections_abc, "Generator");
+  FAIL_IF_NULL(Generator);
+  Sequence = PyObject_GetAttrString(collections_abc, "Sequence");
   FAIL_IF_NULL(Generator);
   
   success = true;
