@@ -21,6 +21,7 @@ declare function __pyproxy_hasattr(ptr: number, key: any): number;
 declare function __pyproxy_getattr(ptr: number, key: any, cache: Map<string, any>): any;
 declare function __pyproxy_setattr(ptr: number, key: any, val: any): number;
 declare function __pyproxy_delattr(ptr: number, key: any): number;
+declare function __pyproxy_ownKeys(ptr: number): (string | symbol)[];
 
 declare function __pyproxy_contains(ptr: number, key: any): number;
 declare function __pyproxy_getitem(ptr: number, key: any): any;
@@ -555,6 +556,22 @@ const PyProxyHandlers = {
     }
     python_delattr(jsobj, jskey);
     return true;
+  },
+  ownKeys(jsobj: PyProxy): (string | symbol)[] {
+    let ptrobj = _getPtr(jsobj);
+    let result;
+    try {
+      Py_ENTER();
+      result = __pyproxy_ownKeys(ptrobj);
+      Py_EXIT();
+    } catch (e) {
+      API.fatal_error(e);
+    }
+    if (result === Module.error) {
+      _pythonexc2js();
+    }
+    result.push(...Reflect.ownKeys(jsobj));
+    return result;
   },
   apply(jsobj: PyProxy & Function, jsthis: any, jsargs: any): any {
     return jsobj.apply(jsthis, jsargs);

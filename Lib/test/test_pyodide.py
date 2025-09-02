@@ -385,6 +385,14 @@ class PyProxyTest(TestCase):
         run_js("(o) => {o.a = 72}")(T)
         self.assertTrue(T.a == 72)
 
+    def test_pyproxy_ownkeys(self):
+        class T:
+            a = 7
+            b = "zz"
+
+        l = set(x for x in run_js("(o) => Reflect.ownKeys(o)")(T) if isinstance(x, str))
+        self.assertGreaterEqual(l, {"a", "b"})
+
     def test_pyproxy_call_simple(self):
         def f(x):
             return x * x + 7
