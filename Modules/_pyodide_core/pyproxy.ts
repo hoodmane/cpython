@@ -34,6 +34,7 @@ declare function __pyproxy_apply(
   kwargs_names: string[],
   num_kwargs: number,
 ): any;
+declare function __pyproxyGen_Send(ptr: number, arg: any): IteratorResult<any>
 
 // pyodide-skip
 
@@ -298,6 +299,7 @@ function getPyProxyClass(flags: number) {
     [HAS_LENGTH, PyLengthMethods],
     [HAS_SET, PySetItemMethods],
     [IS_CALLABLE, PyCallableMethods],
+    [IS_ITERATOR, PyIteratorMethods],
   ];
   for (let [feature_flag, methods] of FLAG_TYPE_PAIRS) {
     if (flags & feature_flag) {
@@ -1037,4 +1039,58 @@ function callPyObjectKwargs(ptrobj: number, jsargs: any[], kwargs: any) {
 
 function callPyObject(ptrobj: number, jsargs: any) {
   return callPyObjectKwargs(ptrobj, jsargs, {});
+}
+
+
+/**
+ * A :js:class:`~pyodide.ffi.PyProxy` whose proxied Python object is an :term:`iterator`
+ * (i.e., has a :meth:`~generator.send` or :meth:`~iterator.__next__` method).
+ */
+class PyIterator extends PyProxy {
+  /** @private */
+  static [Symbol.hasInstance](obj: any): obj is PyProxy {
+    return API.isPyProxy(obj) && !!(_getFlags(obj) & IS_ITERATOR);
+  }
+}
+
+interface PyIterator extends PyIteratorMethods {}
+
+// Controlled by IS_ITERATOR, appears for any object with a __next__ or
+// tp_iternext method.
+class PyIteratorMethods {
+  /** @private */
+  [Symbol.iterator]() {
+    return this;
+  }
+  /**
+   * This translates to the Python code ``next(obj)``. Returns the next value of
+   * the generator. See the documentation for :js:meth:`Generator.next` The
+   * argument will be sent to the Python generator.
+   *
+   * This will be used implicitly by ``for(let x of proxy){}``.
+   *
+   * @param arg The value to send to the generator. The value will be assigned
+   * as a result of a yield expression.
+   * @returns An Object with two properties: ``done`` and ``value``. When the
+   * generator yields ``some_value``, ``next`` returns ``{done : false, value :
+   * some_value}``. When the generator raises a :py:exc:`StopIteration`
+   * exception, ``next`` returns ``{done : true, value : result_value}``.
+   */
+  next(arg: any = undefined): IteratorResult<any, any> {
+    // Note: arg is optional, if arg is not supplied, it will be undefined
+    // which gets converted to "Py_None". This is as intended.
+    let result;
+    let done;
+    try {
+      Py_ENTER();
+      result = __pyproxyGen_Send(_getPtr(this), arg);
+      Py_EXIT();
+    } catch (e) {
+      API.fatal_error(e);
+    }
+    if (result === Module.error) {
+      _pythonexc2js();
+    }
+    return result;
+  }
 }

@@ -390,7 +390,11 @@ class PyProxyTest(TestCase):
             a = 7
             b = "zz"
 
-        l = set(x for x in run_js("(o) => Reflect.ownKeys(o)")(T) if isinstance(x, str))
+        l = set(
+            x
+            for x in run_js("(o) => Reflect.ownKeys(o)")(T)
+            if isinstance(x, str)
+        )
         self.assertGreaterEqual(l, {"a", "b"})
 
     def test_pyproxy_call_simple(self):
@@ -493,3 +497,17 @@ class PyProxyTest(TestCase):
         self.assertEqual(d["y"], 3)
         run_js("(d) => d.delete('x')")(d)
         self.assertNotIn("x", d)
+
+    def test_pyproxy_iterator(self):
+        d = [7, 21, 39]
+        res = list(
+            run_js("(d) => [d.next(), d.next(), d.next(), d.next()]")(iter(d))
+        )
+        self.assertFalse(res[0].done)
+        self.assertFalse(res[1].done)
+        self.assertFalse(res[2].done)
+        self.assertTrue(res[3].done)
+        self.assertEqual(res[0].value, 7)
+        self.assertEqual(res[1].value, 21)
+        self.assertEqual(res[2].value, 39)
+        self.assertEqual(res[3].value, None)
