@@ -2358,6 +2358,8 @@ AS_CASE([$ac_sys_system],
     AS_VAR_APPEND([LINKFORSHARED], ["_PyLongWriter_Create,"])
     AS_VAR_APPEND([LINKFORSHARED], ["_PyLongWriter_Finish,"])
     AS_VAR_APPEND([LINKFORSHARED], ["_PyObject_Size,"])
+    AS_VAR_APPEND([LINKFORSHARED], ["_PyObject_GetIter,"])
+
     dnl some hiwire functions
     AS_VAR_APPEND([LINKFORSHARED], ["_hiwire_intern,"])
     AS_VAR_APPEND([LINKFORSHARED], ["_hiwire_get,"])

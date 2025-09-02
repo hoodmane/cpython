@@ -442,6 +442,18 @@ finally:
   return result;
 }
 
+EMSCRIPTEN_KEEPALIVE JsVal
+_pyproxy_iter_next(PyObject* iterator)
+{
+  PyObject* item = PyIter_Next(iterator);
+  if (item == NULL) {
+    return JS_ERROR;
+  }
+  JsVal result = python2js(item);
+  Py_CLEAR(item);
+  return result;
+}
+
 EM_JS(JsVal, _pyproxyGen_make_result, (bool done, JsVal value), {
   return { done : !!done, value };
 })

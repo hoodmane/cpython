@@ -498,6 +498,13 @@ class PyProxyTest(TestCase):
         run_js("(d) => d.delete('x')")(d)
         self.assertNotIn("x", d)
 
+    def test_pyproxy_iterable(self):
+        d = [7, 21, 39]
+        res = list(
+            run_js("(d) => Array.from(d)")(d)
+        )
+        self.assertEqual(res, d)
+
     def test_pyproxy_iterator(self):
         d = [7, 21, 39]
         res = list(

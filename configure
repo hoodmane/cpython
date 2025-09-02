@@ -9629,6 +9629,8 @@ fi
     as_fn_append LINKFORSHARED "_PyLongWriter_Create,"
     as_fn_append LINKFORSHARED "_PyLongWriter_Finish,"
     as_fn_append LINKFORSHARED "_PyObject_Size,"
+    as_fn_append LINKFORSHARED "_PyObject_GetIter,"
+
         as_fn_append LINKFORSHARED "_hiwire_intern,"
     as_fn_append LINKFORSHARED "_hiwire_get,"
     as_fn_append LINKFORSHARED "_JsProxy_create,"
