@@ -4,6 +4,9 @@
 #include "emscripten.h"
 #include "error_handling.h"
 
+#define Py_ENTER()
+#define Py_EXIT()
+
 #define HAS_CONTAINS           (1 << 0)
 #define HAS_GET                (1 << 1)
 #define HAS_LENGTH             (1 << 2)
@@ -13,6 +16,11 @@
 EM_JS_VAL(JsVal, pyproxy_new, (PyObject * ptrobj), {
   return Module.pyproxy_new(ptrobj);
 });
+
+EM_JS(int, PyProxy_Check, (JsVal val), {
+  return API.isPyProxy(val);
+});
+
 
 EMSCRIPTEN_KEEPALIVE JsVal
 _pyproxy_str(PyObject* pyobj)
@@ -84,8 +92,150 @@ pyproxy_getflags(PyObject* pyobj)
   return type_getflags(obj_type);
 }
 
-#define Py_ENTER()
-#define Py_EXIT()
+EMSCRIPTEN_KEEPALIVE int
+_pyproxy_hasattr(PyObject* pyobj, JsVal jskey)
+{
+  PyObject* pykey = NULL;
+  int result = -1;
+
+  pykey = js2python(jskey);
+  FAIL_IF_NULL(pykey);
+  result = PyObject_HasAttr(pyobj, pykey);
+
+finally:
+  Py_CLEAR(pykey);
+  return result;
+}
+
+/* Specialized version of _PyObject_GenericGetAttrWithDict
+   specifically for the LOAD_METHOD opcode.
+
+   Return 1 if a method is found, 0 if it's a regular attribute
+   from __dict__ or something returned by using a descriptor
+   protocol.
+
+   `method` will point to the resolved attribute or NULL.  In the
+   latter case, an error will be set.
+*/
+int
+_PyObject_GetMethod(PyObject* obj, PyObject* name, PyObject** method);
+
+EM_JS(JsVal, proxy_cache_get, (JsVal proxyCache, PyObject* descr), {
+  const proxy = proxyCache.get(descr);
+  if (!proxy) {
+    return Module.error;
+  }
+  // Okay found a proxy. Is it alive?
+  if (pyproxyIsAlive(proxy)) {
+    return proxy;
+  } else {
+    // It's dead, tidy up
+    proxyCache.delete(descr);
+    return Module.error;
+  }
+})
+
+// clang-format off
+EM_JS(void,
+proxy_cache_set,
+(JsVal proxyCache, PyObject* descr, JsVal proxy), {
+  proxyCache.set(descr, proxy);
+})
+// clang-format on
+
+EMSCRIPTEN_KEEPALIVE JsVal
+_pyproxy_getattr(PyObject* pyobj, JsVal key, JsVal proxyCache)
+{
+  bool success = false;
+  PyObject* pykey = NULL;
+  PyObject* pydescr = NULL;
+  PyObject* pyresult = NULL;
+  JsVal result = JS_ERROR;
+
+  pykey = js2python(key);
+  FAIL_IF_NULL(pykey);
+  // If it's a method, we use the descriptor pointer as the cache key rather
+  // than the actual bound method. This allows us to reuse bound methods from
+  // the cache.
+  // _PyObject_GetMethod will return true and store a descriptor into pydescr if
+  // the attribute we are looking up is a method, otherwise it will return false
+  // and set pydescr to the actual attribute (in particular, I believe that it
+  // will resolve other types of getter descriptors automatically).
+  int is_method = _PyObject_GetMethod(pyobj, pykey, &pydescr);
+  FAIL_IF_NULL(pydescr);
+  JsVal cached_proxy = proxy_cache_get(proxyCache, pydescr); /* borrowed */
+  if (!JsvError_Check(cached_proxy)) {
+    result = cached_proxy;
+    goto success;
+  }
+  if (PyErr_Occurred()) {
+    FAIL();
+  }
+  if (is_method) {
+    pyresult =
+      Py_TYPE(pydescr)->tp_descr_get(pydescr, pyobj, (PyObject*)Py_TYPE(pyobj));
+    FAIL_IF_NULL(pyresult);
+  } else {
+    pyresult = pydescr;
+    Py_INCREF(pydescr);
+  }
+  result = python2js(pyresult);
+  if (PyProxy_Check(result)) {
+    // If a getter returns a different object every time, this could potentially
+    // fill up the cache with a lot of junk. If this is a problem, the user will
+    // have to manually destroy the attributes.
+    proxy_cache_set(proxyCache, pydescr, result);
+  }
+
+success:
+  success = true;
+finally:
+  Py_CLEAR(pykey);
+  Py_CLEAR(pydescr);
+  Py_CLEAR(pyresult);
+  if (!success) {
+    if (PyErr_ExceptionMatches(PyExc_AttributeError)) {
+      PyErr_Clear();
+    }
+  }
+  return result;
+};
+
+EMSCRIPTEN_KEEPALIVE int
+_pyproxy_setattr(PyObject* pyobj, JsVal key, JsVal value)
+{
+  bool success = false;
+  PyObject* pykey = NULL;
+  PyObject* pyval = NULL;
+
+  pykey = js2python(key);
+  FAIL_IF_NULL(pykey);
+  pyval = js2python(value);
+  FAIL_IF_NULL(pyval);
+  FAIL_IF_MINUS_ONE(PyObject_SetAttr(pyobj, pykey, pyval));
+
+  success = true;
+finally:
+  Py_CLEAR(pykey);
+  Py_CLEAR(pyval);
+  return success ? 0 : -1;
+}
+
+EMSCRIPTEN_KEEPALIVE int
+_pyproxy_delattr(PyObject* pyobj, JsVal idkey)
+{
+  bool success = false;
+  PyObject* pykey = NULL;
+
+  pykey = js2python(idkey);
+  FAIL_IF_NULL(pykey);
+  FAIL_IF_MINUS_ONE(PyObject_DelAttr(pyobj, pykey));
+
+  success = true;
+finally:
+  Py_CLEAR(pykey);
+  return success ? 0 : -1;
+}
 
 EMSCRIPTEN_KEEPALIVE int
 _pyproxy_contains(PyObject* pyobj, JsVal idkey)

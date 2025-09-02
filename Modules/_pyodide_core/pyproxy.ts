@@ -17,6 +17,11 @@ declare function __pyproxy_type(ptr: number): string;
 declare function __pyproxy_str(ptr: number): string;
 declare function _pyproxy_getflags(ptr: number): number;
 
+declare function __pyproxy_hasattr(ptr: number, key: any): number;
+declare function __pyproxy_getattr(ptr: number, key: any, cache: Map<string, any>): any;
+declare function __pyproxy_setattr(ptr: number, key: any, val: any): number;
+declare function __pyproxy_delattr(ptr: number, key: any): number;
+
 declare function __pyproxy_contains(ptr: number, key: any): number;
 declare function __pyproxy_getitem(ptr: number, key: any): any;
 declare function __pyproxy_setitem(ptr: number, key: any, val: any): number;
@@ -83,8 +88,15 @@ function isPyProxy(jsobj: any): jsobj is PyProxy {
 }
 API.isPyProxy = isPyProxy;
 
+type PyProxyCache = {
+  map: Map<string, any>;
+  json_adaptor_map: Map<string, any>;
+  refcnt: number;
+  leaked?: boolean;
+};
 type PyProxyShared = {
   ptr: number;
+  cache: PyProxyCache;
   destroyed_msg: string | undefined;
   gcRegistered: boolean;
 };
@@ -154,9 +166,11 @@ function pyproxy_new(
     flags: flags_arg,
     props,
     shared,
+    cache,
     gcRegister,
   }: {
     flags?: number;
+    cache?: PyProxyCache;
     shared?: PyProxyShared;
     props?: any;
     gcRegister?: boolean;
@@ -198,8 +212,14 @@ function pyproxy_new(
   const isAlias = !!shared;
   if (!shared) {
     // Not an alias so we have to make `shared`.
+    if (!cache) {
+      // In this case it's not a copy.
+      cache = { map: new Map(), json_adaptor_map: new Map(), refcnt: 0 };
+    }
+    cache.refcnt++;
     shared = {
       ptr,
+      cache,
       destroyed_msg: undefined,
       gcRegistered: false,
     };
@@ -385,13 +405,35 @@ class PyProxy {
 }
 const PyProxyProto = PyProxy.prototype;
 
+const pyproxy_cache_destroyed_msg =
+  "This borrowed attribute proxy was automatically destroyed in the " +
+  "process of destroying the proxy it was borrowed from. Try using the 'copy' method.";
+
+function pyproxy_decref_cache(cache: PyProxyCache) {
+  if (!cache) {
+    return;
+  }
+  cache.refcnt--;
+  if (cache.leaked) {
+    return;
+  }
+  if (cache.refcnt === 0) {
+    for (const proxy of cache.map.values()) {
+      Module.pyproxy_destroy(proxy, pyproxy_cache_destroyed_msg, true);
+    }
+    for (const proxy of cache.json_adaptor_map.values()) {
+      Module.pyproxy_destroy(proxy, pyproxy_cache_destroyed_msg, true);
+    }
+  }
+}
+
 function pyproxy_destroy(proxy: PyProxy, destroyed_msg: string) {
   const { shared } = _getAttrsQuiet(proxy);
   if (!shared.ptr) {
     // already destroyed
     return;
   }
-  shared.destroyed_msg = destroyed_msg;
+  shared.destroyed_msg = destroyed_msg ?? "Object has already been destroyed";
   // Maybe the destructor will call JavaScript code that will somehow try
   // to use this proxy. Mark it deleted before decrementing reference count
   // just in case!
@@ -400,6 +442,8 @@ function pyproxy_destroy(proxy: PyProxy, destroyed_msg: string) {
   if (shared.gcRegistered) {
     Module.finalizationRegistry.unregister(shared);
   }
+  pyproxy_decref_cache(shared.cache);
+
 
   try {
     Py_ENTER();
@@ -411,11 +455,185 @@ function pyproxy_destroy(proxy: PyProxy, destroyed_msg: string) {
 }
 Module.pyproxy_destroy = pyproxy_destroy;
 
+const filteredHasKeySet: Set<string | symbol> = new Set([
+  "name",
+  "length",
+  "caller",
+  "arguments",
+]);
+
+function filteredHasKey(
+  jsobj: PyProxy,
+  jskey: string | symbol,
+  filterProto: boolean,
+) {
+  if (jsobj instanceof Function) {
+    // If we are a PyProxy of a callable we have to subclass function so that if
+    // someone feature detects callables with `instanceof Function` it works
+    // correctly. But the callable might have attributes `name` and `length` and
+    // we don't want to shadow them with the values from `Function.prototype`.
+    return (
+      jskey in jsobj &&
+      !(
+        filteredHasKeySet.has(jskey) ||
+        // we are required by JS law to return `true` for `"prototype" in pycallable`
+        // but we are allowed to return the value of `getattr(pycallable, "prototype")`.
+        // So we filter prototype out of the "get" trap but not out of the "has" trap
+        (filterProto && jskey === "prototype")
+      )
+    );
+  } else {
+    return jskey in jsobj;
+  }
+}
+
 const PyProxyHandlers = {
+  isExtensible(): boolean {
+    return true;
+  },
+  has(jsobj: PyProxy, jskey: string | symbol): boolean {
+    // Note: must report "prototype" in proxy when we are callable.
+    // (We can return the wrong value from "get" handler though.)
+    if (filteredHasKey(jsobj, jskey, false)) {
+      return true;
+    }
+    // python_hasattr will crash if given a Symbol.
+    if (typeof jskey === "symbol") {
+      return false;
+    }
+    if (jskey.startsWith("$")) {
+      jskey = jskey.slice(1);
+    }
+    return python_hasattr(jsobj, jskey);
+  },
+  get(jsobj: PyProxy, jskey: string | symbol): any {
+    // Preference order:
+    // 1. stuff from JavaScript
+    // 2. the result of Python getattr
+    // python_getattr will crash if given a Symbol.
+    if (typeof jskey === "symbol" || filteredHasKey(jsobj, jskey, true)) {
+      return Reflect.get(jsobj, jskey);
+    }
+    // If keys start with $ remove the $. User can use initial $ to
+    // unambiguously ask for a key on the Python object.
+    if (jskey.startsWith("$")) {
+      jskey = jskey.slice(1);
+    }
+    // 2. The result of getattr
+    return python_getattr(jsobj, jskey);
+  },
+  set(jsobj: PyProxy, jskey: string | symbol, jsval: any): boolean {
+    let descr = Object.getOwnPropertyDescriptor(jsobj, jskey);
+    if (descr && !descr.writable && !descr.set) {
+      return false;
+    }
+    // python_setattr will crash if given a Symbol.
+    if (typeof jskey === "symbol" || filteredHasKey(jsobj, jskey, true)) {
+      return Reflect.set(jsobj, jskey, jsval);
+    }
+    if (jskey.startsWith("$")) {
+      jskey = jskey.slice(1);
+    }
+    python_setattr(jsobj, jskey, jsval);
+    return true;
+  },
+  deleteProperty(jsobj: PyProxy, jskey: string | symbol): boolean {
+    let descr = Object.getOwnPropertyDescriptor(jsobj, jskey);
+    if (descr && !descr.configurable) {
+      // Must return "false" if "jskey" is a nonconfigurable own property.
+      // Otherwise JavaScript will throw a TypeError.
+      // Strict mode JS will throw an error here saying that the property cannot
+      // be deleted. It's good to leave everything alone so that the behavior is
+      // consistent with the error message.
+      return false;
+    }
+    if (typeof jskey === "symbol" || filteredHasKey(jsobj, jskey, true)) {
+      return Reflect.deleteProperty(jsobj, jskey);
+    }
+    if (jskey.startsWith("$")) {
+      jskey = jskey.slice(1);
+    }
+    python_delattr(jsobj, jskey);
+    return true;
+  },
   apply(jsobj: PyProxy & Function, jsthis: any, jsargs: any): any {
     return jsobj.apply(jsthis, jsargs);
   },
 };
+
+
+// Another layer of boilerplate. The PyProxyHandlers have some annoying logic to
+// deal with straining out the spurious "Function" properties "prototype",
+// "arguments", and "length", to deal with correctly satisfying the Proxy
+// invariants, and to deal with the mro
+function python_hasattr(jsobj: PyProxy, jskey: any) {
+  let ptrobj = _getPtr(jsobj);
+  let result;
+  try {
+    Py_ENTER();
+    result = __pyproxy_hasattr(ptrobj, jskey);
+    Py_EXIT();
+  } catch (e) {
+    API.fatal_error(e);
+  }
+  if (result === -1) {
+    _pythonexc2js();
+  }
+  return result !== 0;
+}
+
+// Returns a JsRef in order to allow us to differentiate between "not found"
+// (in which case we return 0) and "found 'None'" (in which case we return
+// undefined).
+function python_getattr(jsobj: PyProxy, key: any) {
+  const { shared } = _getAttrs(jsobj);
+  let cache = shared.cache.map;
+  let result;
+  try {
+    Py_ENTER();
+    result = __pyproxy_getattr(shared.ptr, key, cache);
+    Py_EXIT();
+  } catch (e) {
+    API.fatal_error(e);
+  }
+  if (result === Module.error) {
+    if (_PyErr_Occurred()) {
+      _pythonexc2js();
+    }
+    return undefined;
+  }
+  return result;
+}
+
+function python_setattr(jsobj: PyProxy, jskey: any, jsval: any) {
+  let ptrobj = _getPtr(jsobj);
+  let err;
+  try {
+    Py_ENTER();
+    err = __pyproxy_setattr(ptrobj, jskey, jsval);
+    Py_EXIT();
+  } catch (e) {
+    API.fatal_error(e);
+  }
+  if (err === -1) {
+    _pythonexc2js();
+  }
+}
+
+function python_delattr(jsobj: PyProxy, jskey: any) {
+  let ptrobj = _getPtr(jsobj);
+  let err;
+  try {
+    Py_ENTER();
+    err = __pyproxy_delattr(ptrobj, jskey);
+    Py_EXIT();
+  } catch (e) {
+    API.fatal_error(e);
+  }
+  if (err === -1) {
+    _pythonexc2js();
+  }
+}
 
 class PyProxyWithHas extends PyProxy {
   /** @private */
