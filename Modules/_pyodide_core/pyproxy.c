@@ -1,8 +1,10 @@
 #include "Python.h"
 #include "python2js.h"
+#include "js2python.h"
 #include "emscripten.h"
 #include "error_handling.h"
 
+#define IS_CALLABLE            (1 << 4)
 
 EM_JS_VAL(JsVal, pyproxy_new, (PyObject * ptrobj), {
   return Module.pyproxy_new(ptrobj);
@@ -42,12 +44,112 @@ _pyproxy_type(PyObject* ptrobj)
   return JsvUTF8ToString(Py_TYPE(ptrobj)->tp_name);
 }
 
+static int
+type_getflags(PyTypeObject* obj_type)
+{
+#define SET_FLAG_IF(flag, cond)                                                \
+  if (cond) {                                                                  \
+    result |= flag;                                                            \
+  }
+
+  int result = 0;
+  SET_FLAG_IF(IS_CALLABLE, obj_type->tp_call);
+  return result;
+
+#undef SET_FLAG_IF
+}
+
 EMSCRIPTEN_KEEPALIVE int
 pyproxy_getflags(PyObject* pyobj)
 {
-  return 0;
+  PyTypeObject* obj_type = Py_TYPE(pyobj);
+  return type_getflags(obj_type);
 }
 
 #define Py_ENTER()
 #define Py_EXIT()
+
+
+/**
+ * This sets up a call to _PyObject_Vectorcall. It's a helper function for
+ * callPyObjectKwargs. This is the primary entrypoint from JavaScript into
+ * Python code.
+ *
+ * Vectorcall expects the arguments to be communicated as:
+ *
+ *  PyObject*const *args: the positional arguments and followed by the keyword
+ *    arguments
+ *
+ *  size_t nargs_with_flag : the number of arguments plus a flag
+ *      PY_VECTORCALL_ARGUMENTS_OFFSET. The flag PY_VECTORCALL_ARGUMENTS_OFFSET
+ *      indicates that we left an initial entry in the array to be used as a
+ *      self argument in case the callee is a bound method.
+ *
+ *  PyObject* kwnames : a tuple of the keyword argument names. The length of
+ *      this tuple tells CPython how many key word arguments there are.
+ *
+ * Our arguments are:
+ *
+ *   callable : The object to call.
+ *   args : The list of JavaScript arguments, both positional and kwargs.
+ *   numposargs : The number of positional arguments.
+ *   kwnames : List of names of the keyword arguments
+ *   numkwargs : The length of kwargs
+ *
+ *   Returns: The return value translated to JavaScript.
+ */
+EMSCRIPTEN_KEEPALIVE JsVal
+_pyproxy_apply(PyObject* callable,
+               JsVal jsargs,
+               size_t numposargs,
+               JsVal jskwnames,
+               size_t numkwargs)
+{
+  size_t total_args = numposargs + numkwargs;
+  size_t last_converted_arg = total_args;
+  PyObject* pyargs_array[total_args + 1];
+  PyObject** pyargs = pyargs_array;
+  pyargs++; // leave a space for self argument in case callable is a bound
+            // method
+  PyObject* pykwnames = NULL;
+  PyObject* pyresult = NULL;
+  JsVal result = JS_ERROR;
+
+  // Put both arguments and keyword arguments into pyargs
+  for (Py_ssize_t i = 0; i < total_args; ++i) {
+    JsVal jsitem = JsvArray_Get(jsargs, i);
+    // pyitem is moved into pyargs so we don't need to clear it later.
+    PyObject* pyitem = js2python(jsitem);
+    if (pyitem == NULL) {
+      last_converted_arg = i;
+      FAIL();
+    }
+    pyargs[i] = pyitem; // pyitem is moved into pyargs.
+  }
+  if (numkwargs > 0) {
+    // Put names of keyword arguments into a tuple
+    pykwnames = PyTuple_New(numkwargs);
+    for (Py_ssize_t i = 0; i < numkwargs; i++) {
+      JsVal jsitem = JsvArray_Get(jskwnames, i);
+      // pyitem is moved into pykwargs so we don't need to clear it later.
+      PyObject* pyitem = js2python(jsitem);
+      PyTuple_SET_ITEM(pykwnames, i, pyitem);
+    }
+  }
+  // Tell callee that we left space for a self argument
+  size_t nargs_with_flag = numposargs | PY_VECTORCALL_ARGUMENTS_OFFSET;
+  pyresult = _PyObject_Vectorcall(callable, pyargs, nargs_with_flag, pykwnames);
+  FAIL_IF_NULL(pyresult);
+  result = python2js(pyresult);
+
+finally:
+  // If we failed to convert one of the arguments, then pyargs is partially
+  // uninitialized. Only clear the part that actually has stuff in it.
+  for (Py_ssize_t i = 0; i < last_converted_arg; i++) {
+    Py_CLEAR(pyargs[i]);
+  }
+  Py_CLEAR(pyresult);
+  Py_CLEAR(pykwnames);
+  return result;
+}
 
