@@ -11,6 +11,8 @@ declare function _pythonexc2js(): never;
 declare function __pyproxy_type(ptr: number): string;
 declare function __pyproxy_str(ptr: number): string;
 declare function _pyproxy_getflags(ptr: number): number;
+
+declare function __pyproxy_contains(ptr: number, key: any): number;
 declare function __pyproxy_apply(
   ptr: number,
   jsargs: any[],
@@ -32,6 +34,7 @@ declare function __pyproxy_apply(
 // removed from the preprocessed version.
 
 // This also has the benefit that it makes intellisense happy.
+declare var HAS_CONTAINS: number;
 declare var HAS_GET: number;
 declare var HAS_HAS: number;
 declare var HAS_INCLUDES: number;
@@ -260,7 +263,10 @@ function getPyProxyClass(flags: number) {
   }
   let descriptors: any = {};
 
-  const FLAG_TYPE_PAIRS: [number, any][] = [[IS_CALLABLE, PyCallableMethods]];
+  const FLAG_TYPE_PAIRS: [number, any][] = [
+    [HAS_CONTAINS, PyContainsMethods],
+    [IS_CALLABLE, PyCallableMethods],
+  ];
   for (let [feature_flag, methods] of FLAG_TYPE_PAIRS) {
     if (flags & feature_flag) {
       Object.assign(
@@ -399,6 +405,41 @@ const PyProxyHandlers = {
     return jsobj.apply(jsthis, jsargs);
   },
 };
+
+class PyProxyWithHas extends PyProxy {
+  /** @private */
+  static [Symbol.hasInstance](obj: any): obj is PyProxy {
+    return API.isPyProxy(obj) && !!(_getFlags(obj) & HAS_CONTAINS);
+  }
+}
+
+interface PyProxyWithHas extends PyContainsMethods {}
+
+// Controlled by HAS_CONTAINS flag, appears for any class with __contains__ or
+// sq_contains
+class PyContainsMethods {
+  /**
+   * This translates to the Python code ``key in obj``.
+   *
+   * @param key The key to check for.
+   * @returns Is ``key`` present?
+   */
+  has(key: any): boolean {
+    let ptrobj = _getPtr(this);
+    let result;
+    try {
+      Py_ENTER();
+      result = __pyproxy_contains(ptrobj, key);
+      Py_EXIT();
+    } catch (e) {
+      API.fatal_error(e);
+    }
+    if (result === -1) {
+      _pythonexc2js();
+    }
+    return result === 1;
+  }
+}
 
 function _adjustArgs(proxyobj: any, jsthis: any, jsargs: any[]): any[] {
   const { captureThis, boundArgs, boundThis, isBound } =
