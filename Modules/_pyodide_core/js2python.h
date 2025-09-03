@@ -8,3 +8,9 @@
  */
 PyObject*
 js2python(JsVal x);
+
+/**
+ * Do a deep conversion
+ */
+PyObject*
+js2python_convert(JsVal x, int depth, JsVal defaultConverter);

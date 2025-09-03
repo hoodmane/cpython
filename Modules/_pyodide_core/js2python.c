@@ -72,3 +72,13 @@ js2python(JsVal val)
 __attribute__((constructor)) void js2python_init(void) {
   js2python_init_js();
 }
+
+/**
+ * Convert a JavaScript object to Python to a given depth. This is the
+ * implementation of `toJs`.
+ */
+// clang-format off
+EM_JS_REF(PyObject*, js2python_convert, (JsVal v, int depth, JsVal defaultConverter), {
+  return Module.js2python_convert(v, { depth, defaultConverter });
+});
+// clang-format on

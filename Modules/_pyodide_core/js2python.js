@@ -128,4 +128,214 @@ JSFILE(() => {
     }
     return undefined;
   }
+
+  function js2python_convertList(obj, context) {
+    let list = _PyList_New(obj.length);
+    if (list === 0) {
+      return 0;
+    }
+    let item = 0;
+    try {
+      context.cache.set(obj, list);
+      for (let i = 0; i < obj.length; i++) {
+        item = js2python_convert_with_context(obj[i], context);
+        // PyList_SetItem steals a reference to item no matter what
+        _Py_IncRef(item);
+        if (_PyList_SetItem(list, i, item) === -1) {
+          throw new PropagateError();
+        }
+        _Py_DecRef(item);
+        item = 0;
+      }
+    } catch (e) {
+      _Py_DecRef(item);
+      _Py_DecRef(list);
+      throw e;
+    }
+
+    return list;
+  }
+
+  function js2python_convertMap(obj, entries, context) {
+    let dict = _PyDict_New();
+    if (dict === 0) {
+      return 0;
+    }
+    let key_py = 0;
+    let value_py = 0;
+    try {
+      context.cache.set(obj, dict);
+      for (let [key_js, value_js] of entries) {
+        key_py = js2python_convertImmutable(key_js);
+        if (key_py === undefined) {
+          let key_type =
+            (key_js.constructor && key_js.constructor.name) || typeof key_js;
+          throw new Error(
+            `Cannot use key of type ${key_type} as a key to a Python dict`,
+          );
+        }
+        value_py = js2python_convert_with_context(value_js, context);
+
+        if (_PyDict_SetItem(dict, key_py, value_py) === -1) {
+          throw new PropagateError();
+        }
+        _Py_DecRef(key_py);
+        key_py = 0;
+        _Py_DecRef(value_py);
+        value_py = 0;
+      }
+    } catch (e) {
+      _Py_DecRef(key_py);
+      _Py_DecRef(value_py);
+      _Py_DecRef(dict);
+      throw e;
+    }
+    return dict;
+  }
+
+  function js2python_convertSet(obj, context) {
+    let set = _PySet_New(0);
+    if (set === 0) {
+      return 0;
+    }
+    let key_py = 0;
+    try {
+      context.cache.set(obj, set);
+      for (let key_js of obj) {
+        key_py = js2python_convertImmutable(key_js);
+        if (key_py === undefined) {
+          let key_type =
+            (key_js.constructor && key_js.constructor.name) || typeof key_js;
+          throw new Error(
+            `Cannot use key of type ${key_type} as a key to a Python set`,
+          );
+        }
+        const err = _PySet_Add(set, key_py);
+        if (err === -1) {
+          throw new PropagateError();
+        }
+        _Py_DecRef(key_py);
+        key_py = 0;
+      }
+    } catch (e) {
+      _Py_DecRef(key_py);
+      _Py_DecRef(set);
+      throw e;
+    }
+    return set;
+  }
+
+  function checkBoolIntCollision(obj, ty) {
+    if (obj.has(1) && obj.has(true)) {
+      throw new Error(
+        `Cannot faithfully convert ${ty} into Python since it ` +
+          "contains both 1 and true as keys.",
+      );
+    }
+    if (obj.has(0) && obj.has(false)) {
+      throw new Error(
+        `Cannot faithfully convert ${ty} into Python since it ` +
+          "contains both 0 and false as keys.",
+      );
+    }
+  }
+
+  /**
+   * Convert mutable types: Array, Map, Set, and Objects whose prototype is
+   * either null or the default. Anything else is wrapped in a Proxy. This
+   * should only be used on values for which js2python_convertImmutable
+   * returned `undefined`.
+   */
+  function js2python_convertOther(value, context) {
+    let typeTag = getTypeTag(value);
+    if (
+      Array.isArray(value) ||
+      value === "[object HTMLCollection]" ||
+      value === "[object NodeList]"
+    ) {
+      return js2python_convertList(value, context);
+    }
+    if (typeTag === "[object Map]" || value instanceof Map) {
+      checkBoolIntCollision(value, "Map");
+      return js2python_convertMap(value, value.entries(), context);
+    }
+    if (typeTag === "[object Set]" || value instanceof Set) {
+      checkBoolIntCollision(value, "Set");
+      return js2python_convertSet(value, context);
+    }
+    if (
+      typeTag === "[object Object]" &&
+      (value.constructor === undefined || value.constructor.name === "Object")
+    ) {
+      return js2python_convertMap(value, Object.entries(value), context);
+    }
+    // TODO: Handle buffers and buffer views here
+    return undefined;
+  }
+
+  /**
+   * Convert a JavaScript object to Python to a given depth.
+   */
+  function js2python_convert_with_context(value, context) {
+    let result = js2python_convertImmutable(value);
+    if (result !== undefined) {
+      return result;
+    }
+    if (context.depth === 0) {
+      return _JsProxy_create(value);
+    }
+    result = context.cache.get(value);
+    if (result !== undefined) {
+      return result;
+    }
+    context.depth--;
+    try {
+      result = js2python_convertOther(value, context);
+      if (result !== undefined) {
+        return result;
+      }
+      if (!context.defaultConverter) {
+        return _JsProxy_create(value);
+      }
+      let result_js = context.defaultConverter(
+        value,
+        context.converter,
+        context.cacheConversion,
+      );
+      result = js2python_convertImmutable(result_js);
+      if (API.isPyProxy(result_js)) {
+        Module.pyproxy_destroy(result_js, "", false);
+      }
+      if (result !== undefined) {
+        return result;
+      }
+      return _JsProxy_create(result_js);
+    } finally {
+      context.depth++;
+    }
+  }
+
+  /**
+   * Convert a JavaScript object to Python to a given depth.
+   */
+  function js2python_convert(val, { depth, defaultConverter }) {
+    let context = {
+      cache: new Map(),
+      depth,
+      defaultConverter,
+      // arguments for defaultConverter
+      converter: (x) =>
+        Module.pyproxy_new(js2python_convert_with_context(x, context)),
+      cacheConversion(input, output) {
+        if (API.isPyProxy(output)) {
+          context.cache.set(input, Module.PyProxy_getPtr(output));
+        } else {
+          throw new Error("Second argument should be a PyProxy!");
+        }
+      },
+    };
+    return js2python_convert_with_context(val, context);
+  }
+
+  Module.js2python_convert = js2python_convert;
 });

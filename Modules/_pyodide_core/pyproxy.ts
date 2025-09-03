@@ -285,6 +285,7 @@ API.PyProxy_getAttrs = _getAttrs;
 function _getPtr(jsobj: any) {
   return _getAttrs(jsobj).shared.ptr;
 }
+Module.PyProxy_getPtr = _getPtr;
 
 function _getFlags(jsobj: any): number {
   return Object.getPrototypeOf(jsobj).$$flags;
