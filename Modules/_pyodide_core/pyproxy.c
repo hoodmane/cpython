@@ -32,6 +32,24 @@ EM_JS(int, PyProxy_Check, (JsVal val), {
   return API.isPyProxy(val);
 });
 
+EM_JS(void, PyProxy_Destroy, (JsVal px, Js_Identifier* msg_ptr), {
+  const { shared, props } = Module.PyProxy_getAttrsQuiet(px);
+  if (!shared.ptr) {
+    // already destroyed
+    return;
+  }
+  if (props.roundtrip) {
+    // Don't destroy roundtrip proxies!
+    return;
+  }
+  let msg = undefined;
+  if (msg_ptr) {
+    msg = _JsvString_FromId(msg_ptr);
+  }
+  Module.pyproxy_destroy(px, msg, false);
+});
+
+
 
 EMSCRIPTEN_KEEPALIVE JsVal
 _pyproxy_str(PyObject* pyobj)

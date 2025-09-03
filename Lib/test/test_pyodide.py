@@ -77,6 +77,111 @@ class ConversionTest(TestCase):
         with self.assertRaises(ZeroDivisionError):
             run_js("((f) => f())")(f)
 
+    def test_to_py1(self):
+        a = run_js(
+            """
+            let a = new Map([[1, [1,2,new Set([1,2,3])]], [2, new Map([[1,2],[2,7]])]]);
+            a.get(2).set("a", a);
+            a;
+            """
+        )
+        result = [repr(a.to_py(depth=i)) for i in range(4)]
+        self.assertEqual(
+            result,
+            [
+                "[object Map]",
+                "{1: 1,2,[object Set], 2: [object Map]}",
+                "{1: [1, 2, [object Set]], 2: {1: 2, 2: 7, 'a': [object Map]}}",
+                "{1: [1, 2, {1, 2, 3}], 2: {1: 2, 2: 7, 'a': {...}}}",
+            ],
+        )
+
+    def test_to_py2(self):
+        a = run_js(
+            """
+            let a = { "x" : 2, "y" : 7, "z" : [1,2] };
+            a.z.push(a);
+            a
+            """
+        )
+        result = [repr(a.to_py(depth=i)) for i in range(4)]
+        self.assertEqual(
+            result,
+            [
+                "[object Object]",
+                "{'x': 2, 'y': 7, 'z': 1,2,[object Object]}",
+                "{'x': 2, 'y': 7, 'z': [1, 2, [object Object]]}",
+                "{'x': 2, 'y': 7, 'z': [1, 2, {...}]}",
+            ],
+        )
+
+    def test_to_py3(self):
+        a = run_js(
+            """
+            class Temp {
+                constructor(){
+                    this.x = 2;
+                    this.y = 7;
+                }
+            }
+            new Temp();
+            """
+        )
+        assert repr(type(a.to_py())) == "<class 'pyodide.ffi.JsProxy'>"
+
+    def test_to_py4(self):
+        for obj, msg in [
+            (
+                "Map([[[1,1], 2]])",
+                "Cannot use key of type Array as a key to a Python dict",
+            ),
+            (
+                "Set([[1,1]])",
+                "Cannot use key of type Array as a key to a Python set",
+            ),
+            ("Map([[0, 2], [false, 3]])", "contains both 0 and false"),
+            ("Set([0, false])", "contains both 0 and false"),
+            ("Map([[1, 2], [true, 3]])", "contains both 1 and true"),
+            ("Set([1, true])", "contains both 1 and true"),
+        ]:
+            a = run_js(f"new {obj}")
+            with self.assertRaisesRegex(JsError, msg):
+                a.to_py()
+
+    def test_to_py_default_converter(self):
+        [p1, p2] = run_js(
+            """
+            class Pair {
+                constructor(first, second){
+                    this.first = first;
+                    this.second = second;
+                }
+            }
+            const l = [1,2,3];
+            const r1 = new Pair(l, [l]);
+            const r2 = new Pair(l, [l]);
+            r2.first = r2;
+            [r1, r2]
+            """
+        )
+
+        def default_converter(value, converter, cache):
+            if value.constructor.name != "Pair":
+                return value
+            l = []
+            cache(value, l)
+            l.append(converter(value.first))
+            l.append(converter(value.second))
+            return l
+
+        r1 = p1.to_py(default_converter=default_converter)
+        self.assertIsInstance(r1, list)
+        self.assertIs(r1[0], r1[1][0])
+        self.assertEqual(r1[0], [1, 2, 3])
+
+        r2 = p2.to_py(default_converter=default_converter)
+        self.assertIs(r2[0], r2)
+
 
 class JsProxyTest(TestCase):
     def test_jsproxy(self):

@@ -1,4 +1,5 @@
 #include "jsproxy.h"
+#include "pyproxy.h"
 #include "jsproxy_call.h"
 #include "jslib.h"
 #include "error_handling.h"
@@ -403,6 +404,42 @@ static PyMethodDef JsProxy_Dir_MethodDef = {
   (PyCFunction)JsProxy_Dir,
   METH_NOARGS,
   PyDoc_STR("Returns a list of the members and methods on the object."),
+};
+
+
+static PyObject*
+JsProxy_toPy(PyObject* self,
+             PyObject* const* args,
+             Py_ssize_t nargs,
+             PyObject* kwnames)
+{
+  static const char* const _keywords[] = { "depth", "default_converter", 0 };
+  static struct _PyArg_Parser _parser = {
+    .format = "|$iO:to_py",
+    .keywords = _keywords,
+  };
+  int depth = -1;
+  PyObject* default_converter = NULL;
+  if (!_PyArg_ParseStackAndKeywords(
+        args, nargs, kwnames, &_parser, &depth, &default_converter)) {
+    return NULL;
+  }
+  JsVal default_converter_js = Jsv_undefined;
+  if (default_converter != NULL) {
+    default_converter_js = python2js(default_converter);
+  }
+  PyObject* result =
+    js2python_convert(JsProxy_VAL(self), depth, default_converter_js);
+  if (PyProxy_Check(default_converter_js)) {
+    PyProxy_Destroy(default_converter_js, NULL);
+  }
+  return result;
+}
+
+static PyMethodDef JsProxy_toPy_MethodDef = {
+  "to_py",
+  (PyCFunction)JsProxy_toPy,
+  METH_FASTCALL | METH_KEYWORDS,
 };
 
 /**
@@ -1752,6 +1789,7 @@ JsProxy_create_subtype(int flags)
   int basicsize = sizeof(JsProxy);
 
   methods[cur_method++] = JsProxy_Dir_MethodDef;
+  methods[cur_method++] = JsProxy_toPy_MethodDef;
 
   if (flags & HAS_GET) {
     slots[cur_slot++] = (PyType_Slot){ .slot = Py_mp_subscript,
