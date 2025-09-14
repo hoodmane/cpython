@@ -196,6 +196,13 @@ class JsProxyTest(TestCase):
         o.a = 13
         self.assertEqual(run_js("o.a"), 13)
 
+    def test_jsproxy_attr_error(self):
+        o = run_js("({x: undefined, y: null})")
+        self.assertEqual(o.x, None)
+        self.assertEqual(o.y, jsnull)
+        with self.assertRaisesRegex(AttributeError, "xyz"):
+            self.assertEqual(o.xyz, jsnull)
+
     def test_jsproxy_bool(self):
         self.assertTrue(run_js("new TextDecoder()"))
         self.assertFalse(run_js("[]"))
