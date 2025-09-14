@@ -13,19 +13,25 @@ JsVal JsvError_Create(void);
 int JsvError_Check(JsVal);
 
 #define JS_ERROR hiwire_get(Jsr_error)
+#define JS_NULL __builtin_wasm_ref_null_extern()
 
 #define JsvNull_Check(v) __builtin_wasm_ref_is_null_extern(v)
 
+int
+JsvNoValue_Check(JsVal);
+
 // Special JsRefs for singleton constants.
-extern const JsRef Jsr_undefined;
-extern const JsRef Jsr_true;
-extern const JsRef Jsr_false;
-extern const JsRef Jsr_error;
+extern JsRef Jsr_undefined;
+extern JsRef Jsr_true;
+extern JsRef Jsr_false;
+extern JsRef Jsr_error;
+extern JsRef Jsr_novalue;
 
 #define Jsv_undefined hiwire_get(Jsr_undefined)
 #define Jsv_true hiwire_get(Jsr_true)
 #define Jsv_false hiwire_get(Jsr_false)
 #define Jsv_null __builtin_wasm_ref_null_extern()
+#define Jsv_novalue hiwire_get(Jsr_novalue)
 
 #undef false
 #undef true
@@ -176,5 +182,26 @@ JsvArray_slice_assign(JsVal idobj,
 
 void __attribute__((__noreturn__))
 JsvError_Throw(JsVal e);
+
+JsVal
+JsvLiteralMap_New(void);
+
+JsVal
+JsvMap_New(void);
+
+int
+JsvMap_Set(JsVal map, JsVal key, JsVal val);
+
+/**
+ * Create a new Set.
+ */
+JsVal
+JsvSet_New(void);
+
+/**
+ * Does set.add(key).
+ */
+int
+JsvSet_Add(JsVal mapid, JsVal keyid);
 
 #endif // JSLIB_H

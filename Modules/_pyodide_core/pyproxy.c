@@ -28,6 +28,16 @@ EM_JS_VAL(JsVal, pyproxy_new, (PyObject * ptrobj), {
   return Module.pyproxy_new(ptrobj);
 });
 
+EM_JS_VAL(JsVal,
+pyproxy_new_ex,
+(PyObject * ptrobj, bool capture_this, bool roundtrip, bool gcRegister),
+{
+  return Module.pyproxy_new(ptrobj, {
+    props: { captureThis: !!capture_this, roundtrip: !!roundtrip },
+    gcRegister,
+  });
+});
+
 EM_JS(int, PyProxy_Check, (JsVal val), {
   return API.isPyProxy(val);
 });
@@ -48,8 +58,6 @@ EM_JS(void, PyProxy_Destroy, (JsVal px, Js_Identifier* msg_ptr), {
   }
   Module.pyproxy_destroy(px, msg, false);
 });
-
-
 
 EMSCRIPTEN_KEEPALIVE JsVal
 _pyproxy_str(PyObject* pyobj)

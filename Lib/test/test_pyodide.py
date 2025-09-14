@@ -1,5 +1,5 @@
 from unittest import TestCase
-from _pyodide_core import run_js
+from _pyodide_core import run_js, to_js, destroy_proxies
 from _pyodide import jsnull
 
 JsError = type(run_js("new Error()"))
@@ -181,6 +181,80 @@ class ConversionTest(TestCase):
 
         r2 = p2.to_py(default_converter=default_converter)
         self.assertIs(r2[0], r2)
+
+    def test_to_js_default_converter(self):
+        import json
+
+        JSON = run_js("JSON")
+
+        class Pair:
+            __slots__ = ("first", "second")
+
+            def __init__(self, first, second):
+                self.first = first
+                self.second = second
+
+        p1 = Pair(1, 2)
+        p2 = Pair(1, 2)
+        p2.first = p2
+
+        def default_converter(value, convert, cacheConversion):
+            result = Array.new()
+            cacheConversion(value, result)
+            result.push(convert(value.first))
+            result.push(convert(value.second))
+            return result
+
+        p1js = to_js(p1, default_converter=default_converter)
+        p2js = to_js(p2, default_converter=default_converter)
+
+        self.assertEqual(json.loads(JSON.stringify(p1js)), [1, 2])
+
+        with self.assertRaisesRegex(JsError, "TypeError"):
+            JSON.stringify(p2js)
+
+        self.assertTrue(run_js("(x) => x[0] === x")(p2js))
+        self.assertTrue(run_js("(x) => x[1] === 2")(p2js))
+
+    def test_to_js_eager_converter(self):
+        recursive_list = []
+        recursive_list.append(recursive_list)
+
+        recursive_dict = {}
+        recursive_dict[0] = recursive_dict
+
+        a_thing = [{1: 2}, (2, 4, 6)]
+
+        def normal(value, convert, cacheConversion):
+            return convert(value)
+
+        def reject_tuples(value, convert, cacheConversion):
+            if isinstance(value, tuple):
+                raise ValueError("We don't convert tuples!")
+            return convert(value)
+
+        def proxy_tuples(value, convert, cacheConversion):
+            if isinstance(value, tuple):
+                return value
+            return convert(value)
+
+        to_js(recursive_list, eager_converter=normal)
+        to_js(recursive_dict, eager_converter=normal)
+        to_js(a_thing, eager_converter=normal)
+
+        to_js(recursive_list, eager_converter=reject_tuples)
+        to_js(recursive_dict, eager_converter=reject_tuples)
+        with self.assertRaisesRegex(ValueError, "We don't convert tuples"):
+            to_js(a_thing, eager_converter=reject_tuples)
+
+        to_js(recursive_list, eager_converter=proxy_tuples)
+        to_js(recursive_dict, eager_converter=proxy_tuples)
+        proxylist = Array.new()
+        res = to_js(a_thing, eager_converter=proxy_tuples, pyproxies=proxylist)
+        assert res[-1] == (2, 4, 6)
+        assert len(proxylist) == 1
+        destroy_proxies(proxylist)
+
 
 
 class JsProxyTest(TestCase):
