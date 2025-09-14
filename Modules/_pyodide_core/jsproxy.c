@@ -195,7 +195,7 @@ EM_JS_VAL(JsVal, JsProxy_GetAttr_js, (JsVal jsobj, const char* ptrkey), {
   // clang-format off
   if (result === undefined && !(jskey in jsobj)) {
     // clang-format on
-    return null;
+    return Module.error;
   }
   return result;
 });
@@ -231,7 +231,7 @@ JsProxy_GetAttr(PyObject* self, PyObject* attr)
   }
 
   jsresult = JsProxy_GetAttr_js(JsProxy_VAL(self), key);
-  if (JsvNull_Check(jsresult)) {
+  if (JsvError_Check(jsresult)) {
     if (!PyErr_Occurred()) {
       PyErr_SetString(PyExc_AttributeError, key);
     }
