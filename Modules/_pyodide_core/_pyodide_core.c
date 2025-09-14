@@ -5,6 +5,7 @@
 #include "python2js.h"
 #include "jslib.h"
 #include "jsproxy.h"
+#include "pytypedefs.h"
 
 
 #ifndef Py_BUILD_CORE_BUILTIN
@@ -53,24 +54,20 @@ _pyodide_core_bad_hiwire_get_impl(PyObject *module, int select)
 }
 
 int
+python2js_init(PyObject* m);
+
+int
 jsproxy_init(PyObject *m);
 
 int
 pyproxy_init(PyObject *m);
 
-PyObject* py_jsnull;
-
 static int
 _pyodide_core_exec(PyObject *m)
 {
   bool success = false;
-
-  PyObject* _pyodide = PyImport_ImportModule("_pyodide");
-  FAIL_IF_NULL(_pyodide);
-  py_jsnull = PyObject_GetAttrString(_pyodide, "jsnull");
-  FAIL_IF_NULL(py_jsnull);
-  Py_CLEAR(_pyodide);
-
+    
+  FAIL_IF_MINUS_ONE(python2js_init(m));
   FAIL_IF_MINUS_ONE(jsproxy_init(m));
   FAIL_IF_MINUS_ONE(pyproxy_init(m));
   JsVal eval = _pyodide_core_get_eval();

@@ -14,12 +14,13 @@ bool tracerefs = false;
   JS_BUILTIN(undefined)                                                        \
   JS_BUILTIN(true)                                                             \
   JS_BUILTIN(false)                                                            \
-  JS_CONST(error, JsvError_Create())
+  JS_CONST(error, JsvError_Create())                                           \
+  JS_CONST(novalue, { noValueMarker : 1 })
 
 // we use HIWIRE_INIT_CONSTS once in C and once inside JS with different
 // definitions of HIWIRE_INIT_CONST to ensure everything lines up properly
 // C definition:
-#define JS_CONST(name, value) EMSCRIPTEN_KEEPALIVE const JsRef Jsr_##name;
+#define JS_CONST(name, value) EMSCRIPTEN_KEEPALIVE JsRef Jsr_##name;
 JS_INIT_CONSTS();
 
 #undef JS_CONST
@@ -28,6 +29,7 @@ JS_INIT_CONSTS();
 
 EM_JS_MACROS(void, jslib_init_js, (void), {
   JS_INIT_CONSTS();
+  Module.novalue = _hiwire_get(HEAP32[_Jsr_novalue / 4]);
   Module.error = _hiwire_get(HEAP32[_Jsr_error / 4]);
 });
 
@@ -37,6 +39,10 @@ jslib_init(void)
 {
   jslib_init_js();
 }
+
+EM_JS(int, JsvNoValue_Check, (JsVal v), {
+  return v === Module.novalue;
+});
 
 EM_JS_NUM(int, Jsv_type, (JsVal val, char* buf, int size), {
   return stringToUTF8(val?.constructor?.name ?? "unknown", buf, size);
@@ -281,3 +287,27 @@ JsvArray_slice_assign,
 
 
 EM_JS(void __attribute__((__noreturn__)), JsvError_Throw, (JsVal e), { throw e; })
+
+// ==================== Js Map API  ====================
+
+EM_JS_VAL(JsVal, JsvMap_New, (void), {
+  return new Map();
+})
+
+EM_JS_VAL(JsVal, JsvLiteralMap_New, (void), {
+  return new API.LiteralMap();
+})
+
+EM_JS_NUM(int, JsvMap_Set, (JsVal map, JsVal key, JsVal val), {
+  map.set(key, val);
+})
+
+// ==================== JsSet API  ====================
+
+EM_JS_VAL(JsVal, JsvSet_New, (void), {
+  return new Set();
+})
+
+EM_JS_NUM(int, JsvSet_Add, (JsVal set, JsVal val), {
+  set.add(val);
+})

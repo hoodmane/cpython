@@ -5,6 +5,12 @@
 JsVal
 pyproxy_new(PyObject* obj);
 
+JsVal
+pyproxy_new_ex(PyObject* obj,
+               bool capture_this,
+               bool roundtrip,
+               bool register);
+
 bool
 PyProxy_Check(JsVal);
 
