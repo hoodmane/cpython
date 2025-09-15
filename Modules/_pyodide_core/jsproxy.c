@@ -237,7 +237,12 @@ JsProxy_GetAttr(PyObject* self, PyObject* attr)
     }
     FAIL();
   }
-  pyresult = js2python(jsresult);
+  if (JsvFunction_Check(jsresult)) {
+    pyresult =
+      JsProxy_create_with_this(jsresult, JsProxy_VAL(self));
+  } else {
+    pyresult = js2python(jsresult);
+  }
   FAIL_IF_NULL(pyresult);
 
   success = true;
@@ -2153,7 +2158,7 @@ JsProxy_create_with_this(JsVal object,
 EMSCRIPTEN_KEEPALIVE PyObject*
 JsProxy_create(JsVal object)
 {
-  return JsProxy_create_with_this(object, JS_ERROR);
+  return JsProxy_create_with_this(object, JS_NULL);
 }
 
 EMSCRIPTEN_KEEPALIVE bool

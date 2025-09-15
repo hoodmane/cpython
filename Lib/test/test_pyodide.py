@@ -386,6 +386,11 @@ class JsProxyTest(TestCase):
         l = set(run_js("(o) => o.keys()")(o))
         self.assertEqual(l, {5, 7})
 
+    def test_js_proxy_array(self):
+        a = Array.new()
+        a.push(1)
+        assert a.to_py() == [1]
+
     def test_array(self):
         pyl = [5, 1, 2, 3]
         jsl = run_js(str(pyl))
