@@ -1706,7 +1706,22 @@ static PyMethodDef JsArray_insert_MethodDef = {
   METH_VARARGS,
 };
 
-// TODO: index, count, remove
+static PyObject*
+JsArray_remove(PyObject* self, PyObject* arg)
+{
+  int index = JsArray_index_helper(self, arg, 0, PY_SSIZE_T_MAX);
+  FAIL_IF_MINUS_ONE(index);
+  JsvArray_Delete(JsProxy_VAL(self), index);
+  Py_RETURN_NONE;
+finally:
+  return NULL;
+}
+
+static PyMethodDef JsArray_remove_MethodDef = {
+  "remove",
+  (PyCFunction)JsArray_remove,
+  METH_O,
+};
 
 ////////////////////////////////////////////////////////////
 // JsMethod
@@ -1977,6 +1992,7 @@ JsProxy_create_subtype(int flags)
     methods[cur_method++] = JsArray_insert_MethodDef;
     methods[cur_method++] = JsArray_index_MethodDef;
     methods[cur_method++] = JsArray_count_MethodDef;
+    methods[cur_method++] = JsArray_remove_MethodDef;
   }
 
   if (flags & IS_GENERATOR) {
