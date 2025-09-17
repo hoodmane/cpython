@@ -1798,26 +1798,26 @@ function defaultCompareFunc(a: any, b: any): number {
 
 
 
-// function python_slice_assign(
-//   jsobj: any,
-//   start: number,
-//   stop: number,
-//   val: any,
-// ): any[] {
-//   let ptrobj = _getPtr(jsobj);
-//   let res;
-//   try {
-//     Py_ENTER();
-//     res = __pyproxy_slice_assign(ptrobj, start, stop, val);
-//     Py_EXIT();
-//   } catch (e) {
-//     API.fatal_error(e);
-//   }
-//   if (res === Module.error) {
-//     _pythonexc2js();
-//   }
-//   return res;
-// }
+function python_slice_assign(
+  jsobj: any,
+  start: number,
+  stop: number,
+  val: any,
+): any[] {
+  let ptrobj = _getPtr(jsobj);
+  let res;
+  try {
+    Py_ENTER();
+    res = __pyproxy_slice_assign(ptrobj, start, stop, val);
+    Py_EXIT();
+  } catch (e) {
+    API.fatal_error(e);
+  }
+  if (res === Module.error) {
+    _pythonexc2js();
+  }
+  return res;
+}
 
 function python_pop(jsobj: any, pop_start: boolean): any {
   let ptrobj = _getPtr(jsobj);
@@ -1897,26 +1897,25 @@ class PyMutableSequenceMethods {
   //   // @ts-ignore
   //   return this;
   // }
-  // TODO: make slice_assign work
-  // /**
-  //  * The :js:meth:`Array.splice` method changes the contents of a
-  //  * :js:class:`PyMutableSequence` by removing or replacing existing elements and/or
-  //  * adding new elements in place.
-  //  * @param start Zero-based index at which to start changing the
-  //  * :js:class:`PyMutableSequence`.
-  //  * @param deleteCount An integer indicating the number of elements in the
-  //  * :js:class:`PyMutableSequence` to remove from ``start``.
-  //  * @param items The elements to add to the :js:class:`PyMutableSequence`, beginning from
-  //  * ``start``.
-  //  * @returns An array containing the deleted elements.
-  //  */
-  // splice(start: number, deleteCount?: number, ...items: any[]) {
-  //   if (deleteCount === undefined) {
-  //     // Max ssize
-  //     deleteCount = 1 << (31 - 1);
-  //   }
-  //   return python_slice_assign(this, start, start + deleteCount, items);
-  // }
+  /**
+   * The :js:meth:`Array.splice` method changes the contents of a
+   * :js:class:`PyMutableSequence` by removing or replacing existing elements and/or
+   * adding new elements in place.
+   * @param start Zero-based index at which to start changing the
+   * :js:class:`PyMutableSequence`.
+   * @param deleteCount An integer indicating the number of elements in the
+   * :js:class:`PyMutableSequence` to remove from ``start``.
+   * @param items The elements to add to the :js:class:`PyMutableSequence`, beginning from
+   * ``start``.
+   * @returns An array containing the deleted elements.
+   */
+  splice(start: number, deleteCount?: number, ...items: any[]) {
+    if (deleteCount === undefined) {
+      // Max ssize
+      deleteCount = 1 << (31 - 1);
+    }
+    return python_slice_assign(this, start, start + deleteCount, items);
+  }
   /**
    * The :js:meth:`Array.push` method adds the specified elements to the end of
    * a :js:class:`PyMutableSequence`.

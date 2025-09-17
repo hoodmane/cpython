@@ -1,4 +1,5 @@
 #include "Python.h"
+#include "jslib.h"
 #include "python2js.h"
 #include "js2python.h"
 #include "emscripten.h"
@@ -651,33 +652,33 @@ finally:
 }
 
 
-// EMSCRIPTEN_KEEPALIVE JsVal
-// _pyproxy_slice_assign(PyObject* pyobj,
-//                       Py_ssize_t start,
-//                       Py_ssize_t stop,
-//                       JsVal val)
-// {
-//   PyObject* pyval = NULL;
-//   PyObject* pyresult = NULL;
-//   JsVal jsresult = JS_ERROR;
+EMSCRIPTEN_KEEPALIVE JsVal
+_pyproxy_slice_assign(PyObject* pyobj,
+                      Py_ssize_t start,
+                      Py_ssize_t stop,
+                      JsVal val)
+{
+  PyObject* pyval = NULL;
+  PyObject* pyresult = NULL;
+  JsVal jsresult = JS_ERROR;
 
-//   pyval = js2python(val);
+  pyval = js2python(val);
 
-//   Py_ssize_t len = PySequence_Length(pyobj);
-//   if (len <= stop) {
-//     stop = len;
-//   }
-//   pyresult = PySequence_GetSlice(pyobj, start, stop);
-//   FAIL_IF_NULL(pyresult);
-//   FAIL_IF_MINUS_ONE(PySequence_SetSlice(pyobj, start, stop, pyval));
-//   JsVal proxies = JsvArray_New();
-//   jsresult = python2js_with_depth(pyresult, 1, proxies);
+  Py_ssize_t len = PySequence_Length(pyobj);
+  if (len <= stop) {
+    stop = len;
+  }
+  pyresult = PySequence_GetSlice(pyobj, start, stop);
+  FAIL_IF_NULL(pyresult);
+  FAIL_IF_MINUS_ONE(PySequence_SetSlice(pyobj, start, stop, pyval));
+  JsVal proxies = JsvArray_New();
+  jsresult = python2js_custom(pyresult, 1, proxies, Jsv_null, Jsv_null, Jsv_null);
 
-// finally:
-//   Py_CLEAR(pyresult);
-//   Py_CLEAR(pyval);
-//   return jsresult;
-// }
+finally:
+  Py_CLEAR(pyresult);
+  Py_CLEAR(pyval);
+  return jsresult;
+}
 
 EMSCRIPTEN_KEEPALIVE JsVal
 _pyproxy_pop(PyObject* pyobj, bool pop_start)
@@ -713,4 +714,3 @@ finally:
   Py_CLEAR(pyresult);
   return jsresult;
 }
-

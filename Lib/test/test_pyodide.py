@@ -1164,7 +1164,6 @@ class PyProxyTest(TestCase):
         self.assertEqual(list(ajs), a)
 
     def test_pyproxy_of_list_splice(self):
-        self.skipTest("TODO: implement splice")
         for func in [
             'splice(2, 0, "drum")',
             'splice(2, 0, "drum", "guitar")',
