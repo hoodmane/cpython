@@ -43,6 +43,13 @@ EM_JS(int, PyProxy_Check, (JsVal val), {
   return API.isPyProxy(val);
 });
 
+EM_JS(PyObject*, PyProxy_AsPyObject, (JsVal val), {
+  if (!API.isPyProxy(val) || !PyProxy_IsAlive(val)) {
+    return 0;
+  }
+  return Module.PyProxy_getPtr(val);
+});
+
 EM_JS(void, PyProxy_Destroy, (JsVal px, Js_Identifier* msg_ptr), {
   const { shared, props } = Module.PyProxy_getAttrsQuiet(px);
   if (!shared.ptr) {
@@ -195,7 +202,7 @@ EM_JS(JsVal, proxy_cache_get, (JsVal proxyCache, PyObject* descr), {
     return Module.error;
   }
   // Okay found a proxy. Is it alive?
-  if (pyproxyIsAlive(proxy)) {
+  if (PyProxy_IsAlive(proxy)) {
     return proxy;
   } else {
     // It's dead, tidy up

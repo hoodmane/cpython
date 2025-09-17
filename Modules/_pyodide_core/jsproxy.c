@@ -1531,6 +1531,85 @@ JsArray_index_js,
 })
 // clang-format on
 
+static Py_ssize_t
+JsArray_index_helper(PyObject* self,
+                     PyObject* value,
+                     Py_ssize_t start,
+                     Py_ssize_t stop)
+{
+  Py_ssize_t length = JsProxy_length(self);
+  if (length == -1) {
+    return -1;
+  }
+  if (start < 0) {
+    start += length;
+    if (start < 0)
+      start = 0;
+  }
+  if (stop < 0) {
+    stop += length;
+    if (stop < 0)
+      stop = 0;
+  }
+  if (stop > length) {
+    stop = length;
+  }
+
+  JsVal jsvalue = python2js_track_proxies(value, JS_ERROR, true);
+  if (JsvError_Check(jsvalue)) {
+    PyErr_Clear();
+    for (Py_ssize_t i = start; i < stop; i++) {
+      JsVal jsobj = JsvArray_Get(JsProxy_VAL(self), i);
+      // We know `value` is not a `JsProxy`: if it were we would have taken the
+      // other branch. Thus, if `jsobj` is not a `PyProxy`,
+      // `PyObject_RichCompareBool` is guaranteed to return false. As a speed
+      // up, only perform the check if the object is a `PyProxy`.
+      PyObject* pyobj = PyProxy_AsPyObject(jsobj); /* borrowed! */
+      if (pyobj == NULL) {
+        continue;
+      }
+      int cmp = PyObject_RichCompareBool(pyobj, value, Py_EQ);
+      if (cmp > 0)
+        return i;
+      else if (cmp < 0)
+        goto error;
+    }
+    goto error;
+  } else {
+    int result = JsArray_index_js(JsProxy_VAL(self), jsvalue, start, stop);
+    if (result == -1) {
+      goto error;
+    }
+    return result;
+  }
+error:
+  PyErr_Format(PyExc_ValueError, "%R is not in list", value);
+  return -1;
+}
+
+static PyObject*
+JsArray_index(PyObject* self, PyObject* args)
+{
+  PyObject* value;
+  Py_ssize_t start = 0;
+  Py_ssize_t stop = PY_SSIZE_T_MAX;
+  if (!PyArg_ParseTuple(args, "O|nn:index", &value, &start, &stop)) {
+    return NULL;
+  }
+
+  Py_ssize_t result = JsArray_index_helper(self, value, start, stop);
+  if (result == -1) {
+    return NULL;
+  }
+  return PyLong_FromSsize_t(result);
+}
+
+static PyMethodDef JsArray_index_MethodDef = {
+  "index",
+  (PyCFunction)JsArray_index,
+  METH_VARARGS,
+};
+
 // clang-format off
 EM_JS_NUM(int,
 JsArray_count_js,
@@ -1854,6 +1933,7 @@ JsProxy_create_subtype(int flags)
     methods[cur_method++] = JsArray_reversed_MethodDef;
     methods[cur_method++] = JsArray_reverse_MethodDef;
     methods[cur_method++] = JsArray_insert_MethodDef;
+    methods[cur_method++] = JsArray_index_MethodDef;
   }
 
   if (flags & IS_GENERATOR) {
