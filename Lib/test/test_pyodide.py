@@ -512,18 +512,41 @@ class JsProxyTest(TestCase):
         pyl.insert(5, 22)
         self.assertEqual(list(jsl), pyl)
         # TODO:
-        # count, remove
+        # remove
 
     def test_jsarray_index(self):
         a = run_js("[5, 7, 9, -1, 3, 5]")
-        assert a.index(5) == 0
-        assert a.index(5, 1) == 5
+        self.assertEqual(a.index(5), 0)
+        self.assertEqual(a.index(5, 1), 5)
         with self.assertRaisesRegex(ValueError, "5 is not in list"):
-            assert a.index(5, 1, -1) == 5
+            self.assertEqual(a.index(5, 1, -1), 5)
 
         a.append([1, 2, 3])
-        assert a.index([1, 2, 3]) == 6
+        self.assertEqual(a.index([1, 2, 3]), 6)
         run_js("(a) => a.pop().destroy()")(a)
+
+    def test_jsarray_count(self):
+        l = [5, 7, 9, -1, 3, 5]
+        a = run_js(repr(l))
+        self.assertEqual(a.count(1), 0)
+        self.assertEqual(a.count(-1), 1)
+        self.assertEqual(a.count(5), 2)
+
+        a.append([])
+        a.append([1])
+        a.append([])
+        self.assertEqual(a.count([]), 2)
+        self.assertEqual(a.count([1]), 1)
+        self.assertEqual(a.count([2]), 0)
+        run_js(
+            """(a) => {
+                a.pop().destroy();
+                a.pop().destroy();
+                a.pop().destroy();
+            }
+            """
+        )(a)
+
 
     def test_gen_close_throw(self):
         f = run_js(

@@ -1610,7 +1610,6 @@ static PyMethodDef JsArray_index_MethodDef = {
   METH_VARARGS,
 };
 
-// clang-format off
 EM_JS_NUM(int,
 JsArray_count_js,
 (JsVal o, JsVal v),
@@ -1623,7 +1622,50 @@ JsArray_count_js,
   }
   return result;
 })
-// clang-format on
+
+static PyObject*
+JsArray_count(PyObject* self, PyObject* value)
+{
+  JsVal jsvalue = python2js_track_proxies(value, JS_ERROR, true);
+  if (JsvError_Check(jsvalue)) {
+    PyErr_Clear();
+    int result = 0;
+    Py_ssize_t stop = JsProxy_length(self);
+    if (stop == -1) {
+      return NULL;
+    }
+    for (int i = 0; i < stop; i++) {
+      JsVal jsobj = JsvArray_Get(JsProxy_VAL(self), i);
+      // We know `value` is not a `JsProxy`: if it were we would have taken the
+      // other branch. Thus, if `jsobj` is not a `PyProxy`,
+      // `PyObject_RichCompareBool` is guaranteed to return false. As a speed
+      // up, only perform the check if the object is a `PyProxy`.
+      PyObject* pyobj = PyProxy_AsPyObject(jsobj); /* borrowed! */
+      if (pyobj == NULL) {
+        continue;
+      }
+      int cmp = PyObject_RichCompareBool(pyobj, value, Py_EQ);
+      if (cmp > 0)
+        result++;
+      else if (cmp < 0)
+        return NULL;
+    }
+    return PyLong_FromSsize_t(result);
+  } else {
+    int result = JsArray_count_js(JsProxy_VAL(self), jsvalue);
+    if (result == -1) {
+      return NULL;
+    } else {
+      return PyLong_FromSsize_t(result);
+    }
+  }
+}
+
+static PyMethodDef JsArray_count_MethodDef = {
+  "count",
+  (PyCFunction)JsArray_count,
+  METH_O,
+};
 
 EM_JS_NUM(int, JsArray_reverse_js, (JsVal array), { array.reverse(); })
 
@@ -1934,6 +1976,7 @@ JsProxy_create_subtype(int flags)
     methods[cur_method++] = JsArray_reverse_MethodDef;
     methods[cur_method++] = JsArray_insert_MethodDef;
     methods[cur_method++] = JsArray_index_MethodDef;
+    methods[cur_method++] = JsArray_count_MethodDef;
   }
 
   if (flags & IS_GENERATOR) {
