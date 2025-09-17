@@ -1044,7 +1044,6 @@ class PyProxyTest(TestCase):
             self.assertEqual(func(a, idx), func(ajs, idx))
 
     def test_pyproxy_of_list_concat(self):
-        self.skipTest("TODO: to_js()")
         a = [[5, 12, 8], [130, 44], [6, 7, 7]]
         ajs = to_js(a)
 
@@ -1060,7 +1059,6 @@ class PyProxyTest(TestCase):
             self.assertEqual(func(a, n), func(ajs, n))
 
     def test_pyproxy_of_list_entries(self):
-        self.skipTest("TODO: to_py()")
         a = [5, 12, 8, 130, 44, 6, 7, 7]
         ajs = Array.from_(a)
 
