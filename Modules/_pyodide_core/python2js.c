@@ -753,7 +753,7 @@ python2js_custom(PyObject* x,
                                 .eager_converter = false,
                                 .jspostprocess_list =
                                   hiwire_new(JsvArray_New()) };
-  if (JsvError_Check(dict_converter)) {
+  if (JsvNull_Check(dict_converter)) {
     // No custom converter provided, go back to default conversion to Map.
     context.dict_new = _JsMap_New;
     context.dict_add_keyvalue = _JsMap_Set;
@@ -763,13 +763,13 @@ python2js_custom(PyObject* x,
     context.dict_add_keyvalue = _JsArray_PushEntry;
     context.dict_postprocess = _JsArray_PostProcess;
   }
-  if (!JsvError_Check(default_converter)) {
+  if (!JsvNull_Check(default_converter)) {
     context.default_converter = true;
   }
-  if (!JsvError_Check(eager_converter)) {
+  if (!JsvNull_Check(eager_converter)) {
     context.eager_converter = true;
   }
-  if (!JsvError_Check(dict_converter) || context.default_converter ||
+  if (!JsvNull_Check(dict_converter) || context.default_converter ||
       context.eager_converter) {
     context.jscontext = hiwire_new(python2js_custom__create_jscontext(
       &context, cache, dict_converter, default_converter, eager_converter));
@@ -781,7 +781,7 @@ python2js_custom(PyObject* x,
   hiwire_CLEAR(context.jscontext);
   hiwire_CLEAR(context.proxies);
   hiwire_CLEAR(context.cache);
-  if (JsvError_Check(result) || JsvNoValue_Check(result)) {
+  if (JsvNull_Check(result) || JsvNoValue_Check(result)) {
     result = JS_ERROR;
     if (PyErr_Occurred()) {
       if (!PyErr_ExceptionMatches(PyExc_ValueError)) {
@@ -855,7 +855,7 @@ to_js(PyObject* self,
 
   JsVal proxies;
   if (!create_proxies) {
-    proxies = JS_ERROR;
+    proxies = Jsv_null;
   } else if (pyproxies) {
     if (!JsProxy_Check(pyproxies)) {
       PyErr_SetString(PyExc_TypeError,
@@ -871,15 +871,15 @@ to_js(PyObject* self,
   } else {
     proxies = JsvArray_New();
   }
-  JsVal js_dict_converter = JS_ERROR;
+  JsVal js_dict_converter = Jsv_null;
   if (py_dict_converter) {
     js_dict_converter = python2js(py_dict_converter);
   }
-  JsVal js_default_converter = JS_ERROR;
+  JsVal js_default_converter = Jsv_null;
   if (py_default_converter) {
     js_default_converter = python2js(py_default_converter);
   }
-  JsVal js_eager_converter = JS_ERROR;
+  JsVal js_eager_converter = Jsv_null;
   if (py_eager_converter) {
     js_eager_converter = python2js(py_eager_converter);
   }
