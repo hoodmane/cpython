@@ -66,11 +66,13 @@ typedef struct
 module _pyodide_core
 
 class _pyodide_core.JsProxy "PyObject *" "JsProxyType"
-class _pyodide_core.JsGenerator "PyObject *" "JsProxyType"
-class _pyodide_core.JsException "PyObject *" "JsProxyType"
+
 class _pyodide_core.JsArray "PyObject *" "JsProxyType"
+class _pyodide_core.JsDoubleProxy "PyObject *" "JsProxyType"
+class _pyodide_core.JsException "PyObject *" "JsProxyType"
+class _pyodide_core.JsGenerator "PyObject *" "JsProxyType"
 [clinic start generated code]*/
-/*[clinic end generated code: output=da39a3ee5e6b4b0d input=4b0f048ce11eb0ae]*/
+/*[clinic end generated code: output=da39a3ee5e6b4b0d input=3f0f523b438110b3]*/
 #include "clinic/jsproxy.c.h"
 
 // Layout of dict and ExceptionFields needs to exactly match the layout of the
@@ -1738,7 +1740,7 @@ static PyObject *
 _pyodide_core_JsArray_remove(PyObject *self, PyObject *value)
 /*[clinic end generated code: output=ef6fba8da3e93b77 input=d4a7480ba04102b1]*/
 {
-  int index = JsArray_index_helper(self, arg, 0, PY_SSIZE_T_MAX);
+  int index = JsArray_index_helper(self, value, 0, PY_SSIZE_T_MAX);
   FAIL_IF_MINUS_ONE(index);
   JsvArray_Delete(JsProxy_VAL(self), index);
   Py_RETURN_NONE;
@@ -1905,19 +1907,20 @@ EM_JS_REF(PyObject*, JsDoubleProxy_unwrap_js, (JsVal id), {
   return Module.PyProxy_getPtr(id);
 });
 
-static PyObject*
-JsDoubleProxy_unwrap(PyObject* obj, PyObject* _ignored)
+/*[clinic input]
+_pyodide_core.JsDoubleProxy.unwrap
+
+Unwrap a double proxy created with create_proxy.
+[clinic start generated code]*/
+
+static PyObject *
+_pyodide_core_JsDoubleProxy_unwrap_impl(PyObject *self)
+/*[clinic end generated code: output=082ded3e691dfd38 input=d35b5960b5d818fc]*/
 {
-  PyObject* result = JsDoubleProxy_unwrap_js(JsProxy_VAL(obj));
+  PyObject* result = JsDoubleProxy_unwrap_js(JsProxy_VAL(self));
   Py_XINCREF(result);
   return result;
 }
-
-static PyMethodDef JsDoubleProxy_unwrap_MethodDef = {
-  "unwrap",
-  (PyCFunction)JsDoubleProxy_unwrap,
-  METH_NOARGS,
-};
 
 // clang-format off
 static PyNumberMethods JsProxy_NumberMethods = {
@@ -2119,7 +2122,7 @@ JsProxy_create_subtype(int flags)
   }
 
   if (flags & IS_DOUBLE_PROXY) {
-    methods[cur_method++] = JsDoubleProxy_unwrap_MethodDef;
+    AddMethods(_PYODIDE_CORE_JSDOUBLEPROXY_UNWRAP_METHODDEF);
   }
 
   members[cur_member++] = (PyMemberDef){ 0 };

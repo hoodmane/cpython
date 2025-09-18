@@ -529,4 +529,21 @@ _pyodide_core_JsException___reduce__(PyObject *self, PyObject *Py_UNUSED(ignored
 {
     return _pyodide_core_JsException___reduce___impl(self);
 }
-/*[clinic end generated code: output=944b40301b80f422 input=a9049054013a1b77]*/
+
+PyDoc_STRVAR(_pyodide_core_JsDoubleProxy_unwrap__doc__,
+"unwrap($self, /)\n"
+"--\n"
+"\n");
+
+#define _PYODIDE_CORE_JSDOUBLEPROXY_UNWRAP_METHODDEF    \
+    {"unwrap", (PyCFunction)_pyodide_core_JsDoubleProxy_unwrap, METH_NOARGS, _pyodide_core_JsDoubleProxy_unwrap__doc__},
+
+static PyObject *
+_pyodide_core_JsDoubleProxy_unwrap_impl(PyObject *self);
+
+static PyObject *
+_pyodide_core_JsDoubleProxy_unwrap(PyObject *self, PyObject *Py_UNUSED(ignored))
+{
+    return _pyodide_core_JsDoubleProxy_unwrap_impl(self);
+}
+/*[clinic end generated code: output=04c9fd14dfb6bcde input=a9049054013a1b77]*/
