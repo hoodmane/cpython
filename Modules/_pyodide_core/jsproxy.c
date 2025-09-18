@@ -1,3 +1,8 @@
+#ifndef Py_BUILD_CORE_BUILTIN
+#  define Py_BUILD_CORE_MODULE 1
+#endif
+
+
 #include "jsproxy.h"
 #include "pyproxy.h"
 #include "jsproxy_call.h"
@@ -8,9 +13,10 @@
 #include "jsmemops.h"
 
 #include "pyidentifier.h"
-#include "internal/pycore_genobject.h"
-#include "internal/pycore_modsupport.h"
+#include "pycore_genobject.h"
+#include "pycore_modsupport.h"
 #include "pycore_setobject.h"     // _PySet_Update()
+#include "pycore_runtime.h"     // _Py_ID()
 
 #define HAS_GET            (1 << 0)
 #define HAS_HAS            (1 << 1)
@@ -25,8 +31,6 @@
 #define IS_ITERATOR        (1 << 10)
 #define IS_DOUBLE_PROXY    (1 << 11)
 
-_Py_IDENTIFIER(_js_type_flags);
-_Py_IDENTIFIER(__dir__);
 Js_IDENTIFIER(next);
 
 
@@ -106,7 +110,7 @@ int
 JsProxy_getflags(PyObject* self)
 {
   PyObject* pyflags =
-    _PyObject_GetAttrId((PyObject*)Py_TYPE(self), &PyId__js_type_flags);
+    PyObject_GetAttr((PyObject*)Py_TYPE(self), &_Py_ID(_js_type_flags));
   if (pyflags == NULL) {
     return -1;
   }
@@ -361,14 +365,13 @@ JsProxy_Dir(PyObject* self, PyObject* _args)
   PyObject* result_set = NULL;
   JsVal jsdir = JS_ERROR;
   PyObject* pydir = NULL;
-  PyObject* keys_str = NULL;
 
   PyObject* result = NULL;
 
   // First get base __dir__ via object.__dir__(self)
   // Would have been nice if they'd supplied PyObject_GenericDir...
   object__dir__ =
-    _PyObject_GetAttrId((PyObject*)&PyBaseObject_Type, &PyId___dir__);
+    PyObject_GetAttr((PyObject*)&PyBaseObject_Type, &_Py_ID(__dir__));
   FAIL_IF_NULL(object__dir__);
   keys = PyObject_CallOneArg(object__dir__, self);
   FAIL_IF_NULL(keys);
@@ -383,9 +386,7 @@ JsProxy_Dir(PyObject* self, PyObject* _args)
   FAIL_IF_MINUS_ONE(_PySet_Update(result_set, pydir));
   if (JsvArray_Check(JsProxy_VAL(self))) {
     // See comment about Array.keys in GetAttr
-    keys_str = PyUnicode_FromString("keys");
-    FAIL_IF_NULL(keys_str);
-    FAIL_IF_MINUS_ONE(PySet_Discard(result_set, keys_str));
+    FAIL_IF_MINUS_ONE(PySet_Discard(result_set, &_Py_ID(keys)));
   }
   result = PyList_New(0);
   FAIL_IF_NULL(result);
@@ -398,7 +399,6 @@ finally:
   Py_CLEAR(keys);
   Py_CLEAR(result_set);
   Py_CLEAR(pydir);
-  Py_CLEAR(keys_str);
   if (!success) {
     Py_CLEAR(result);
   }
@@ -2165,7 +2165,7 @@ JsProxy_create_subtype(int flags)
   flags_obj = PyLong_FromLong(flags);
   FAIL_IF_NULL(flags_obj);
   FAIL_IF_MINUS_ONE(
-    PyObject_SetAttr(result, _PyUnicode_FromId(&PyId__js_type_flags), flags_obj));
+    PyObject_SetAttr(result, &_Py_ID(_js_type_flags), flags_obj));
 
   success = true;
 finally:

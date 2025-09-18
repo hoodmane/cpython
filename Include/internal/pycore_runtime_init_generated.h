@@ -1535,6 +1535,7 @@ extern "C" {
     INIT_ID(_io), \
     INIT_ID(_is_text_encoding), \
     INIT_ID(_isatty_open_only), \
+    INIT_ID(_js_type_flags), \
     INIT_ID(_length_), \
     INIT_ID(_limbo), \
     INIT_ID(_lock_unlock_module), \
@@ -1958,6 +1959,7 @@ extern "C" {
     INIT_ID(pid), \
     INIT_ID(pointer_bits), \
     INIT_ID(policy), \
+    INIT_ID(pop), \
     INIT_ID(pos), \
     INIT_ID(pos1), \
     INIT_ID(pos2), \
