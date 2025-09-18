@@ -21,12 +21,12 @@ PyDoc_STRVAR(_pyodide_core_JsProxy___dir____doc__,
     {"__dir__", (PyCFunction)_pyodide_core_JsProxy___dir__, METH_NOARGS, _pyodide_core_JsProxy___dir____doc__},
 
 static PyObject *
-_pyodide_core_JsProxy___dir___impl(JsProxy *self);
+_pyodide_core_JsProxy___dir___impl(PyObject *self);
 
 static PyObject *
 _pyodide_core_JsProxy___dir__(PyObject *self, PyObject *Py_UNUSED(ignored))
 {
-    return _pyodide_core_JsProxy___dir___impl((JsProxy *)self);
+    return _pyodide_core_JsProxy___dir___impl(self);
 }
 
 PyDoc_STRVAR(_pyodide_core_JsProxy_to_py__doc__,
@@ -50,7 +50,7 @@ PyDoc_STRVAR(_pyodide_core_JsProxy_to_py__doc__,
     {"to_py", _PyCFunction_CAST(_pyodide_core_JsProxy_to_py), METH_FASTCALL|METH_KEYWORDS, _pyodide_core_JsProxy_to_py__doc__},
 
 static PyObject *
-_pyodide_core_JsProxy_to_py_impl(JsProxy *self, int depth,
+_pyodide_core_JsProxy_to_py_impl(PyObject *self, int depth,
                                  PyObject *default_converter);
 
 static PyObject *
@@ -108,7 +108,7 @@ _pyodide_core_JsProxy_to_py(PyObject *self, PyObject *const *args, Py_ssize_t na
     }
     default_converter = args[1];
 skip_optional_kwonly:
-    return_value = _pyodide_core_JsProxy_to_py_impl((JsProxy *)self, depth, default_converter);
+    return_value = _pyodide_core_JsProxy_to_py_impl(self, depth, default_converter);
 
 exit:
     return return_value;
@@ -122,17 +122,60 @@ PyDoc_STRVAR(_pyodide_core_JsGenerator_send__doc__,
 #define _PYODIDE_CORE_JSGENERATOR_SEND_METHODDEF    \
     {"send", (PyCFunction)_pyodide_core_JsGenerator_send, METH_O, _pyodide_core_JsGenerator_send__doc__},
 
-static PyObject *
-_pyodide_core_JsGenerator_send_impl(JsProxy *self, PyObject *arg);
+PyDoc_STRVAR(_pyodide_core_JsGenerator_throw__doc__,
+"throw($self, value, val=<unrepresentable>, tb=<unrepresentable>, /)\n"
+"--\n"
+"\n");
+
+#define _PYODIDE_CORE_JSGENERATOR_THROW_METHODDEF    \
+    {"throw", _PyCFunction_CAST(_pyodide_core_JsGenerator_throw), METH_FASTCALL, _pyodide_core_JsGenerator_throw__doc__},
 
 static PyObject *
-_pyodide_core_JsGenerator_send(PyObject *self, PyObject *arg)
+_pyodide_core_JsGenerator_throw_impl(PyObject *self, PyObject *value,
+                                     PyObject *val, PyObject *tb);
+
+static PyObject *
+_pyodide_core_JsGenerator_throw(PyObject *self, PyObject *const *args, Py_ssize_t nargs)
 {
     PyObject *return_value = NULL;
+    PyObject *value;
+    PyObject *val = NULL;
+    PyObject *tb = NULL;
 
-    return_value = _pyodide_core_JsGenerator_send_impl((JsProxy *)self, arg);
+    if (!_PyArg_CheckPositional("throw", nargs, 1, 3)) {
+        goto exit;
+    }
+    value = args[0];
+    if (nargs < 2) {
+        goto skip_optional;
+    }
+    val = args[1];
+    if (nargs < 3) {
+        goto skip_optional;
+    }
+    tb = args[2];
+skip_optional:
+    return_value = _pyodide_core_JsGenerator_throw_impl(self, value, val, tb);
 
+exit:
     return return_value;
+}
+
+PyDoc_STRVAR(_pyodide_core_JsGenerator_close__doc__,
+"close($self, /)\n"
+"--\n"
+"\n");
+
+#define _PYODIDE_CORE_JSGENERATOR_CLOSE_METHODDEF    \
+    {"close", (PyCFunction)_pyodide_core_JsGenerator_close, METH_NOARGS, _pyodide_core_JsGenerator_close__doc__},
+
+static PyObject *
+_pyodide_core_JsGenerator_close_impl(PyObject *self);
+
+static PyObject *
+_pyodide_core_JsGenerator_close(PyObject *self, PyObject *Py_UNUSED(ignored))
+{
+    return _pyodide_core_JsGenerator_close_impl(self);
 }
 
 PyDoc_STRVAR(_pyodide_core_JsException___reduce____doc__,
@@ -144,11 +187,11 @@ PyDoc_STRVAR(_pyodide_core_JsException___reduce____doc__,
     {"__reduce__", (PyCFunction)_pyodide_core_JsException___reduce__, METH_NOARGS, _pyodide_core_JsException___reduce____doc__},
 
 static PyObject *
-_pyodide_core_JsException___reduce___impl(JsProxy *self);
+_pyodide_core_JsException___reduce___impl(PyObject *self);
 
 static PyObject *
 _pyodide_core_JsException___reduce__(PyObject *self, PyObject *Py_UNUSED(ignored))
 {
-    return _pyodide_core_JsException___reduce___impl((JsProxy *)self);
+    return _pyodide_core_JsException___reduce___impl(self);
 }
-/*[clinic end generated code: output=d289e202b020b692 input=a9049054013a1b77]*/
+/*[clinic end generated code: output=bb300865f6600af5 input=a9049054013a1b77]*/
