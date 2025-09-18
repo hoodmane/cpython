@@ -720,9 +720,18 @@ _pyodide_core.create_proxy
     /
     *
 
-    capture_this: bool
+    capture_this: bool = False
         If the object is callable, should ``this`` be passed as the first
         argument when calling it from JavaScript.
+
+    roundtrip: bool = True
+        When the proxy is converted back from JavaScript to Python, if this is
+        ``True`` it is converted into a double proxy. If ``False``, it is
+        unwrapped into a Python object. In the case that ``roundtrip`` is
+        ``True`` it is possible to unwrap a double proxy with the
+        :py:meth:`JsDoubleProxy.unwrap` method. This is useful to allow easier
+        control of lifetimes from Python:
+
 
 Spam
 
@@ -734,10 +743,9 @@ Create a JsProxy of a pyodide.ffi.PyProxy.
 
 static PyObject *
 _pyodide_core_create_proxy_impl(PyObject *module, PyObject *obj,
-                                int capture_this)
-/*[clinic end generated code: output=12632123380fd821 input=7991338a72a167f8]*/
+                                int capture_this, int roundtrip)
+/*[clinic end generated code: output=365b44a6c783bf4d input=e07c02de2d4b44c8]*/
 {
-  bool roundtrip = true;
   bool gc_register = true;
   return JsProxy_create(
     pyproxy_new_ex(obj, capture_this, roundtrip, gc_register));

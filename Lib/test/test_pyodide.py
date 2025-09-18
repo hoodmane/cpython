@@ -1,5 +1,5 @@
 from unittest import TestCase
-from _pyodide_core import run_js, to_js, destroy_proxies
+from _pyodide_core import run_js, to_js, destroy_proxies, create_proxy
 from _pyodide import jsnull
 
 JsError = type(run_js("new Error()"))
@@ -552,18 +552,16 @@ class JsProxyTest(TestCase):
         with self.assertRaisesRegex(ValueError, "is not in list"):
             a.remove(78)
         self.assertEqual(a.to_py(), l)
-        l.append([])  # type:ignore[arg-type]
-        # TODO: Requires create_proxy
-        # p = create_proxy([], roundtrip=False)  # type:ignore[var-annotated]
-        # a.append(p)
-        # assert a.to_py() == l
-        # l.remove([])  # type:ignore[arg-type]
-        # a.remove([])
-        # p.destroy()
-        # assert a.to_py() == l
-        # a.push([])
-        # with pytest.raises(ValueError, match="is not in list"):
-        #     a.remove([])
+        l.append([])
+        p = create_proxy([], roundtrip=False)
+        a.append(p)
+        x = a.to_py()
+        print(type(x[-1]), type(l))
+        self.assertEqual(x, l)
+        l.remove([])
+        a.remove([])
+        p.destroy()
+        self.assertEqual(a.to_py(), l)
 
     def test_gen_close_throw(self):
         f = run_js(
