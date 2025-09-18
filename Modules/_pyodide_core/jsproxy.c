@@ -67,8 +67,9 @@ module _pyodide_core
 
 class _pyodide_core.JsProxy "JsProxy *" "JsProxyType"
 class _pyodide_core.JsGenerator "JsProxy *" "JsProxyType"
+class _pyodide_core.JsException "JsProxy *" "JsProxyType"
 [clinic start generated code]*/
-/*[clinic end generated code: output=da39a3ee5e6b4b0d input=96c41488ace1361b]*/
+/*[clinic end generated code: output=da39a3ee5e6b4b0d input=9ac0acad782b7f11]*/
 #include "clinic/jsproxy.c.h"
 
 // Layout of dict and ExceptionFields needs to exactly match the layout of the
@@ -1813,8 +1814,16 @@ JsMethod_cinit(PyObject* self, JsVal this_)
 //
 // A subclass of JsProxy for errors
 
-static PyObject*
-JsException_reduce(PyObject* self, PyObject* Py_UNUSED(ignored))
+/**
+ */
+
+/*[clinic input]
+_pyodide_core.JsException.__reduce__
+[clinic start generated code]*/
+
+static PyObject *
+_pyodide_core_JsException___reduce___impl(JsProxy *self)
+/*[clinic end generated code: output=7aa37f517728e7a0 input=01774b928904de24]*/
 {
   // Record name, message, and stack.
   // See _core_docs.JsException._new_exc where the unpickling will happen.
@@ -1848,13 +1857,6 @@ finally:
   Py_CLEAR(stack);
   return res;
 }
-
-static PyMethodDef JsException_reduce_MethodDef = {
-  "__reduce__",
-  (PyCFunction)JsException_reduce,
-  METH_NOARGS
-};
-
 
 // clang-format off
 EM_JS_VAL(JsVal,
@@ -1960,7 +1962,7 @@ JsProxy_create_subtype(int flags)
   char* type_name = "pyodide.ffi.JsProxy";
   int basicsize = sizeof(JsProxy);
 
-  #define AddMethods(to_add)                          \
+  #define AddMethods(to_add...)                       \
     do {                                              \
       PyMethodDef meths_array[] = { to_add {0} };     \
       PyMethodDef *meths = meths_array;               \
@@ -2083,7 +2085,7 @@ JsProxy_create_subtype(int flags)
       (PyType_Slot){ .slot = Py_tp_call, .pfunc = (void*)PyVectorcall_Call };
     slots[cur_slot++] = (PyType_Slot){ .slot = Py_tp_descr_get,
                                        .pfunc = (void*)JsMethod_descr_get };
-    methods[cur_method++] = JsMethod_Construct_MethodDef;
+    AddMethods(JsMethod_Construct_MethodDef,);
     members[cur_member++] = (PyMemberDef){
       .name = "__vectorcalloffset__",
       .type = Py_T_PYSSIZET,
@@ -2095,7 +2097,7 @@ JsProxy_create_subtype(int flags)
 
   if (flags & IS_ERROR) {
     type_name = "pyodide.ffi.JsException";
-    methods[cur_method++] = JsException_reduce_MethodDef;
+    AddMethods(_PYODIDE_CORE_JSEXCEPTION___REDUCE___METHODDEF);
     tp_flags |= Py_TPFLAGS_HAVE_GC;
     tp_flags |= Py_TPFLAGS_BASE_EXC_SUBCLASS;
     slots[cur_slot++] =

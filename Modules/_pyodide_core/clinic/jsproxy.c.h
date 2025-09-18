@@ -134,4 +134,21 @@ _pyodide_core_JsGenerator_send(PyObject *self, PyObject *arg)
 
     return return_value;
 }
-/*[clinic end generated code: output=55dc94e573094a34 input=a9049054013a1b77]*/
+
+PyDoc_STRVAR(_pyodide_core_JsException___reduce____doc__,
+"__reduce__($self, /)\n"
+"--\n"
+"\n");
+
+#define _PYODIDE_CORE_JSEXCEPTION___REDUCE___METHODDEF    \
+    {"__reduce__", (PyCFunction)_pyodide_core_JsException___reduce__, METH_NOARGS, _pyodide_core_JsException___reduce____doc__},
+
+static PyObject *
+_pyodide_core_JsException___reduce___impl(JsProxy *self);
+
+static PyObject *
+_pyodide_core_JsException___reduce__(PyObject *self, PyObject *Py_UNUSED(ignored))
+{
+    return _pyodide_core_JsException___reduce___impl((JsProxy *)self);
+}
+/*[clinic end generated code: output=d289e202b020b692 input=a9049054013a1b77]*/
