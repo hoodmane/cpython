@@ -23,6 +23,7 @@
 #define IS_GENERATOR       (1 << 8)
 #define IS_ITERABLE        (1 << 9)
 #define IS_ITERATOR        (1 << 10)
+#define IS_DOUBLE_PROXY    (1 << 11)
 
 _Py_IDENTIFIER(_js_type_flags);
 _Py_IDENTIFIER(__dir__);
@@ -1880,6 +1881,24 @@ JsException_init(PyBaseExceptionObject* self, PyObject* args, PyObject* kwds)
   return 0;
 }
 
+EM_JS_REF(PyObject*, JsDoubleProxy_unwrap_js, (JsVal id), {
+  return Module.PyProxy_getPtr(id);
+});
+
+static PyObject*
+JsDoubleProxy_unwrap(PyObject* obj, PyObject* _ignored)
+{
+  PyObject* result = JsDoubleProxy_unwrap_js(JsProxy_VAL(obj));
+  Py_XINCREF(result);
+  return result;
+}
+
+static PyMethodDef JsDoubleProxy_unwrap_MethodDef = {
+  "unwrap",
+  (PyCFunction)JsDoubleProxy_unwrap,
+  METH_NOARGS,
+};
+
 // clang-format off
 static PyNumberMethods JsProxy_NumberMethods = {
   .nb_bool = JsProxy_Bool
@@ -2064,6 +2083,9 @@ JsProxy_create_subtype(int flags)
       (PyType_Slot){ .slot = Py_tp_init, .pfunc = JsException_init };
   }
 
+  if (flags & IS_DOUBLE_PROXY) {
+    methods[cur_method++] = JsDoubleProxy_unwrap_MethodDef;
+  }
 
   members[cur_member++] = (PyMemberDef){ 0 };
   methods[cur_method++] = (PyMethodDef){ 0 };
@@ -2211,6 +2233,7 @@ EM_JS_NUM(int, JsProxy_compute_typeflags, (JsVal obj), {
     (hasProperty(obj, "length") && typeof obj !== "function"));
   SET_FLAG_IF(IS_CALLABLE, typeof obj === "function");
   SET_FLAG_IF(IS_ARRAY, safeCall(() => Array.isArray(obj)));
+  SET_FLAG_IF(IS_DOUBLE_PROXY, API.isPyProxy(obj));
   SET_FLAG_IF(IS_GENERATOR, typeTag === "[object Generator]");
   SET_FLAG_IF_HAS_METHOD(IS_ITERABLE, Symbol.iterator);
   SET_FLAG_IF(IS_ITERATOR, hasMethod(obj, "next") && (hasMethod(obj, Symbol.iterator) || !hasMethod(obj, Symbol.asyncIterator)));
