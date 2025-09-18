@@ -2007,6 +2007,7 @@ _PyStaticObjects_CheckRefcnt(PyInterpreterState *interp) {
     _PyStaticObject_CheckRefcnt((PyObject *)&_Py_ID(reverse));
     _PyStaticObject_CheckRefcnt((PyObject *)&_Py_ID(reversed));
     _PyStaticObject_CheckRefcnt((PyObject *)&_Py_ID(rounding));
+    _PyStaticObject_CheckRefcnt((PyObject *)&_Py_ID(roundtrip));
     _PyStaticObject_CheckRefcnt((PyObject *)&_Py_ID(salt));
     _PyStaticObject_CheckRefcnt((PyObject *)&_Py_ID(sched_priority));
     _PyStaticObject_CheckRefcnt((PyObject *)&_Py_ID(scheduler));

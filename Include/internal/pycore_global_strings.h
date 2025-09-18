@@ -730,6 +730,7 @@ struct _Py_global_strings {
         STRUCT_FOR_ID(reverse)
         STRUCT_FOR_ID(reversed)
         STRUCT_FOR_ID(rounding)
+        STRUCT_FOR_ID(roundtrip)
         STRUCT_FOR_ID(salt)
         STRUCT_FOR_ID(sched_priority)
         STRUCT_FOR_ID(scheduler)

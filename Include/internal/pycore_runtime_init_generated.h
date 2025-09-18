@@ -2005,6 +2005,7 @@ extern "C" {
     INIT_ID(reverse), \
     INIT_ID(reversed), \
     INIT_ID(rounding), \
+    INIT_ID(roundtrip), \
     INIT_ID(salt), \
     INIT_ID(sched_priority), \
     INIT_ID(scheduler), \
