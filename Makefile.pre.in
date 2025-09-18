@@ -1612,7 +1612,7 @@ Modules/_pyodide_core/pyproxy.gen.ts: Modules/_pyodide_core/pyproxy.ts Modules/_
 	echo "// Do not edit it directly!" >> $@
 	cat $< | \
 		sed '/^\/\/\s*pyodide-skip/,/^\/\/\s*end-pyodide-skip/d' | \
-		$(CC) -E -C -P -imacros $(srcdir)/Modules/_pyodide_core/pyproxy.c - -I$(srcdir)/Include -I. $(MODULE__PYODIDE_CORE_CFLAGS) | \
+		$(CC) -E -C -P -imacros $(srcdir)/Modules/_pyodide_core/pyproxy.c - -I$(srcdir)/Include -I$(srcdir)/Include/internal -I. $(MODULE__PYODIDE_CORE_CFLAGS) | \
 		sed 's/^#pragma clang.*//g' \
 		>> $@
 

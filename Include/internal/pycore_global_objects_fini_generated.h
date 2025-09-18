@@ -1619,6 +1619,7 @@ _PyStaticObjects_CheckRefcnt(PyInterpreterState *interp) {
     _PyStaticObject_CheckRefcnt((PyObject *)&_Py_ID(cancel));
     _PyStaticObject_CheckRefcnt((PyObject *)&_Py_ID(capath));
     _PyStaticObject_CheckRefcnt((PyObject *)&_Py_ID(capitals));
+    _PyStaticObject_CheckRefcnt((PyObject *)&_Py_ID(capture_this));
     _PyStaticObject_CheckRefcnt((PyObject *)&_Py_ID(category));
     _PyStaticObject_CheckRefcnt((PyObject *)&_Py_ID(cb_type));
     _PyStaticObject_CheckRefcnt((PyObject *)&_Py_ID(certfile));

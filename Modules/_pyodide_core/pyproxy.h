@@ -11,7 +11,7 @@ pyproxy_new_ex(PyObject* obj,
                bool roundtrip,
                bool register);
 
-bool
+int
 PyProxy_Check(JsVal);
 
 void

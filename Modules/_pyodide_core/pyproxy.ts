@@ -127,6 +127,7 @@ type PyProxyProps = {
    * application. These are stored here.
    */
   boundArgs: any[];
+  roundtrip: boolean;
 };
 
 type PyProxyAttrs = {
@@ -235,7 +236,7 @@ function pyproxy_new(
   }
 
   props = Object.assign(
-    { isBound: false, captureThis: false, boundArgs: [] },
+    { isBound: false, captureThis: false, boundArgs: [], roundtrip: false },
     props,
   );
   let handlers;
@@ -417,10 +418,10 @@ class PyProxy {
    *        destroying. Defaults to "Object has already been destroyed".
    *
    */
-  destroy(options: { message?: string } = {}) {
-    options = Object.assign({ message: "" }, options);
-    const { message: m } = options;
-    Module.pyproxy_destroy(this, m);
+  destroy(options: { message?: string, destroyRoundtrip?: boolean } = {}) {
+    options = Object.assign({ message: "", destroyRoundtrip: true }, options);
+    const { message: m, destroyRoundtrip: d } = options;
+    Module.pyproxy_destroy(this, m, d);
   }
 }
 const PyProxyProto = PyProxy.prototype;
@@ -447,10 +448,13 @@ function pyproxy_decref_cache(cache: PyProxyCache) {
   }
 }
 
-function pyproxy_destroy(proxy: PyProxy, destroyed_msg: string) {
-  const { shared } = _getAttrsQuiet(proxy);
+function pyproxy_destroy(proxy: PyProxy, destroyed_msg: string, destroy_roundtrip: boolean) {
+  const { shared, props } = _getAttrsQuiet(proxy);
   if (!shared.ptr) {
     // already destroyed
+    return;
+  }
+  if (!destroy_roundtrip && props.roundtrip) {
     return;
   }
   shared.destroyed_msg = destroyed_msg ?? "Object has already been destroyed";

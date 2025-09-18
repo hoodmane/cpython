@@ -26,7 +26,7 @@ EM_JS_VAL(JsVal, _pyodide_core_get_eval, (void), {
 module _pyodide_core
 _pyodide_core.bad_hiwire_get
 
-    select: 'i'
+    select: int
     /
 
 Run hiwire_get on bad imputs to test the errors.
@@ -36,7 +36,7 @@ Currently this fatally crashes the runtime so it can't be used in a test.
 
 static PyObject *
 _pyodide_core_bad_hiwire_get_impl(PyObject *module, int select)
-/*[clinic end generated code: output=25686670072611be input=50b8fdde919bb598]*/
+/*[clinic end generated code: output=25686670072611be input=3f4cc0f180ead445]*/
 {
     switch(select) {
         case 1:

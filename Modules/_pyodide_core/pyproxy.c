@@ -1,3 +1,7 @@
+#ifndef Py_BUILD_CORE_BUILTIN
+#  define Py_BUILD_CORE_MODULE 1
+#endif
+
 #include "Python.h"
 #include "jslib.h"
 #include "python2js.h"
@@ -5,6 +9,14 @@
 #include "emscripten.h"
 #include "error_handling.h"
 #include "pytypedefs.h"
+#include "pyproxy.h"
+#include "jsproxy.h"
+
+#include "clinic/pyproxy.c.h"
+/*[clinic input]
+module _pyodide_core
+[clinic start generated code]*/
+/*[clinic end generated code: output=da39a3ee5e6b4b0d input=fcac4389838df104]*/
 
 #define Py_ENTER()
 #define Py_EXIT()
@@ -431,7 +443,7 @@ finally:
  *
  * Vectorcall expects the arguments to be communicated as:
  *
- *  PyObject*const *args: the positional arguments and followed by the keyword
+ *  PyObject* const *args: the positional arguments and followed by the keyword
  *    arguments
  *
  *  size_t nargs_with_flag : the number of arguments plus a flag
@@ -636,29 +648,6 @@ finally:
   return _pyproxyGen_make_result(status == PYGEN_RETURN, result);
 }
 
-int
-pyproxy_init(PyObject* core)
-{
-  bool success = false;
-
-  PyObject* collections_abc = NULL;
-
-  collections_abc = PyImport_ImportModule("collections.abc");
-  FAIL_IF_NULL(collections_abc);
-  Generator = PyObject_GetAttrString(collections_abc, "Generator");
-  FAIL_IF_NULL(Generator);
-  Sequence = PyObject_GetAttrString(collections_abc, "Sequence");
-  FAIL_IF_NULL(Sequence);
-  MutableSequence = PyObject_GetAttrString(collections_abc, "MutableSequence");
-  FAIL_IF_NULL(MutableSequence);
-  
-  success = true;
-finally:
-  Py_CLEAR(collections_abc);
-  return success ? 0 : -1;
-}
-
-
 EMSCRIPTEN_KEEPALIVE JsVal
 _pyproxy_slice_assign(PyObject* pyobj,
                       Py_ssize_t start,
@@ -720,4 +709,64 @@ finally:
   Py_CLEAR(pop);
   Py_CLEAR(pyresult);
   return jsresult;
+}
+
+/*[clinic input]
+_pyodide_core.create_proxy
+
+    obj: object
+        The object to wrap.
+
+    /
+    *
+
+    capture_this: bool
+        If the object is callable, should ``this`` be passed as the first
+        argument when calling it from JavaScript.
+
+Spam
+
+This allows explicit control over the lifetime of the PyProxy from Python. call the
+:py:meth:`~JsDoubleProxy.destroy` API when done.
+
+Create a JsProxy of a pyodide.ffi.PyProxy.
+[clinic start generated code]*/
+
+static PyObject *
+_pyodide_core_create_proxy_impl(PyObject *module, PyObject *obj,
+                                int capture_this)
+/*[clinic end generated code: output=12632123380fd821 input=7991338a72a167f8]*/
+{
+  bool roundtrip = true;
+  bool gc_register = true;
+  return JsProxy_create(
+    pyproxy_new_ex(obj, capture_this, roundtrip, gc_register));
+}
+
+static PyMethodDef methods[] = {
+  _PYODIDE_CORE_CREATE_PROXY_METHODDEF
+  { NULL } /* Sentinel */
+};
+
+int
+pyproxy_init(PyObject* core)
+{
+  bool success = false;
+
+  PyObject* collections_abc = NULL;
+
+  FAIL_IF_MINUS_ONE(PyModule_AddFunctions(core, methods));
+  collections_abc = PyImport_ImportModule("collections.abc");
+  FAIL_IF_NULL(collections_abc);
+  Generator = PyObject_GetAttrString(collections_abc, "Generator");
+  FAIL_IF_NULL(Generator);
+  Sequence = PyObject_GetAttrString(collections_abc, "Sequence");
+  FAIL_IF_NULL(Sequence);
+  MutableSequence = PyObject_GetAttrString(collections_abc, "MutableSequence");
+  FAIL_IF_NULL(MutableSequence);
+
+  success = true;
+finally:
+  Py_CLEAR(collections_abc);
+  return success ? 0 : -1;
 }

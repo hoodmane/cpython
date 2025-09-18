@@ -1617,6 +1617,7 @@ extern "C" {
     INIT_ID(cancel), \
     INIT_ID(capath), \
     INIT_ID(capitals), \
+    INIT_ID(capture_this), \
     INIT_ID(category), \
     INIT_ID(cb_type), \
     INIT_ID(certfile), \
