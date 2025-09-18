@@ -1676,6 +1676,7 @@ extern "C" {
     INIT_ID(decode), \
     INIT_ID(decoder), \
     INIT_ID(default), \
+    INIT_ID(default_converter), \
     INIT_ID(defaultaction), \
     INIT_ID(delete), \
     INIT_ID(depth), \

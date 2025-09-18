@@ -1678,6 +1678,7 @@ _PyStaticObjects_CheckRefcnt(PyInterpreterState *interp) {
     _PyStaticObject_CheckRefcnt((PyObject *)&_Py_ID(decode));
     _PyStaticObject_CheckRefcnt((PyObject *)&_Py_ID(decoder));
     _PyStaticObject_CheckRefcnt((PyObject *)&_Py_ID(default));
+    _PyStaticObject_CheckRefcnt((PyObject *)&_Py_ID(default_converter));
     _PyStaticObject_CheckRefcnt((PyObject *)&_Py_ID(defaultaction));
     _PyStaticObject_CheckRefcnt((PyObject *)&_Py_ID(delete));
     _PyStaticObject_CheckRefcnt((PyObject *)&_Py_ID(depth));

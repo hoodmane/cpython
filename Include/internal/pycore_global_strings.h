@@ -401,6 +401,7 @@ struct _Py_global_strings {
         STRUCT_FOR_ID(decode)
         STRUCT_FOR_ID(decoder)
         STRUCT_FOR_ID(default)
+        STRUCT_FOR_ID(default_converter)
         STRUCT_FOR_ID(defaultaction)
         STRUCT_FOR_ID(delete)
         STRUCT_FOR_ID(depth)
