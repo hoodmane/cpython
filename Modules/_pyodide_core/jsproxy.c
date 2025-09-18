@@ -62,6 +62,14 @@ typedef struct
   JsRef js;
 } JsProxy;
 
+/*[clinic input]
+module _pyodide_core
+
+class _pyodide_core.JsProxy "JsProxy *" "JsProxyType"
+[clinic start generated code]*/
+/*[clinic end generated code: output=da39a3ee5e6b4b0d input=3f9ad81d9f4d5976]*/
+#include "clinic/jsproxy.c.h"
+
 // Layout of dict and ExceptionFields needs to exactly match the layout of the
 // same-name fields of BaseException. Otherwise bad things will happen. Check it
 // with static asserts!
@@ -352,12 +360,18 @@ EM_JS_VAL(JsVal, JsProxy_Dir_js, (JsVal jsobj), {
   return result;
 });
 
-/**
- * Overload of `dir(proxy)`. Walks the prototype chain of the object and adds
- * the ownPropertyNames of each prototype.
- */
-static PyObject*
-JsProxy_Dir(PyObject* self, PyObject* _args)
+/*[clinic input]
+_pyodide_core.JsProxy.__dir__
+
+Implementation for dir(proxy).
+
+Walk the prototype chain of the object and adds the ownPropertyNames
+of each prototype.
+[clinic start generated code]*/
+
+static PyObject *
+_pyodide_core_JsProxy___dir___impl(JsProxy *self)
+/*[clinic end generated code: output=680fedf631494eb8 input=4b450a7907328a4b]*/
 {
   bool success = false;
   PyObject* object__dir__ = NULL;
@@ -405,33 +419,34 @@ finally:
   return result;
 }
 
-static PyMethodDef JsProxy_Dir_MethodDef = {
-  "__dir__",
-  (PyCFunction)JsProxy_Dir,
-  METH_NOARGS,
-  PyDoc_STR("Returns a list of the members and methods on the object."),
-};
+/*[clinic input]
+_pyodide_core.JsProxy.to_py
 
+    *
 
-static PyObject*
-JsProxy_toPy(PyObject* self,
-             PyObject* const* args,
-             Py_ssize_t nargs,
-             PyObject* kwnames)
+    depth: int = -1
+        Limit the depth of the conversion. If a shallow conversion is
+        desired, set ``depth`` to 1.
+
+    default_converter: object = None
+
+        If present, this will be invoked whenever Pyodide does not have some
+        built in conversion for the object. If ``default_converter`` raises
+        an error, the error will be allowed to propagate. Otherwise, the
+        object returned will be used as the conversion.
+        ``default_converter`` takes three arguments. The first argument is
+        the value to be converted.
+
+Convert the JsProxy to a native Python object.
+[clinic start generated code]*/
+
+static PyObject *
+_pyodide_core_JsProxy_to_py_impl(JsProxy *self, int depth,
+                                 PyObject *default_converter)
+/*[clinic end generated code: output=8ee2e2e45d67050c input=79b7ae317bc25af1]*/
 {
-  static const char* const _keywords[] = { "depth", "default_converter", 0 };
-  static struct _PyArg_Parser _parser = {
-    .format = "|$iO:to_py",
-    .keywords = _keywords,
-  };
-  int depth = -1;
-  PyObject* default_converter = NULL;
-  if (!_PyArg_ParseStackAndKeywords(
-        args, nargs, kwnames, &_parser, &depth, &default_converter)) {
-    return NULL;
-  }
   JsVal default_converter_js = Jsv_undefined;
-  if (default_converter != NULL) {
+  if (!Py_IsNone(default_converter)) {
     default_converter_js = python2js(default_converter);
   }
   PyObject* result =
@@ -441,12 +456,6 @@ JsProxy_toPy(PyObject* self,
   }
   return result;
 }
-
-static PyMethodDef JsProxy_toPy_MethodDef = {
-  "to_py",
-  (PyCFunction)JsProxy_toPy,
-  METH_FASTCALL | METH_KEYWORDS,
-};
 
 /**
  * Overload for bool(proxy), implemented for every JsProxy. Return `False` if
@@ -1923,12 +1932,6 @@ static PyTypeObject JsProxyType = {
   .tp_getset = JsProxy_GetSet,
 };
 
-static PyMethodDef JsProxyBaseMethods[] = {
-  JsProxy_Dir_MethodDef,
-  JsProxy_toPy_MethodDef,
-  {0}
-};
-
 /**
  * This dynamically creates a subtype of JsProxy using PyType_FromSpecWithBases.
  * It is called from JsProxy_get_subtype(flags) when a type with the given flags
@@ -1954,16 +1957,21 @@ JsProxy_create_subtype(int flags)
   char* type_name = "pyodide.ffi.JsProxy";
   int basicsize = sizeof(JsProxy);
 
-  #define AddMethods(to_add)           \
-    do {                               \
-      PyMethodDef *meths = to_add;     \
-      while (meths->ml_name != NULL) { \
-        methods[cur_method++] = meths; \
-        meths++;                       \
-      }                                \
-    } while(0)                         \
+  #define AddMethods(to_add)                          \
+    do {                                              \
+      PyMethodDef meths_array[] = { to_add {0} };     \
+      PyMethodDef *meths = meths_array;               \
+      while (meths->ml_name != NULL) {                \
+        methods[cur_method++] = *meths;               \
+        printf("Adding method %s\n", meths->ml_name); \
+        meths++;                                      \
+      }                                               \
+    } while(0)                                        \
 
-  AddMethods(JsProxyBaseMethods);
+  AddMethods(
+    _PYODIDE_CORE_JSPROXY___DIR___METHODDEF
+    _PYODIDE_CORE_JSPROXY_TO_PY_METHODDEF
+  );
 
   if (flags & HAS_GET) {
     slots[cur_slot++] = (PyType_Slot){ .slot = Py_mp_subscript,
@@ -2103,6 +2111,7 @@ JsProxy_create_subtype(int flags)
 
   members[cur_member++] = (PyMemberDef){ 0 };
   methods[cur_method++] = (PyMethodDef){ 0 };
+  #undef AddMethods
 
   bool success = false;
   void* mem = NULL;

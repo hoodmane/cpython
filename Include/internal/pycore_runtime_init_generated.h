@@ -1646,6 +1646,7 @@ extern "C" {
     INIT_ID(capath), \
     INIT_ID(capitals), \
     INIT_ID(capture_features), \
+    INIT_ID(capture_this), \
     INIT_ID(category), \
     INIT_ID(cb_type), \
     INIT_ID(certfile), \
@@ -1706,6 +1707,7 @@ extern "C" {
     INIT_ID(decode), \
     INIT_ID(decoder), \
     INIT_ID(default), \
+    INIT_ID(default_converter), \
     INIT_ID(defaultaction), \
     INIT_ID(delete), \
     INIT_ID(depth), \
@@ -2063,6 +2065,7 @@ extern "C" {
     INIT_ID(reverse), \
     INIT_ID(reversed), \
     INIT_ID(rounding), \
+    INIT_ID(roundtrip), \
     INIT_ID(salt), \
     INIT_ID(sample_interval_us), \
     INIT_ID(sample_rate), \

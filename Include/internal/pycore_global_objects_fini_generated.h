@@ -359,6 +359,7 @@ _PyStaticObjects_CheckAll(PyInterpreterState *interp) {
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(capath), "capath", 6);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(capitals), "capitals", 8);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(capture_features), "capture_features", 16);
+    _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(capture_this), "capture_this", 12);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(category), "category", 8);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(cb_type), "cb_type", 7);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(certfile), "certfile", 8);
@@ -419,6 +420,7 @@ _PyStaticObjects_CheckAll(PyInterpreterState *interp) {
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(decode), "decode", 6);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(decoder), "decoder", 7);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(default), "default", 7);
+    _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(default_converter), "default_converter", 17);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(defaultaction), "defaultaction", 13);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(delete), "delete", 6);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(depth), "depth", 5);
@@ -776,6 +778,7 @@ _PyStaticObjects_CheckAll(PyInterpreterState *interp) {
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(reverse), "reverse", 7);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(reversed), "reversed", 8);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(rounding), "rounding", 8);
+    _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(roundtrip), "roundtrip", 9);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(salt), "salt", 4);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(sample_interval_us), "sample_interval_us", 18);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(sample_rate), "sample_rate", 11);
