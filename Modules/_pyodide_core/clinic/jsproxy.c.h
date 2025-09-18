@@ -6,6 +6,7 @@ preserve
 #  include "pycore_gc.h"          // PyGC_Head
 #  include "pycore_runtime.h"     // _Py_ID()
 #endif
+#include "pycore_abstract.h"      // _PyNumber_Index()
 #include "pycore_modsupport.h"    // _PyArg_UnpackKeywords()
 
 PyDoc_STRVAR(_pyodide_core_JsProxy___dir____doc__,
@@ -235,6 +236,60 @@ exit:
     return return_value;
 }
 
+PyDoc_STRVAR(_pyodide_core_JsArray_append__doc__,
+"append($self, arg, /)\n"
+"--\n"
+"\n"
+"Append object to the end of the list.");
+
+#define _PYODIDE_CORE_JSARRAY_APPEND_METHODDEF    \
+    {"append", (PyCFunction)_pyodide_core_JsArray_append, METH_O, _pyodide_core_JsArray_append__doc__},
+
+PyDoc_STRVAR(_pyodide_core_JsArray_pop__doc__,
+"pop($self, index=-1, /)\n"
+"--\n"
+"\n"
+"Remove and return item at index (default last).\n"
+"\n"
+"Raises IndexError if list is empty or index is out of range");
+
+#define _PYODIDE_CORE_JSARRAY_POP_METHODDEF    \
+    {"pop", _PyCFunction_CAST(_pyodide_core_JsArray_pop), METH_FASTCALL, _pyodide_core_JsArray_pop__doc__},
+
+static PyObject *
+_pyodide_core_JsArray_pop_impl(PyObject *self, Py_ssize_t index);
+
+static PyObject *
+_pyodide_core_JsArray_pop(PyObject *self, PyObject *const *args, Py_ssize_t nargs)
+{
+    PyObject *return_value = NULL;
+    Py_ssize_t index = -1;
+
+    if (!_PyArg_CheckPositional("pop", nargs, 0, 1)) {
+        goto exit;
+    }
+    if (nargs < 1) {
+        goto skip_optional;
+    }
+    {
+        Py_ssize_t ival = -1;
+        PyObject *iobj = _PyNumber_Index(args[0]);
+        if (iobj != NULL) {
+            ival = PyLong_AsSsize_t(iobj);
+            Py_DECREF(iobj);
+        }
+        if (ival == -1 && PyErr_Occurred()) {
+            goto exit;
+        }
+        index = ival;
+    }
+skip_optional:
+    return_value = _pyodide_core_JsArray_pop_impl(self, index);
+
+exit:
+    return return_value;
+}
+
 PyDoc_STRVAR(_pyodide_core_JsException___reduce____doc__,
 "__reduce__($self, /)\n"
 "--\n"
@@ -251,4 +306,4 @@ _pyodide_core_JsException___reduce__(PyObject *self, PyObject *Py_UNUSED(ignored
 {
     return _pyodide_core_JsException___reduce___impl(self);
 }
-/*[clinic end generated code: output=ff100c902f669dbd input=a9049054013a1b77]*/
+/*[clinic end generated code: output=34597474d425b6c6 input=a9049054013a1b77]*/
