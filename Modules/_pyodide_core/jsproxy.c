@@ -1515,8 +1515,15 @@ class ReversedIterator {
 // clang-format on
 )
 
-static PyObject*
-JsArray_reversed(PyObject* self, PyObject* ignored)
+/*[clinic input]
+_pyodide_core.JsArray.__reversed__
+
+Return a reverse iterator over the array.
+[clinic start generated code]*/
+
+static PyObject *
+_pyodide_core_JsArray___reversed___impl(PyObject *self)
+/*[clinic end generated code: output=22c20f23b9bfb1db input=bcdeea00699fdd70]*/
 {
   JsVal iter = JsArray_reversed_iterator(JsProxy_VAL(self));
   FAIL_IF_JS_ERROR(iter);
@@ -1524,12 +1531,6 @@ JsArray_reversed(PyObject* self, PyObject* ignored)
 finally:
   return NULL;
 }
-
-static PyMethodDef JsArray_reversed_MethodDef = {
-  "__reversed__",
-  (PyCFunction)JsArray_reversed,
-  METH_NOARGS,
-};
 
 // clang-format off
 EM_JS_NUM(int,
@@ -1601,28 +1602,25 @@ error:
   return -1;
 }
 
-static PyObject*
-JsArray_index(PyObject* self, PyObject* args)
-{
-  PyObject* value;
-  Py_ssize_t start = 0;
-  Py_ssize_t stop = PY_SSIZE_T_MAX;
-  if (!PyArg_ParseTuple(args, "O|nn:index", &value, &start, &stop)) {
-    return NULL;
-  }
+/*[clinic input]
+_pyodide_core.JsArray.index
 
+    value: object
+    start: slice_index(accept={int}) = 0
+    stop: slice_index(accept={int}, c_default="PY_SSIZE_T_MAX") = sys.maxsize
+[clinic start generated code]*/
+
+static PyObject *
+_pyodide_core_JsArray_index_impl(PyObject *self, PyObject *value,
+                                 Py_ssize_t start, Py_ssize_t stop)
+/*[clinic end generated code: output=3101601bb5f177cb input=ac9c80dc07baad8a]*/
+{
   Py_ssize_t result = JsArray_index_helper(self, value, start, stop);
   if (result == -1) {
     return NULL;
   }
   return PyLong_FromSsize_t(result);
 }
-
-static PyMethodDef JsArray_index_MethodDef = {
-  "index",
-  (PyCFunction)JsArray_index,
-  METH_VARARGS,
-};
 
 EM_JS_NUM(int,
 JsArray_count_js,
@@ -1637,8 +1635,17 @@ JsArray_count_js,
   return result;
 })
 
-static PyObject*
-JsArray_count(PyObject* self, PyObject* value)
+/*[clinic input]
+_pyodide_core.JsArray.count
+
+    value: object
+
+Return number of occurrences of value.
+[clinic start generated code]*/
+
+static PyObject *
+_pyodide_core_JsArray_count_impl(PyObject *self, PyObject *value)
+/*[clinic end generated code: output=f04bbb791389d160 input=cd9142e54226ffb8]*/
 {
   JsVal jsvalue = python2js_track_proxies(value, JS_ERROR, true);
   if (JsvError_Check(jsvalue)) {
@@ -1675,16 +1682,17 @@ JsArray_count(PyObject* self, PyObject* value)
   }
 }
 
-static PyMethodDef JsArray_count_MethodDef = {
-  "count",
-  (PyCFunction)JsArray_count,
-  METH_O,
-};
-
 EM_JS_NUM(int, JsArray_reverse_js, (JsVal array), { array.reverse(); })
 
-static PyObject*
-JsArray_reverse(PyObject* self, PyObject* _ignored)
+/*[clinic input]
+_pyodide_core.JsArray.reverse
+
+Return number of occurrences of value.
+[clinic start generated code]*/
+
+static PyObject *
+_pyodide_core_JsArray_reverse_impl(PyObject *self)
+/*[clinic end generated code: output=b319f0c2394d499e input=a7b03428f72d214e]*/
 {
   if (JsArray_reverse_js(JsProxy_Val(self)) == -1) {
     return NULL;
@@ -1692,21 +1700,22 @@ JsArray_reverse(PyObject* self, PyObject* _ignored)
   Py_RETURN_NONE;
 }
 
-static PyMethodDef JsArray_reverse_MethodDef = {
-  "reverse",
-  (PyCFunction)JsArray_reverse,
-  METH_NOARGS,
-};
+/*[clinic input]
+_pyodide_core.JsArray.insert
 
-static PyObject*
-JsArray_insert(PyObject* self, PyObject* args)
+    index: Py_ssize_t
+    object: object
+    /
+
+Insert object before index.
+[clinic start generated code]*/
+
+static PyObject *
+_pyodide_core_JsArray_insert_impl(PyObject *self, Py_ssize_t index,
+                                  PyObject *object)
+/*[clinic end generated code: output=255daa10da5ca6f4 input=65739aa26dcdbe37]*/
 {
-  Py_ssize_t index;
-  PyObject* pyvalue;
-  if (!PyArg_ParseTuple(args, "nO:insert", &index, &pyvalue)) {
-    return NULL;
-  }
-  JsVal jsvalue = python2js(pyvalue);
+  JsVal jsvalue = python2js(object);
   FAIL_IF_JS_ERROR(jsvalue);
   FAIL_IF_MINUS_ONE(JsvArray_Insert(JsProxy_VAL(self), index, jsvalue));
   Py_RETURN_NONE;
@@ -1714,14 +1723,20 @@ finally:
   return NULL;
 }
 
-static PyMethodDef JsArray_insert_MethodDef = {
-  "insert",
-  (PyCFunction)JsArray_insert,
-  METH_VARARGS,
-};
+/*[clinic input]
+_pyodide_core.JsArray.remove
 
-static PyObject*
-JsArray_remove(PyObject* self, PyObject* arg)
+     value: object
+     /
+
+Remove first occurrence of value.
+
+Raises ValueError if the value is not present.
+[clinic start generated code]*/
+
+static PyObject *
+_pyodide_core_JsArray_remove(PyObject *self, PyObject *value)
+/*[clinic end generated code: output=ef6fba8da3e93b77 input=d4a7480ba04102b1]*/
 {
   int index = JsArray_index_helper(self, arg, 0, PY_SSIZE_T_MAX);
   FAIL_IF_MINUS_ONE(index);
@@ -1730,12 +1745,6 @@ JsArray_remove(PyObject* self, PyObject* arg)
 finally:
   return NULL;
 }
-
-static PyMethodDef JsArray_remove_MethodDef = {
-  "remove",
-  (PyCFunction)JsArray_remove,
-  METH_O,
-};
 
 ////////////////////////////////////////////////////////////
 // JsMethod
@@ -1965,7 +1974,6 @@ JsProxy_create_subtype(int flags)
       PyMethodDef *meths = meths_array;               \
       while (meths->ml_name != NULL) {                \
         methods[cur_method++] = *meths;               \
-        printf("Adding method %s\n", meths->ml_name); \
         meths++;                                      \
       }                                               \
     } while(0)                                        \
@@ -2027,15 +2035,15 @@ JsProxy_create_subtype(int flags)
     slots[cur_slot++] = (PyType_Slot){ .slot = Py_sq_ass_item,
                                        .pfunc = (void*)JsArray_sq_ass_item };
     AddMethods(
-      _PYODIDE_CORE_JSARRAY_EXTEND_METHODDEF
+      _PYODIDE_CORE_JSARRAY___REVERSED___METHODDEF
       _PYODIDE_CORE_JSARRAY_APPEND_METHODDEF
+      _PYODIDE_CORE_JSARRAY_COUNT_METHODDEF
+      _PYODIDE_CORE_JSARRAY_EXTEND_METHODDEF
+      _PYODIDE_CORE_JSARRAY_INDEX_METHODDEF
+      _PYODIDE_CORE_JSARRAY_INSERT_METHODDEF
       _PYODIDE_CORE_JSARRAY_POP_METHODDEF
-      JsArray_reversed_MethodDef,
-      JsArray_reverse_MethodDef,
-      JsArray_insert_MethodDef,
-      JsArray_index_MethodDef,
-      JsArray_count_MethodDef,
-      JsArray_remove_MethodDef,
+      _PYODIDE_CORE_JSARRAY_REMOVE_METHODDEF
+      _PYODIDE_CORE_JSARRAY_REVERSE_METHODDEF
     );
   }
 
