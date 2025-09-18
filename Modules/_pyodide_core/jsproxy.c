@@ -1,3 +1,4 @@
+#include "pytypedefs.h"
 #ifndef Py_BUILD_CORE_BUILTIN
 #  define Py_BUILD_CORE_MODULE 1
 #endif
@@ -65,11 +66,11 @@ typedef struct
 /*[clinic input]
 module _pyodide_core
 
-class _pyodide_core.JsProxy "JsProxy *" "JsProxyType"
-class _pyodide_core.JsGenerator "JsProxy *" "JsProxyType"
-class _pyodide_core.JsException "JsProxy *" "JsProxyType"
+class _pyodide_core.JsProxy "PyObject *" "JsProxyType"
+class _pyodide_core.JsGenerator "PyObject *" "JsProxyType"
+class _pyodide_core.JsException "PyObject *" "JsProxyType"
 [clinic start generated code]*/
-/*[clinic end generated code: output=da39a3ee5e6b4b0d input=9ac0acad782b7f11]*/
+/*[clinic end generated code: output=da39a3ee5e6b4b0d input=4d0c283afc10f84d]*/
 #include "clinic/jsproxy.c.h"
 
 // Layout of dict and ExceptionFields needs to exactly match the layout of the
@@ -372,8 +373,8 @@ of each prototype.
 [clinic start generated code]*/
 
 static PyObject *
-_pyodide_core_JsProxy___dir___impl(JsProxy *self)
-/*[clinic end generated code: output=680fedf631494eb8 input=4b450a7907328a4b]*/
+_pyodide_core_JsProxy___dir___impl(PyObject *self)
+/*[clinic end generated code: output=20e9b0e512f6084c input=4b450a7907328a4b]*/
 {
   bool success = false;
   PyObject* object__dir__ = NULL;
@@ -443,9 +444,9 @@ Convert the JsProxy to a native Python object.
 [clinic start generated code]*/
 
 static PyObject *
-_pyodide_core_JsProxy_to_py_impl(JsProxy *self, int depth,
+_pyodide_core_JsProxy_to_py_impl(PyObject *self, int depth,
                                  PyObject *default_converter)
-/*[clinic end generated code: output=8ee2e2e45d67050c input=a1c5cada6a5f5fb2]*/
+/*[clinic end generated code: output=7b40b513d77caad8 input=a1c5cada6a5f5fb2]*/
 {
   JsVal default_converter_js = Jsv_undefined;
   if (!Py_IsNone(default_converter)) {
@@ -655,8 +656,8 @@ _pyodide_core.JsGenerator.send
 [clinic start generated code]*/
 
 static PyObject *
-_pyodide_core_JsGenerator_send_impl(JsProxy *self, PyObject *arg)
-/*[clinic end generated code: output=53f105c33c93b196 input=96e32bf91e18b7c7]*/
+_pyodide_core_JsGenerator_send(PyObject *self, PyObject *arg)
+/*[clinic end generated code: output=ad7bc372b3c8b95d input=96e32bf91e18b7c7]*/
 {
   PyObject* result;
   if (JsProxy_am_send(self, arg, &result) == PYGEN_RETURN) {
@@ -763,14 +764,10 @@ failed_throw:
   return JS_ERROR;
 }
 
-static PyObject*
-JsGenerator_throw_inner(PyObject* self,
-                        PyObject* typ,
-                        PyObject* val,
-                        PyObject* tb)
-{
+static PyObject* JsGenerator_throw_inner(PyObject *self, PyObject *value,
+                                         PyObject *val, PyObject *tb) {
   PyObject* result = NULL;
-  JsVal throw_res = process_throw_args(self, typ, val, tb);
+  JsVal throw_res = process_throw_args(self, value, val, tb);
   FAIL_IF_JS_ERROR(throw_res);
   PySendResult ret = handle_next_result(throw_res, &result);
   if (ret == PYGEN_RETURN) {
@@ -785,28 +782,33 @@ finally:
   return result;
 }
 
-static PyObject*
-JsGenerator_throw(PyObject* self, PyObject* const* args, Py_ssize_t nargs)
+/*[clinic input]
+_pyodide_core.JsGenerator.throw
+
+    value: object
+
+    val: object = NULL
+
+    tb: object = NULL
+
+    /
+[clinic start generated code]*/
+
+static PyObject *
+_pyodide_core_JsGenerator_throw_impl(PyObject *self, PyObject *value,
+                                     PyObject *val, PyObject *tb)
+/*[clinic end generated code: output=ce7a3dd3a2574fe4 input=730d7acdaa276e2d]*/
 {
-  PyObject* typ;
-  PyObject* val = NULL;
-  PyObject* tb = NULL;
-
-  if (!_PyArg_ParseStack(args, nargs, "O|OO:throw", &typ, &val, &tb)) {
-    return NULL;
-  }
-
-  return JsGenerator_throw_inner(self, typ, val, tb);
+  return JsGenerator_throw_inner(self, value, val, tb);
 }
 
-static PyMethodDef JsGenerator_throw_MethodDef = {
-  "throw",
-  (PyCFunction)JsGenerator_throw,
-  METH_FASTCALL,
-};
+/*[clinic input]
+_pyodide_core.JsGenerator.close
+[clinic start generated code]*/
 
-static PyObject*
-JsGenerator_close(PyObject* self, PyObject* ignored)
+static PyObject *
+_pyodide_core_JsGenerator_close_impl(PyObject *self)
+/*[clinic end generated code: output=067ae8aa317142a6 input=9b72fd638cd3155f]*/
 {
   PyObject* result =
     JsGenerator_throw_inner(self, PyExc_GeneratorExit, NULL, NULL);
@@ -825,12 +827,6 @@ JsGenerator_close(PyObject* self, PyObject* ignored)
   }
   return NULL;
 }
-
-static PyMethodDef JsGenerator_close_MethodDef = {
-  "close",
-  (PyCFunction)JsGenerator_close,
-  METH_NOARGS,
-};
 
 
 // A helper method for jsproxy_subscript.
@@ -1822,8 +1818,8 @@ _pyodide_core.JsException.__reduce__
 [clinic start generated code]*/
 
 static PyObject *
-_pyodide_core_JsException___reduce___impl(JsProxy *self)
-/*[clinic end generated code: output=7aa37f517728e7a0 input=01774b928904de24]*/
+_pyodide_core_JsException___reduce___impl(PyObject *self)
+/*[clinic end generated code: output=e18df4ef67cb9ddf input=01774b928904de24]*/
 {
   // Record name, message, and stack.
   // See _core_docs.JsException._new_exc where the unpickling will happen.
@@ -2046,8 +2042,10 @@ JsProxy_create_subtype(int flags)
     // don't trust that an object with "next", "throw", and "return" is a
     // generator though -- we require that it actually have it's toStringTag set
     // to Generator.
-    methods[cur_method++] = JsGenerator_throw_MethodDef;
-    methods[cur_method++] = JsGenerator_close_MethodDef;
+    AddMethods(
+      _PYODIDE_CORE_JSGENERATOR_THROW_METHODDEF
+      _PYODIDE_CORE_JSGENERATOR_CLOSE_METHODDEF
+    );
   }
 
   if ((flags & IS_ITERABLE) && !(flags & IS_ITERATOR)) {
