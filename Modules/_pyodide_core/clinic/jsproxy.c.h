@@ -113,4 +113,25 @@ skip_optional_kwonly:
 exit:
     return return_value;
 }
-/*[clinic end generated code: output=426a5c99bb7c1a01 input=a9049054013a1b77]*/
+
+PyDoc_STRVAR(_pyodide_core_JsGenerator_send__doc__,
+"send($self, arg, /)\n"
+"--\n"
+"\n");
+
+#define _PYODIDE_CORE_JSGENERATOR_SEND_METHODDEF    \
+    {"send", (PyCFunction)_pyodide_core_JsGenerator_send, METH_O, _pyodide_core_JsGenerator_send__doc__},
+
+static PyObject *
+_pyodide_core_JsGenerator_send_impl(JsProxy *self, PyObject *arg);
+
+static PyObject *
+_pyodide_core_JsGenerator_send(PyObject *self, PyObject *arg)
+{
+    PyObject *return_value = NULL;
+
+    return_value = _pyodide_core_JsGenerator_send_impl((JsProxy *)self, arg);
+
+    return return_value;
+}
+/*[clinic end generated code: output=55dc94e573094a34 input=a9049054013a1b77]*/
