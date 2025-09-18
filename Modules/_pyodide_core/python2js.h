@@ -11,7 +11,7 @@
  * with equivalent JavaScript immutable types, but all other types are proxied.
  */
 JsVal
-python2js(PyObject* x);
+_Py_python2js(PyObject* x);
 
 /**
  * Like python2js except in the handling of PyProxy creation.
@@ -21,7 +21,7 @@ python2js(PyObject* x);
  * the proxy to the array if one is created.
  */
 JsVal
-python2js_track_proxies(PyObject* x, JsVal proxies, bool gc_register);
+_Py_python2js_track_proxies(PyObject* x, JsVal proxies, bool gc_register);
 
 /**
  * dict_converter should be a JavaScript function that converts an Iterable of
@@ -29,7 +29,7 @@ python2js_track_proxies(PyObject* x, JsVal proxies, bool gc_register);
  * python2js_with_depth which converts dicts to Map (the default)
  */
 JsVal
-python2js_custom(PyObject* x,
+_Py_python2js_custom(PyObject* x,
                  int depth,
                  JsVal proxies,
                  JsVal dict_converter,
@@ -38,7 +38,7 @@ python2js_custom(PyObject* x,
 
 
 int
-python2js_init(PyObject* core);
+_Py_python2js_init(PyObject* core);
 
 extern PyObject* py_jsnull;
 

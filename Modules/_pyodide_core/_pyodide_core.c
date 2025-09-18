@@ -17,7 +17,7 @@
 PyDoc_STRVAR(_pyodide_core_doc,
 "Emscripten-only functionality for JS FFI");
 
-EM_JS_VAL(JsVal, _pyodide_core_get_eval, (void), {
+EM_JS_VAL(JsVal, _Py_pyodide_core_get_eval, (void), {
     return eval;
 });
 
@@ -54,26 +54,26 @@ _pyodide_core_bad_hiwire_get_impl(PyObject *module, int select)
 }
 
 int
-python2js_init(PyObject* m);
+_Py_python2js_init(PyObject* m);
 
 int
-jsproxy_init(PyObject *m);
+_Py_jsproxy_init(PyObject *m);
 
 int
-pyproxy_init(PyObject *m);
+_Py_pyproxy_init(PyObject *m);
 
 static int
 _pyodide_core_exec(PyObject *m)
 {
   bool success = false;
     
-  FAIL_IF_MINUS_ONE(python2js_init(m));
-  FAIL_IF_MINUS_ONE(jsproxy_init(m));
-  FAIL_IF_MINUS_ONE(pyproxy_init(m));
-  JsVal eval = _pyodide_core_get_eval();
+  FAIL_IF_MINUS_ONE(_Py_python2js_init(m));
+  FAIL_IF_MINUS_ONE(_Py_jsproxy_init(m));
+  FAIL_IF_MINUS_ONE(_Py_pyproxy_init(m));
+  JsVal eval = _Py_pyodide_core_get_eval();
   FAIL_IF_JS_ERROR(eval);
   FAIL_IF_MINUS_ONE(
-    PyModule_Add(m, "run_js", JsProxy_create(eval)));
+    PyModule_Add(m, "run_js", _PyJsProxy_create(eval)));
 
   success = true;
 finally:

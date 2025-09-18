@@ -9,29 +9,29 @@
 typedef __externref_t JsVal;
 typedef HwRef JsRef;
 
-JsVal JsvError_Create(void);
-int JsvError_Check(JsVal);
+JsVal _PyJsvError_Create(void);
+int _PyJsvError_Check(JsVal);
 
-#define JS_ERROR hiwire_get(Jsr_error)
+#define JS_ERROR hiwire_get(_PyJsr_error)
 #define JS_NULL __builtin_wasm_ref_null_extern()
 
 #define JsvNull_Check(v) __builtin_wasm_ref_is_null_extern(v)
 
 int
-JsvNoValue_Check(JsVal);
+_PyJsvNoValue_Check(JsVal);
 
 // Special JsRefs for singleton constants.
-extern JsRef Jsr_undefined;
-extern JsRef Jsr_true;
-extern JsRef Jsr_false;
-extern JsRef Jsr_error;
-extern JsRef Jsr_novalue;
+extern JsRef _PyJsr_undefined;
+extern JsRef _PyJsr_true;
+extern JsRef _PyJsr_false;
+extern JsRef _PyJsr_error;
+extern JsRef _PyJsr_novalue;
 
-#define Jsv_undefined hiwire_get(Jsr_undefined)
-#define Jsv_true hiwire_get(Jsr_true)
-#define Jsv_false hiwire_get(Jsr_false)
+#define Jsv_undefined hiwire_get(_PyJsr_undefined)
+#define Jsv_true hiwire_get(_PyJsr_true)
+#define Jsv_false hiwire_get(_PyJsr_false)
 #define Jsv_null __builtin_wasm_ref_null_extern()
-#define Jsv_novalue hiwire_get(Jsr_novalue)
+#define Jsv_novalue hiwire_get(_PyJsr_novalue)
 
 #undef false
 #undef true
@@ -63,116 +63,117 @@ typedef struct Js_Identifier
 
 
 int
-Jsv_type(JsVal obj, char* buf, int size);
+_PyJsv_type(JsVal obj, char* buf, int size);
 
 JsVal
-JsvNum_fromInt(int x);
+_PyJsvNum_fromInt(int x);
 
 JsVal
-JsvNum_fromDouble(double x);
+_PyJsvNum_fromDouble(double x);
 
 bool
-Jsv_equal(JsVal a, JsVal b);
+_PyJsv_equal(JsVal a, JsVal b);
 
 bool
-Jsv_not_equal(JsVal a, JsVal b);
+_PyJsv_not_equal(JsVal a, JsVal b);
 
 bool
-Jsv_to_bool(JsVal);
+_PyJsv_to_bool(JsVal);
 
 // ==================== Conversions between JsRef and JsVal ====================
 
 // Like hiwire_new except if the argument is JS_ERROR it returns NULL instead of crashing.
 // Upstream to hiwire?
 JsRef
-JsRef_new(JsVal v);
+_PyJsRef_new(JsVal v);
 
 // Like hiwire_get except if the argument is NULL it returns JS_ERROR instead of crashing.
 // Upstream to hiwire?
 JsVal
-JsRef_toVal(JsRef ref);
+_PyJsRef_toVal(JsRef ref);
 
 // ==================== Primitive Conversions ====================
 
 JsVal
-JsvUTF8ToString(const char*);
+_PyJsvUTF8ToString(const char*);
 
 JsRef
-JsrString_FromId(Js_Identifier* id);
+_PyJsrString_FromId(Js_Identifier* id);
 
 JsVal
-JsvString_FromId(Js_Identifier* id);
+_PyJsvString_FromId(Js_Identifier* id);
 
 // ==================== JsvObject API  ====================
 
 JsVal
-JsvObject_New(void);
+_PyJsvObject_New(void);
 
 JsVal
-JsvObject_toString(JsVal obj);
+_PyJsvObject_toString(JsVal obj);
 
 int
-JsvObject_SetAttr(JsVal obj, JsVal attr, JsVal value);
+_PyJsvObject_SetAttr(JsVal obj, JsVal attr, JsVal value);
 
 JsVal
-JsvObject_CallMethod_OneArg(JsVal obj, JsVal name, JsVal arg);
+_PyJsvObject_CallMethod_OneArg(JsVal obj, JsVal name, JsVal arg);
 
 JsVal
-JsvObject_CallMethodId_NoArgs(JsVal obj, Js_Identifier* name_id);
+_PyJsvObject_CallMethodId_NoArgs(JsVal obj, Js_Identifier* name_id);
 
 JsVal
-JsvObject_CallMethodId_OneArg(JsVal obj, Js_Identifier* name_id, JsVal arg);
+_PyJsvObject_CallMethodId_OneArg(JsVal obj, Js_Identifier* name_id, JsVal arg);
 
 
 JsVal
-JsvObject_CallMethodId_TwoArgs(JsVal obj, Js_Identifier* name_id, JsVal arg1, JsVal arg2);
+_PyJsvObject_CallMethodId_TwoArgs(JsVal obj, Js_Identifier* name_id, JsVal arg1, JsVal arg2);
 
 // ==================== JsvFunction API  ====================
 
 bool
-JsvFunction_Check(JsVal obj);
+_PyJsvFunction_Check(JsVal obj);
 
 JsVal
-JsvFunction_CallBound(JsVal func, JsVal this, JsVal args);
+_PyJsvFunction_CallBound(JsVal func, JsVal this, JsVal args);
 
 JsVal
-JsvFunction_Construct(JsVal func, JsVal args);
+_PyJsvFunction_Construct(JsVal func, JsVal args);
 
 // ==================== JsvArray API  ====================
 
 JsVal
-JsvArray_New(void);
+_PyJsvArray_New(void);
 
 bool
-JsvArray_Check(JsVal obj);
+_PyJsvArray_Check(JsVal obj);
 
 int
-JsvArray_Push(JsVal obj, JsVal val);
+_PyJsvArray_Push(JsVal obj, JsVal val);
 
 
 JsVal
-JsvArray_Get(JsVal, int);
+_PyJsvArray_Get(JsVal, int);
 
 int
-JsvArray_Set(JsVal, int, JsVal);
+_PyJsvArray_Set(JsVal, int, JsVal);
 
 JsVal
-JsvArray_Delete(JsVal, int);
+_PyJsvArray_Delete(JsVal, int);
 
-void JsvArray_Extend(JsVal, JsVal);
+void 
+_PyJsvArray_Extend(JsVal, JsVal);
 
 int
-JsvArray_Insert(JsVal arr, int idx, JsVal value);
+_PyJsvArray_Insert(JsVal arr, int idx, JsVal value);
 
 JsVal
-JsvArray_ShallowCopy(JsVal obj);
+_PyJsvArray_ShallowCopy(JsVal obj);
 
 
 JsVal
-JsvArray_slice(JsVal obj, int length, int start, int stop, int step);
+_PyJsvArray_slice(JsVal obj, int length, int start, int stop, int step);
 
 int
-JsvArray_slice_assign(JsVal idobj,
+_PyJsvArray_slice_assign(JsVal idobj,
                       int slicelength,
                       int start,
                       int stop,
@@ -181,27 +182,27 @@ JsvArray_slice_assign(JsVal idobj,
                       PyObject** values);
 
 void __attribute__((__noreturn__))
-JsvError_Throw(JsVal e);
+_PyJsvError_Throw(JsVal e);
 
 JsVal
-JsvLiteralMap_New(void);
+_PyJsvLiteralMap_New(void);
 
 JsVal
-JsvMap_New(void);
+_PyJsvMap_New(void);
 
 int
-JsvMap_Set(JsVal map, JsVal key, JsVal val);
+_PyJsvMap_Set(JsVal map, JsVal key, JsVal val);
 
 /**
  * Create a new Set.
  */
 JsVal
-JsvSet_New(void);
+_PyJsvSet_New(void);
 
 /**
  * Does set.add(key).
  */
 int
-JsvSet_Add(JsVal mapid, JsVal keyid);
+_PyJsvSet_Add(JsVal mapid, JsVal keyid);
 
 #endif // JSLIB_H

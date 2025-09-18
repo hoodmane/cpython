@@ -132,3 +132,34 @@ const LiteralMap = new Proxy(
 API.LiteralMap = LiteralMap;
 
 const PyProxy_IsAlive = (px) => !!Module.PyProxy_getAttrsQuiet(px).shared.ptr;
+
+
+const pythonReservedWords = new Set([
+  "False",  "await", "else",     "import", "pass",   "None",    "break",
+  "except", "in",    "raise",    "True",   "class",  "finally", "is",
+  "return", "and",   "continue", "for",    "lambda", "try",     "as",
+  "def",    "from",  "nonlocal", "while",  "assert", "del",     "global",
+  "not",    "with",  "async",    "elif",   "if",     "or",      "yield",
+]);
+
+function isReservedWord(word) {
+  return pythonReservedWords.has(word);
+}
+
+function normalizeReservedWords(word) {
+  // clang-format off
+  // 1. if word is not a reserved word followed by 0 or more underscores, return
+  //    it unchanged.
+  const noTrailing_ = word.replace(/_*$/, "");
+  if (!isReservedWord(noTrailing_)) {
+    return word;
+  }
+  // 2. If there is at least one trailing underscore, return the word with a
+  //    single underscore removed.
+  if (noTrailing_ !== word) {
+    return word.slice(0, -1);
+  }
+  // 3. If the word is exactly a reserved word, return it unchanged
+  return word;
+  // clang-format on
+}

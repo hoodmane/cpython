@@ -7,10 +7,10 @@
  *    sets the Python error indicator if a conversion error occurs.
  */
 PyObject*
-js2python(JsVal x);
+_Py_js2python(JsVal x);
 
 /**
  * Do a deep conversion
  */
 PyObject*
-js2python_convert(JsVal x, int depth, JsVal defaultConverter);
+_Py_js2python_convert(JsVal x, int depth, JsVal defaultConverter);

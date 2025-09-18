@@ -15,12 +15,12 @@ EM_JS(void, error_handling_init_js, (void), {
   Module.handle_js_error = function (e) {
     if (e instanceof PythonError) {
       // Try to restore the original Python exception.
-      const restored_error = _restore_sys_last_exception(e.__error_address);
+      const restored_error = __Py_restore_sys_last_exception(e.__error_address);
       if (restored_error) {
         return;
       }
     }
-    let err = _JsProxy_create(e);
+    let err = __PyJsProxy_create(e);
     _set_error(err);
     _Py_DecRef(err);
   };
@@ -37,7 +37,7 @@ EM_JS(void, console_error, (char* msg), {
 });
 #endif
 
-EM_JS(void, capture_stderr, (void), {
+EM_JS(void, _Py_emscripten_capture_stderr, (void), {
   FS.createDevice("/dev", "capture_stderr", null, (e) =>
     stderr_chars.push(e),
   );
@@ -48,7 +48,7 @@ EM_JS(void, capture_stderr, (void), {
 const stderr_chars = [];
 );
 
-EM_JS(JsVal, restore_stderr, (void), {
+EM_JS(JsVal, _Py_emscripten_restore_stderr, (void), {
   FS.closeStream(2 /* stderr */);
   FS.unlink("/dev/capture_stderr");
   // open takes the lowest available file descriptor. Since 0 and 1 are occupied by stdin and stdout it takes 2.
@@ -82,7 +82,7 @@ new_error,
  * support for catching errors by type.
  */
 EMSCRIPTEN_KEEPALIVE bool
-restore_sys_last_exception(void* exc)
+_Py_restore_sys_last_exception(void* exc)
 {
   if (exc == NULL) {
     return false;
@@ -101,7 +101,7 @@ restore_sys_last_exception(void* exc)
 }
 
 EMSCRIPTEN_KEEPALIVE JsVal
-wrap_exception(void)
+_Py_pythonexc2js(void)
 {
   PyObject* typestr = NULL;
   PyObject* exc = NULL;
@@ -109,12 +109,12 @@ wrap_exception(void)
 
   exc = PyErr_GetRaisedException();
 
-  capture_stderr();
+  _Py_emscripten_capture_stderr();
   PyErr_SetRaisedException(Py_NewRef(exc));
   // print standard traceback to standard error, clear the error flag, and set
   // sys.last_exc, sys.last_type, etc
   PyErr_Print();
-  JsVal formatted_exception = restore_stderr();
+  JsVal formatted_exception = _Py_emscripten_restore_stderr();
 
   typestr = PyObject_GetAttrString((PyObject*)Py_TYPE(exc), "__qualname__");
   FAIL_IF_NULL(typestr);
@@ -127,15 +127,4 @@ finally:
   Py_CLEAR(typestr);
   Py_CLEAR(exc);
   return jserror;
-}
-
-
-/**
- * Convert the current Python error to a javascript error and throw it.
- */
-EMSCRIPTEN_KEEPALIVE void _Py_NO_RETURN
-pythonexc2js(void)
-{
-  JsVal jserror = wrap_exception();
-  JsvError_Throw(jserror);
 }

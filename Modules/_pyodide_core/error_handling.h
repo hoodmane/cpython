@@ -3,11 +3,10 @@
 
 /**
  * Wrap the current Python exception in a JavaScript Error and return the
- * result. Usually we use pythonexc2js instead, but for futures and for some
- * internal error messages it's useful to have this separate.
+ * result.
  */
 JsVal
-wrap_exception(void);
+_Py_pythonexc2js(void);
 
 /**
  * EM_JS Wrappers
@@ -140,7 +139,7 @@ console_error(char* msg);
 
 #define FAIL_IF_JS_ERROR(ref)                                                   \
   do {                                                                         \
-    if (JsvError_Check(ref)) {                                                  \
+    if (_PyJsvError_Check(ref)) {                                                  \
       FAIL();                                                                  \
     }                                                                          \
   } while (0)

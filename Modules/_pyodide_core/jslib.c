@@ -14,59 +14,59 @@ bool tracerefs = false;
   JS_BUILTIN(undefined)                                                        \
   JS_BUILTIN(true)                                                             \
   JS_BUILTIN(false)                                                            \
-  JS_CONST(error, JsvError_Create())                                           \
+  JS_CONST(error, _PyJsvError_Create())                                           \
   JS_CONST(novalue, { noValueMarker : 1 })
 
 // we use HIWIRE_INIT_CONSTS once in C and once inside JS with different
 // definitions of HIWIRE_INIT_CONST to ensure everything lines up properly
 // C definition:
-#define JS_CONST(name, value) EMSCRIPTEN_KEEPALIVE JsRef Jsr_##name;
+#define JS_CONST(name, value) EMSCRIPTEN_KEEPALIVE JsRef _PyJsr_##name;
 JS_INIT_CONSTS();
 
 #undef JS_CONST
 
-#define JS_CONST(name, value) HEAP32[_Jsr_##name / 4] = _hiwire_intern(value);
+#define JS_CONST(name, value) HEAP32[__PyJsr_##name / 4] = _hiwire_intern(value);
 
-EM_JS_MACROS(void, jslib_init_js, (void), {
+EM_JS_MACROS(void, _Py_jslib_init_js, (void), {
   JS_INIT_CONSTS();
-  Module.novalue = _hiwire_get(HEAP32[_Jsr_novalue / 4]);
-  Module.error = _hiwire_get(HEAP32[_Jsr_error / 4]);
+  Module.novalue = _hiwire_get(HEAP32[__PyJsr_novalue / 4]);
+  Module.error = _hiwire_get(HEAP32[__PyJsr_error / 4]);
 });
 
 
 __attribute__((constructor)) void
-jslib_init(void)
+_Py_jslib_init(void)
 {
-  jslib_init_js();
+  _Py_jslib_init_js();
 }
 
-EM_JS(int, JsvNoValue_Check, (JsVal v), {
+EM_JS(int, _PyJsvNoValue_Check, (JsVal v), {
   return v === Module.novalue;
 });
 
-EM_JS_NUM(int, Jsv_type, (JsVal val, char* buf, int size), {
+EM_JS_NUM(int, _PyJsv_type, (JsVal val, char* buf, int size), {
   return stringToUTF8(val?.constructor?.name ?? "unknown", buf, size);
 });
 
-EM_JS(JsVal, JsvNum_fromInt, (int x), {
+EM_JS(JsVal, _PyJsvNum_fromInt, (int x), {
   return x;
 })
 
-EM_JS(JsVal, JsvNum_fromDouble, (double val), {
+EM_JS(JsVal, _PyJsvNum_fromDouble, (double val), {
   return val;
 });
 
-EM_JS_BOOL(bool, Jsv_equal, (JsVal a, JsVal b), { return !!(a === b); });
-EM_JS_BOOL(bool, Jsv_not_equal, (JsVal a, JsVal b), { return !!(a !== b); });
+EM_JS_BOOL(bool, _PyJsv_equal, (JsVal a, JsVal b), { return !!(a === b); });
+EM_JS_BOOL(bool, _PyJsv_not_equal, (JsVal a, JsVal b), { return !!(a !== b); });
 
-EM_JS(bool, Jsv_to_bool, (JsVal x), {
+EM_JS(bool, _PyJsv_to_bool, (JsVal x), {
   return !!x;
 })
 
 // ==================== Conversions between JsRef and JsVal ====================
 
 JsRef
-JsRef_new(JsVal v)
+_PyJsRef_new(JsVal v)
 {
   if (JsvNull_Check(v)) {
     return NULL;
@@ -75,7 +75,7 @@ JsRef_new(JsVal v)
 }
 
 JsVal
-JsRef_toVal(JsRef ref)
+_PyJsRef_toVal(JsRef ref)
 {
   if (ref == NULL) {
     return JS_ERROR;
@@ -85,93 +85,93 @@ JsRef_toVal(JsRef ref)
 
 // ==================== Primitive Conversions ====================
 
-EM_JS(JsVal, JsvUTF8ToString, (const char* ptr), {
+EM_JS(JsVal, _PyJsvUTF8ToString, (const char* ptr), {
   return UTF8ToString(ptr);
 })
 
 EMSCRIPTEN_KEEPALIVE JsRef
-JsrString_FromId(Js_Identifier* id)
+_PyJsrString_FromId(Js_Identifier* id)
 {
   if (!id->object) {
-    id->object = hiwire_intern(JsvUTF8ToString(id->string));
+    id->object = hiwire_intern(_PyJsvUTF8ToString(id->string));
   }
   return id->object;
 }
 
 EMSCRIPTEN_KEEPALIVE JsVal
-JsvString_FromId(Js_Identifier* id)
+_PyJsvString_FromId(Js_Identifier* id)
 {
-  return JsRef_toVal(JsrString_FromId(id));
+  return _PyJsRef_toVal(_PyJsrString_FromId(id));
 }
 
 // ==================== JsvObject API  ====================
 
-EM_JS(JsVal, JsvObject_New, (void), {
+EM_JS(JsVal, _PyJsvObject_New, (void), {
   return {};
 });
 
-EM_JS_NUM(int, JsvObject_SetAttr, (JsVal obj, JsVal attr, JsVal value), {
+EM_JS_NUM(int, _PyJsvObject_SetAttr, (JsVal obj, JsVal attr, JsVal value), {
   obj[attr] = value;
 });
 
 
 EM_JS_VAL(JsVal,
-JsvObject_toString, (JsVal obj), {
+_PyJsvObject_toString, (JsVal obj), {
   if (hasMethod(obj, "toString")) {
     return obj.toString();
   }
   return Object.prototype.toString.call(obj);
 });
 
-EM_JS_VAL(JsVal, JsvObject_CallMethod_NoArgs, (JsVal obj, JsVal meth), {
+EM_JS_VAL(JsVal, _PyJsvObject_CallMethod_NoArgs, (JsVal obj, JsVal meth), {
   return obj[meth]();
 })
 
-EM_JS_VAL(JsVal, JsvObject_CallMethod_OneArg, (JsVal obj, JsVal meth, JsVal arg), {
+EM_JS_VAL(JsVal, _PyJsvObject_CallMethod_OneArg, (JsVal obj, JsVal meth, JsVal arg), {
   return obj[meth](arg);
 })
 
-EM_JS_VAL(JsVal, JsvObject_CallMethod_TwoArgs, (JsVal obj, JsVal meth, JsVal arg1, JsVal arg2), {
+EM_JS_VAL(JsVal, _PyJsvObject_CallMethod_TwoArgs, (JsVal obj, JsVal meth, JsVal arg1, JsVal arg2), {
   return obj[meth](arg1, arg2);
 })
 
 JsVal
-JsvObject_CallMethodId_NoArgs(JsVal obj, Js_Identifier* name_id)
+_PyJsvObject_CallMethodId_NoArgs(JsVal obj, Js_Identifier* name_id)
 {
-  return JsvObject_CallMethod_NoArgs(obj, JsvString_FromId(name_id));
+  return _PyJsvObject_CallMethod_NoArgs(obj, _PyJsvString_FromId(name_id));
 }
 
 JsVal
-JsvObject_CallMethodId_OneArg(JsVal obj, Js_Identifier* name_id, JsVal arg)
+_PyJsvObject_CallMethodId_OneArg(JsVal obj, Js_Identifier* name_id, JsVal arg)
 {
-  return JsvObject_CallMethod_OneArg(obj, JsvString_FromId(name_id), arg);
+  return _PyJsvObject_CallMethod_OneArg(obj, _PyJsvString_FromId(name_id), arg);
 }
 
 
 JsVal
-JsvObject_CallMethodId_TwoArgs(JsVal obj,
+_PyJsvObject_CallMethodId_TwoArgs(JsVal obj,
                                Js_Identifier* name_id,
                                JsVal arg1,
                                JsVal arg2)
 {
-  return JsvObject_CallMethod_TwoArgs(obj, JsvString_FromId(name_id), arg1, arg2);
+  return _PyJsvObject_CallMethod_TwoArgs(obj, _PyJsvString_FromId(name_id), arg1, arg2);
 }
 
 // ==================== JsvFunction API  ====================
 
-EM_JS_BOOL(bool, JsvFunction_Check, (JsVal obj), {
+EM_JS_BOOL(bool, _PyJsvFunction_Check, (JsVal obj), {
   // clang-format off
   return typeof obj === 'function';
   // clang-format on
 });
 
-EM_JS_VAL(JsVal, JsvFunction_CallBound, (JsVal func, JsVal this_, JsVal args), {
+EM_JS_VAL(JsVal, _PyJsvFunction_CallBound, (JsVal func, JsVal this_, JsVal args), {
   return Function.prototype.apply.apply(func, [ this_, args ]);
 });
 
 // clang-format off
 EM_JS_VAL(JsVal,
-JsvFunction_Construct,
+_PyJsvFunction_Construct,
 (JsVal func, JsVal args),
 {
   return Reflect.construct(func, args);
@@ -181,11 +181,11 @@ JsvFunction_Construct,
 
 // ==================== JsvArray API  ====================
 
-EM_JS(JsVal, JsvArray_New, (void), {
+EM_JS(JsVal, _PyJsvArray_New, (void), {
   return [];
 });
 
-EM_JS_BOOL(bool, JsvArray_Check, (JsVal obj), {
+EM_JS_BOOL(bool, _PyJsvArray_Check, (JsVal obj), {
   if (Array.isArray(obj)) {
     return true;
   }
@@ -205,11 +205,11 @@ EM_JS_BOOL(bool, JsvArray_Check, (JsVal obj), {
   return false;
 });
 
-EM_JS(int, JsvArray_Push, (JsVal arr, JsVal obj), {
+EM_JS(int, _PyJsvArray_Push, (JsVal arr, JsVal obj), {
   return arr.push(obj);
 });
 
-EM_JS_VAL(JsVal, JsvArray_Get, (JsVal arr, int idx), {
+EM_JS_VAL(JsVal, _PyJsvArray_Get, (JsVal arr, int idx), {
   const result = arr[idx];
   // clang-format off
   if (result === undefined && !(idx in arr)) {
@@ -219,11 +219,11 @@ EM_JS_VAL(JsVal, JsvArray_Get, (JsVal arr, int idx), {
   return result;
 });
 
-EM_JS_NUM(int, JsvArray_Set, (JsVal arr, int idx, JsVal val), {
+EM_JS_NUM(int, _PyJsvArray_Set, (JsVal arr, int idx, JsVal val), {
   arr[idx] = val;
 });
 
-EM_JS_VAL(JsVal, JsvArray_Delete, (JsVal arr, int idx), {
+EM_JS_VAL(JsVal, _PyJsvArray_Delete, (JsVal arr, int idx), {
   // Weird edge case: allow deleting an empty entry, but we raise a key error if
   // access is attempted.
   if (idx < 0 || idx >= arr.length) {
@@ -232,21 +232,21 @@ EM_JS_VAL(JsVal, JsvArray_Delete, (JsVal arr, int idx), {
   return arr.splice(idx, 1)[0];
 });
 
-EM_JS(void, JsvArray_Extend, (JsVal arr, JsVal vals), {
+EM_JS(void, _PyJsvArray_Extend, (JsVal arr, JsVal vals), {
   arr.push(...vals);
 });
 // clang-format on
 
-EM_JS_NUM(int, JsvArray_Insert, (JsVal arr, int idx, JsVal value), {
+EM_JS_NUM(int, _PyJsvArray_Insert, (JsVal arr, int idx, JsVal value), {
   arr.splice(idx, 0, value);
 });
 
-EM_JS_NUM(JsVal, JsvArray_ShallowCopy, (JsVal arr), {
+EM_JS_NUM(JsVal, _PyJsvArray_ShallowCopy, (JsVal arr), {
   return ("slice" in arr) ? arr.slice() : Array.from(arr);
 })
 
 EM_JS_VAL(JsVal,
-JsvArray_slice,
+_PyJsvArray_slice,
 (JsVal obj, int length, int start, int stop, int step),
 {
   let result;
@@ -259,12 +259,12 @@ JsvArray_slice,
 });
 
 EM_JS_NUM(int,
-JsvArray_slice_assign,
+_PyJsvArray_slice_assign,
 (JsVal obj, int slicelength, int start, int stop, int step, int values_length, PyObject **values),
 {
   let jsvalues = [];
   for (let i = 0; i < values_length; i++) {
-    const ref = _python2js(DEREF_U32(values, i));
+    const ref = __Py_python2js(DEREF_U32(values, i));
     if (ref === Module.error){
       return -1;
     }
@@ -286,28 +286,28 @@ JsvArray_slice_assign,
 });
 
 
-EM_JS(void __attribute__((__noreturn__)), JsvError_Throw, (JsVal e), { throw e; })
+EM_JS(void __attribute__((__noreturn__)), _PyJsvError_Throw, (JsVal e), { throw e; })
 
 // ==================== Js Map API  ====================
 
-EM_JS_VAL(JsVal, JsvMap_New, (void), {
+EM_JS_VAL(JsVal, _PyJsvMap_New, (void), {
   return new Map();
 })
 
-EM_JS_VAL(JsVal, JsvLiteralMap_New, (void), {
+EM_JS_VAL(JsVal, _PyJsvLiteralMap_New, (void), {
   return new API.LiteralMap();
 })
 
-EM_JS_NUM(int, JsvMap_Set, (JsVal map, JsVal key, JsVal val), {
+EM_JS_NUM(int, _PyJsvMap_Set, (JsVal map, JsVal key, JsVal val), {
   map.set(key, val);
 })
 
 // ==================== JsSet API  ====================
 
-EM_JS_VAL(JsVal, JsvSet_New, (void), {
+EM_JS_VAL(JsVal, _PyJsvSet_New, (void), {
   return new Set();
 })
 
-EM_JS_NUM(int, JsvSet_Add, (JsVal set, JsVal val), {
+EM_JS_NUM(int, _PyJsvSet_Add, (JsVal set, JsVal val), {
   set.add(val);
 })

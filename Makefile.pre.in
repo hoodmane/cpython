@@ -3205,7 +3205,7 @@ JIT_TARGETS=	$(JIT_BUILD_TARGETS) $(filter-out $(JIT_SHIM_BUILD_OBJS),$(JIT_OBJS
 JIT_GENERATED_STAMP=	.jit-stamp
 
 Modules/_pyodide_core/jserror_wasm.c: $(srcdir)/Modules/_pyodide_core/jserror.wat
-	$(PYTHON_FOR_REGEN) $(srcdir)/Tools/wasm/emscripten/prepare_external_wasm.py $< $@ getJsErrorModule
+	$(PYTHON_FOR_REGEN) $(srcdir)/Platforms/emscripten/prepare_external_wasm.py $< $@ _Py_getJsErrorModule
 
 Modules/_pyodide_core/jserror_wasm.o: Modules/_pyodide_core/jserror_wasm.c
 	$(CC) -c $(PY_CORE_CFLAGS) -o $@ $<
