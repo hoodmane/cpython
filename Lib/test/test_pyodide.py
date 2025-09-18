@@ -256,7 +256,6 @@ class ConversionTest(TestCase):
         destroy_proxies(proxylist)
 
 
-
 class JsProxyTest(TestCase):
     def test_jsproxy(self):
         o = run_js("[7, 11, -1]")
@@ -665,9 +664,14 @@ class PyProxyTest(TestCase):
         self.assertEqual(d["z"], 9)
         run_js("(o) => o.set('q', 32)")(d)
         self.assertEqual(d["q"], 32)
-
-        # TODO:
-        # self.assertEqual(list(run_js("(o) => o.items()")(d)), [])
+        self.assertEqual(
+            list(
+                run_js(
+                    "(o) => {console.log(Reflect.ownKeys(o)); return o.items();}"
+                )(d)
+            ),
+            [("a", 7), ("z", 9), ("q", 32)],
+        )
 
     def test_pyproxy_call_simple(self):
         def f(x):

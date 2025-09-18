@@ -699,6 +699,10 @@ const PyProxyDictHandlers = {
     return false;
   },
   get(jsobj: PyProxy, jskey: string | symbol): any {
+    let result = PyProxyHandlers.get(jsobj, jskey);
+    if (result !== undefined || PyProxyHandlers.has(jsobj, jskey)) {
+      return result;
+    }
     if (
       typeof jskey === "symbol" ||
       PyProxyDictHandlersSet.has(jskey)
@@ -706,7 +710,7 @@ const PyProxyDictHandlers = {
       // @ts-ignore
       return Reflect.get(...arguments);
     }
-    const result = PyGetItemMethods.prototype.get.call(jsobj, jskey);
+    result = PyGetItemMethods.prototype.get.call(jsobj, jskey);
     if (
       result !== undefined ||
       PyContainsMethods.prototype.has.call(jsobj, jskey)
