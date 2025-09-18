@@ -12,6 +12,7 @@
 #include "pyproxy.h"
 #include "jsproxy.h"
 
+
 #include "clinic/pyproxy.c.h"
 /*[clinic input]
 module _pyodide_core
@@ -568,16 +569,13 @@ _pyproxyGen_return(PyObject* receiver, JsVal jsval)
 {
   bool success = false;
   PySendResult status = PYGEN_ERROR;
-  PyObject* throw = NULL;
   PyObject* pyresult = NULL;
 
   JsVal result;
 
-  throw = PyUnicode_FromString("throw");
-  FAIL_IF_NULL(throw);
   // Throw GeneratorExit into generator
   pyresult =
-    PyObject_CallMethodOneArg(receiver, throw, PyExc_GeneratorExit);
+    PyObject_CallMethodOneArg(receiver, &_Py_ID(throw), PyExc_GeneratorExit);
   if (pyresult == NULL) {
     if (PyErr_ExceptionMatches(PyExc_GeneratorExit)) {
       // If GeneratorExit comes back out, return original value.
@@ -597,7 +595,6 @@ _pyproxyGen_return(PyObject* receiver, JsVal jsval)
   FAIL_IF_JS_ERROR(result);
   success = true;
 finally:
-  Py_CLEAR(throw);
   Py_CLEAR(pyresult);
   if (!success) {
     return JS_ERROR;
@@ -609,7 +606,6 @@ EMSCRIPTEN_KEEPALIVE JsVal
 _pyproxyGen_throw(PyObject* receiver, JsVal jsval)
 {
   bool success = false;
-  PyObject* throw = NULL;
   PyObject* pyvalue = NULL;
   PyObject* pyresult = NULL;
   PySendResult status = PYGEN_ERROR;
@@ -626,9 +622,7 @@ _pyproxyGen_throw(PyObject* receiver, JsVal jsval)
                  Py_TYPE(pyvalue)->tp_name);
     FAIL();
   }
-  throw = PyUnicode_FromString("throw");
-  FAIL_IF_NULL(throw);
-  pyresult = PyObject_CallMethodOneArg(receiver, throw, pyvalue);
+  pyresult = PyObject_CallMethodOneArg(receiver, &_Py_ID(throw), pyvalue);
   if (pyresult == NULL) {
     FAIL_IF_MINUS_ONE(_PyGen_FetchStopIterationValue(&pyresult));
     status = PYGEN_RETURN;
@@ -641,7 +635,6 @@ _pyproxyGen_throw(PyObject* receiver, JsVal jsval)
 finally:
   Py_CLEAR(pyresult);
   Py_CLEAR(pyvalue);
-  Py_CLEAR(throw);
   if (!success) {
     return JS_ERROR;
   }
@@ -681,17 +674,14 @@ _pyproxy_pop(PyObject* pyobj, bool pop_start)
 {
   PyObject* idx = NULL;
   PyObject* pyresult = NULL;
-  PyObject* pop = NULL;
   JsVal jsresult = JS_ERROR;
   
-  pop = PyUnicode_FromString("pop");
-  FAIL_IF_NULL(pop);
   if (pop_start) {
     idx = PyLong_FromLong(0);
     FAIL_IF_NULL(idx);
-    pyresult = PyObject_CallMethodOneArg(pyobj, pop, idx);
+    pyresult = PyObject_CallMethodOneArg(pyobj, &_Py_ID(pop), idx);
   } else {
-    pyresult = PyObject_CallMethodNoArgs(pyobj, pop);
+    pyresult = PyObject_CallMethodNoArgs(pyobj, &_Py_ID(pop));
   }
   if (pyresult != NULL) {
     jsresult = python2js(pyresult);
@@ -706,7 +696,6 @@ _pyproxy_pop(PyObject* pyobj, bool pop_start)
   }
 finally:
   Py_CLEAR(idx);
-  Py_CLEAR(pop);
   Py_CLEAR(pyresult);
   return jsresult;
 }

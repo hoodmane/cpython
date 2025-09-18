@@ -268,6 +268,7 @@ _PyStaticObjects_CheckAll(PyInterpreterState *interp) {
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(_io), "_io", 3);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(_is_text_encoding), "_is_text_encoding", 17);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(_isatty_open_only), "_isatty_open_only", 17);
+    _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(_js_type_flags), "_js_type_flags", 14);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(_length_), "_length_", 8);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(_limbo), "_limbo", 6);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(_lock_unlock_module), "_lock_unlock_module", 19);
@@ -723,6 +724,7 @@ _PyStaticObjects_CheckAll(PyInterpreterState *interp) {
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(pidfd), "pidfd", 5);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(pointer_bits), "pointer_bits", 12);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(policy), "policy", 6);
+    _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(pop), "pop", 3);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(port), "port", 4);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(pos), "pos", 3);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(pos1), "pos1", 4);
