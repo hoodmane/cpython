@@ -178,6 +178,63 @@ _pyodide_core_JsGenerator_close(PyObject *self, PyObject *Py_UNUSED(ignored))
     return _pyodide_core_JsGenerator_close_impl(self);
 }
 
+PyDoc_STRVAR(_pyodide_core_JsArray_extend__doc__,
+"extend($self, /, iterable)\n"
+"--\n"
+"\n");
+
+#define _PYODIDE_CORE_JSARRAY_EXTEND_METHODDEF    \
+    {"extend", _PyCFunction_CAST(_pyodide_core_JsArray_extend), METH_FASTCALL|METH_KEYWORDS, _pyodide_core_JsArray_extend__doc__},
+
+static PyObject *
+_pyodide_core_JsArray_extend_impl(PyObject *self, PyObject *iterable);
+
+static PyObject *
+_pyodide_core_JsArray_extend(PyObject *self, PyObject *const *args, Py_ssize_t nargs, PyObject *kwnames)
+{
+    PyObject *return_value = NULL;
+    #if defined(Py_BUILD_CORE) && !defined(Py_BUILD_CORE_MODULE)
+
+    #define NUM_KEYWORDS 1
+    static struct {
+        PyGC_Head _this_is_not_used;
+        PyObject_VAR_HEAD
+        Py_hash_t ob_hash;
+        PyObject *ob_item[NUM_KEYWORDS];
+    } _kwtuple = {
+        .ob_base = PyVarObject_HEAD_INIT(&PyTuple_Type, NUM_KEYWORDS)
+        .ob_hash = -1,
+        .ob_item = { &_Py_ID(iterable), },
+    };
+    #undef NUM_KEYWORDS
+    #define KWTUPLE (&_kwtuple.ob_base.ob_base)
+
+    #else  // !Py_BUILD_CORE
+    #  define KWTUPLE NULL
+    #endif  // !Py_BUILD_CORE
+
+    static const char * const _keywords[] = {"iterable", NULL};
+    static _PyArg_Parser _parser = {
+        .keywords = _keywords,
+        .fname = "extend",
+        .kwtuple = KWTUPLE,
+    };
+    #undef KWTUPLE
+    PyObject *argsbuf[1];
+    PyObject *iterable;
+
+    args = _PyArg_UnpackKeywords(args, nargs, NULL, kwnames, &_parser,
+            /*minpos*/ 1, /*maxpos*/ 1, /*minkw*/ 0, /*varpos*/ 0, argsbuf);
+    if (!args) {
+        goto exit;
+    }
+    iterable = args[0];
+    return_value = _pyodide_core_JsArray_extend_impl(self, iterable);
+
+exit:
+    return return_value;
+}
+
 PyDoc_STRVAR(_pyodide_core_JsException___reduce____doc__,
 "__reduce__($self, /)\n"
 "--\n"
@@ -194,4 +251,4 @@ _pyodide_core_JsException___reduce__(PyObject *self, PyObject *Py_UNUSED(ignored
 {
     return _pyodide_core_JsException___reduce___impl(self);
 }
-/*[clinic end generated code: output=bb300865f6600af5 input=a9049054013a1b77]*/
+/*[clinic end generated code: output=ff100c902f669dbd input=a9049054013a1b77]*/

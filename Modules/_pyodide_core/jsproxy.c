@@ -69,8 +69,9 @@ module _pyodide_core
 class _pyodide_core.JsProxy "PyObject *" "JsProxyType"
 class _pyodide_core.JsGenerator "PyObject *" "JsProxyType"
 class _pyodide_core.JsException "PyObject *" "JsProxyType"
+class _pyodide_core.JsArray "PyObject *" "JsProxyType"
 [clinic start generated code]*/
-/*[clinic end generated code: output=da39a3ee5e6b4b0d input=4d0c283afc10f84d]*/
+/*[clinic end generated code: output=da39a3ee5e6b4b0d input=4b0f048ce11eb0ae]*/
 #include "clinic/jsproxy.c.h"
 
 // Layout of dict and ExceptionFields needs to exactly match the layout of the
@@ -1302,15 +1303,15 @@ EM_JS(void, destroy_jsarray_entries, (JsVal array), {
   }
 })
 
-static PyObject*
-JsArray_extend_meth(PyObject* o, PyObject* iterable)
+static PyObject *
+JsArray_extend_meth(PyObject *self, PyObject *iterable)
 {
   bool success = false;
 
   JsVal temp = JsvArray_New();
   // Make sure that if anything goes wrong the original array stays unmodified
   FAIL_IF_MINUS_ONE(JsArray_extend_by_python_iterable(temp, iterable));
-  JsvArray_Extend(JsProxy_VAL(o), temp);
+  JsvArray_Extend(JsProxy_VAL(self), temp);
   success = true;
 finally:
   if (!success) {
@@ -1323,11 +1324,18 @@ finally:
   }
 }
 
-static PyMethodDef JsArray_extend_MethodDef = {
-  "extend",
-  (PyCFunction)JsArray_extend_meth,
-  METH_O,
-};
+/*[clinic input]
+_pyodide_core.JsArray.extend
+
+    iterable: object
+[clinic start generated code]*/
+
+static PyObject *
+_pyodide_core_JsArray_extend_impl(PyObject *self, PyObject *iterable)
+/*[clinic end generated code: output=96844cb265ce679d input=95ba00fe2efb2647]*/
+{
+  return JsArray_extend_meth(self, iterable);
+}
 
 static PyObject*
 JsArray_sq_concat(PyObject* self, PyObject* other)
@@ -2025,16 +2033,17 @@ JsProxy_create_subtype(int flags)
       (PyType_Slot){ .slot = Py_sq_item, .pfunc = (void*)JsArray_sq_item };
     slots[cur_slot++] = (PyType_Slot){ .slot = Py_sq_ass_item,
                                        .pfunc = (void*)JsArray_sq_ass_item };
-    methods[cur_method++] = JsArray_extend_MethodDef;
-    methods[cur_method++] = JsArray_pop_MethodDef;
-    methods[cur_method++] = JsArray_append_MethodDef;
-
-    methods[cur_method++] = JsArray_reversed_MethodDef;
-    methods[cur_method++] = JsArray_reverse_MethodDef;
-    methods[cur_method++] = JsArray_insert_MethodDef;
-    methods[cur_method++] = JsArray_index_MethodDef;
-    methods[cur_method++] = JsArray_count_MethodDef;
-    methods[cur_method++] = JsArray_remove_MethodDef;
+    AddMethods(
+      _PYODIDE_CORE_JSARRAY_EXTEND_METHODDEF
+      JsArray_pop_MethodDef,
+      JsArray_append_MethodDef,
+      JsArray_reversed_MethodDef,
+      JsArray_reverse_MethodDef,
+      JsArray_insert_MethodDef,
+      JsArray_index_MethodDef,
+      JsArray_count_MethodDef,
+      JsArray_remove_MethodDef,
+    );
   }
 
   if (flags & IS_GENERATOR) {
