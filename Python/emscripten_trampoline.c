@@ -30,7 +30,7 @@ _PyEM_TrampolineCall_inner, (int* success,
         return;
     }
     try {
-        const trampolineModule = getWasmTrampolineModule();
+        const trampolineModule = _Py_getWasmTrampolineModule();
         const trampolineInstance = new WebAssembly.Instance(trampolineModule, {
             env: { __indirect_function_table: wasmTable, memory: wasmMemory },
         });

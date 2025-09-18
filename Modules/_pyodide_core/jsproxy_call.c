@@ -12,14 +12,14 @@ JsMethod_ConvertArgs(PyObject* const* pyargs,
                      Py_ssize_t nargsf,
                      PyObject* kwnames)
 {
-  JsVal jsargs = JsvArray_New();
+  JsVal jsargs = _PyJsvArray_New();
 
   int nargs = PyVectorcall_NARGS(nargsf);
   // present positional arguments
   for (Py_ssize_t i = 0; i < nargs; ++i) {
-    JsVal arg = python2js(pyargs[i]);
+    JsVal arg = _Py_python2js(pyargs[i]);
     FAIL_IF_JS_ERROR(arg);
-    JsvArray_Push(jsargs, arg);
+    _PyJsvArray_Push(jsargs, arg);
   }
   // Keyword arguments
   // Skip if there are no keyword arguments
@@ -28,17 +28,17 @@ JsMethod_ConvertArgs(PyObject* const* pyargs,
     goto success;
   }
   // store kwargs into an object which we'll use as the last argument.
-  JsVal kwargs = JsvObject_New();
+  JsVal kwargs = _PyJsvObject_New();
   FAIL_IF_JS_ERROR(kwargs);
   for (int64_t i = 0, k = nargs; i < nkwargs; ++i, ++k) {
     PyObject* pyname = PyTuple_GET_ITEM(kwnames, i);
-    JsVal jsname = python2js(pyname);
+    JsVal jsname = _Py_python2js(pyname);
     FAIL_IF_JS_ERROR(jsname);
-    JsVal arg = python2js(pyargs[k]);
+    JsVal arg = _Py_python2js(pyargs[k]);
     FAIL_IF_JS_ERROR(arg);
-    FAIL_IF_MINUS_ONE(JsvObject_SetAttr(kwargs, jsname, arg));
+    FAIL_IF_MINUS_ONE(_PyJsvObject_SetAttr(kwargs, jsname, arg));
   }
-  JsvArray_Push(jsargs, kwargs);
+  _PyJsvArray_Push(jsargs, kwargs);
 
   FAIL_IF_ERR_OCCURRED();
   goto success;
@@ -54,7 +54,7 @@ finally:
  * __call__ overload for methods. Controlled by IS_CALLABLE.
  */
 PyObject*
-JsMethod_Vectorcall_impl(JsVal func,
+_PyJsMethod_Vectorcall_impl(JsVal func,
                          JsVal receiver,
                          PyObject* const* pyargs,
                          size_t nargsf,
@@ -69,9 +69,9 @@ JsMethod_Vectorcall_impl(JsVal func,
   JsVal jsargs =
     JsMethod_ConvertArgs(pyargs, nargsf, kwnames);
   FAIL_IF_JS_ERROR(jsargs);
-  jsresult = JsvFunction_CallBound(func, receiver, jsargs);
+  jsresult = _PyJsvFunction_CallBound(func, receiver, jsargs);
   FAIL_IF_JS_ERROR(jsresult);
-  pyresult = js2python(jsresult);
+  pyresult = _Py_js2python(jsresult);
   FAIL_IF_NULL(pyresult);
 
   success = true;
@@ -84,7 +84,7 @@ finally:
 }
 
 PyObject*
-JsMethod_Construct_impl(JsVal func,
+_PyJsMethod_Construct_impl(JsVal func,
                         PyObject* const* pyargs,
                         size_t nargs,
                         PyObject* kwnames)
@@ -97,9 +97,9 @@ JsMethod_Construct_impl(JsVal func,
 
   JsVal jsargs = JsMethod_ConvertArgs(pyargs, nargs, kwnames);
   FAIL_IF_JS_ERROR(jsargs);
-  JsVal jsresult = JsvFunction_Construct(func, jsargs);
+  JsVal jsresult = _PyJsvFunction_Construct(func, jsargs);
   FAIL_IF_JS_ERROR(jsresult);
-  pyresult = js2python(jsresult);
+  pyresult = _Py_js2python(jsresult);
   FAIL_IF_NULL(pyresult);
 
   success = true;

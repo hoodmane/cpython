@@ -21,7 +21,7 @@ JSFILE(() => {
       throw new PropagateError();
     }
 
-    let ptr = _PyUnicode_Data(result);
+    let ptr = __Py_js2python_PyUnicode_Data(result);
     if (max_code_point > 0xffff) {
       for (let c of value) {
         ASSIGN_U32(ptr, 0, c.codePointAt(0));
@@ -109,17 +109,17 @@ JSFILE(() => {
     } else if (type === "bigint") {
       return js2python_bigint(value);
     } else if (value === undefined) {
-      return __js2python_none();
+      return __Py_js2python_none();
     }  else if (value === null) {
-      return __js2python_null();
+      return __Py_js2python_null();
     } else if (value === true) {
-      return __js2python_true();
+      return __Py_js2python_true();
     } else if (value === false) {
-      return __js2python_false();
+      return __Py_js2python_false();
     } else if (API.isPyProxy(value)) {
       const { props, shared } = API.PyProxy_getAttrs(value);
       if (props.roundtrip) {
-        return _JsProxy_create(value);
+        return __PyJsProxy_create(value);
       } else {
         _Py_IncRef(shared.ptr);
         return shared.ptr;
@@ -281,7 +281,7 @@ JSFILE(() => {
       return result;
     }
     if (context.depth === 0) {
-      return _JsProxy_create(value);
+      return __PyJsProxy_create(value);
     }
     result = context.cache.get(value);
     if (result !== undefined) {
@@ -294,7 +294,7 @@ JSFILE(() => {
         return result;
       }
       if (!context.defaultConverter) {
-        return _JsProxy_create(value);
+        return __PyJsProxy_create(value);
       }
       let result_js = context.defaultConverter(
         value,
@@ -308,7 +308,7 @@ JSFILE(() => {
       if (result !== undefined) {
         return result;
       }
-      return _JsProxy_create(result_js);
+      return __PyJsProxy_create(result_js);
     } finally {
       context.depth++;
     }

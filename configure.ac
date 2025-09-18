@@ -2372,13 +2372,13 @@ AS_CASE([$ac_sys_system],
     dnl some hiwire functions
     AS_VAR_APPEND([LINKFORSHARED], ["_hiwire_intern,"])
     AS_VAR_APPEND([LINKFORSHARED], ["_hiwire_get,"])
-    AS_VAR_APPEND([LINKFORSHARED], ["_JsProxy_create,"])
-    AS_VAR_APPEND([LINKFORSHARED], ["_pythonexc2js,"])
-    AS_VAR_APPEND([LINKFORSHARED], ["__pyproxy_type,"])
-    AS_VAR_APPEND([LINKFORSHARED], ["__pyproxy_str,"])
-    AS_VAR_APPEND([LINKFORSHARED], ["_pyproxy_getflags,"])
-    AS_VAR_APPEND([LINKFORSHARED], ["_python2js,"])
-    AS_VAR_APPEND([LINKFORSHARED], ["_restore_sys_last_exception"])
+    AS_VAR_APPEND([LINKFORSHARED], ["__PyJsProxy_create,"])
+    AS_VAR_APPEND([LINKFORSHARED], ["__Py_pythonexc2js,"])
+    AS_VAR_APPEND([LINKFORSHARED], ["__PyProxy_type,"])
+    AS_VAR_APPEND([LINKFORSHARED], ["__PyProxy_str,"])
+    AS_VAR_APPEND([LINKFORSHARED], ["__PyProxy_getflags,"])
+    AS_VAR_APPEND([LINKFORSHARED], ["__Py_python2js,"])
+    AS_VAR_APPEND([LINKFORSHARED], ["__Py_restore_sys_last_exception"])
 
 
     AS_VAR_APPEND([LINKFORSHARED], [" -sSTACK_SIZE=5MB"])

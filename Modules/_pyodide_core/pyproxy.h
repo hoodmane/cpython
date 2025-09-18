@@ -3,19 +3,19 @@
 #include "pytypedefs.h"
 
 JsVal
-pyproxy_new(PyObject* obj);
+_PyProxy_New(PyObject* obj);
 
 JsVal
-pyproxy_new_ex(PyObject* obj,
+_PyProxy_NewEx(PyObject* obj,
                bool capture_this,
                bool roundtrip,
                bool register);
 
 int
-PyProxy_Check(JsVal);
+_PyProxy_Check(JsVal);
 
 void
-PyProxy_Destroy(JsVal pyproxy, Js_Identifier* msg);
+_PyProxy_Destroy(JsVal pyproxy, Js_Identifier* msg);
 
 /**
  * If x is a PyProxy, return a borrowed version of the wrapped PyObject. Returns
@@ -23,4 +23,4 @@ PyProxy_Destroy(JsVal pyproxy, Js_Identifier* msg);
  * is not NULL or a valid JsRef.
  */
 PyObject*
-PyProxy_AsPyObject(JsVal x);
+_PyProxy_AsPyObject(JsVal x);

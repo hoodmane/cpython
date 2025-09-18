@@ -2,14 +2,14 @@
 #include "Python.h"
 
 PyObject*
-JsProxy_create(JsVal object);
+_PyJsProxy_create(JsVal object);
 
 PyObject*
-JsProxy_create_with_this(JsVal object,
+_PyJsProxy_create_with_this(JsVal object,
                          JsVal this);
 
 bool
-JsProxy_Check(PyObject* x);
+_PyJsProxy_Check(PyObject* x);
 
 JsVal
-JsProxy_Val(PyObject* x);
+_PyJsProxy_Val(PyObject* x);

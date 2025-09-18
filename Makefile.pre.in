@@ -3165,10 +3165,10 @@ Python/emscripten_trampoline_inner.wasm: $(srcdir)/Python/emscripten_trampoline_
 	$$(dirname $$(dirname $(CC)))/bin/clang -o $@ $< -mgc -O2 -Wl,--no-entry -Wl,--import-table -Wl,--import-memory -target wasm32-unknown-unknown -nostdlib
 
 Python/emscripten_trampoline_wasm.c: Python/emscripten_trampoline_inner.wasm
-	$(PYTHON_FOR_REGEN) $(srcdir)/Tools/wasm/emscripten/prepare_external_wasm.py $< $@ getWasmTrampolineModule
+	$(PYTHON_FOR_REGEN) $(srcdir)/Tools/wasm/emscripten/prepare_external_wasm.py $< $@ _Py_getWasmTrampolineModule
 
 Modules/_pyodide_core/jserror_wasm.c: $(srcdir)/Modules/_pyodide_core/jserror.wat
-	$(PYTHON_FOR_REGEN) $(srcdir)/Tools/wasm/emscripten/prepare_external_wasm.py $< $@ getJsErrorModule
+	$(PYTHON_FOR_REGEN) $(srcdir)/Tools/wasm/emscripten/prepare_external_wasm.py $< $@ _Py_getJsErrorModule
 
 Modules/_pyodide_core/jserror_wasm.o: Modules/_pyodide_core/jserror_wasm.c
 	$(CC) -c $(PY_CORE_CFLAGS) -o $@ $<

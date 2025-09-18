@@ -25,14 +25,14 @@ _python2js_float(PyObject* x)
   if (x_double == -1.0 && PyErr_Occurred()) {
     return JS_ERROR;
   }
-  return JsvNum_fromDouble(x_double);
+  return _PyJsvNum_fromDouble(x_double);
 }
 
 #if PYLONG_BITS_IN_DIGIT == 15
 #error "Expected PYLONG_BITS_IN_DIGIT == 30"
 #endif
 
-EM_JS(JsVal, _python2js_long_js_small, (int64_t x), {
+EM_JS(JsVal, _Py_python2js_long_js_small, (int64_t x), {
   if (-Number.MAX_SAFE_INTEGER < x && x < Number.MAX_SAFE_INTEGER) {
     return Number(x);
   }
@@ -40,7 +40,7 @@ EM_JS(JsVal, _python2js_long_js_small, (int64_t x), {
 })
 
 EM_JS_MACROS(JsVal,
-_python2js_long_js_big, (const unsigned int *digits, size_t ndigits, uint8_t negative,
+_Py_python2js_long_js_big, (const unsigned int *digits, size_t ndigits, uint8_t negative,
                          uint8_t bits_per_digit, uint8_t digit_size),
 {
   let result = BigInt(0);
@@ -74,10 +74,10 @@ _python2js_long(PyObject* x)
   }
   JsVal result;
   if (export_long.digits == NULL) {
-    result = _python2js_long_js_small(export_long.value);
+    result = _Py_python2js_long_js_small(export_long.value);
   } else {
     const PyLongLayout *layout = PyLong_GetNativeLayout();
-    result = _python2js_long_js_big(export_long.digits, export_long.ndigits,
+    result = _Py_python2js_long_js_big(export_long.digits, export_long.ndigits,
                                     export_long.negative,
                                     layout->bits_per_digit, layout->digit_size);
   }
@@ -186,8 +186,8 @@ _python2js_immutable(PyObject* x)
 static inline JsVal
 _python2js_proxy(PyObject* x)
 {
-  if (JsProxy_Check(x)) {
-    return JsProxy_Val(x);
+  if (_PyJsProxy_Check(x)) {
+    return _PyJsProxy_Val(x);
   }
   return Jsv_novalue;
 }
@@ -201,7 +201,7 @@ _python2js_proxy(PyObject* x)
   do {                                                                         \
     JsVal _fresh_result = x;                                                   \
     FAIL_IF_JS_ERROR(_fresh_result);                                           \
-    if (!JsvNoValue_Check(_fresh_result)) {                                    \
+    if (!_PyJsvNoValue_Check(_fresh_result)) {                                    \
       return _fresh_result;                                                    \
     }                                                                          \
   } while (0)
@@ -227,7 +227,7 @@ typedef struct ConversionContext_s
 
 
 JsVal
-_python2js(ConversionContext *context, PyObject* x);
+_Py_python2js_helper(ConversionContext *context, PyObject* x);
 
 
 /**
@@ -251,24 +251,24 @@ _python2js(ConversionContext *context, PyObject* x);
  */
 
 EM_JS_NUM(
-int, _python2js_add_to_cache,
+int, _Py_python2js_add_to_cache,
 (JsVal cache, PyObject* pyparent, JsVal jsparent),
 {
   cache.set(pyparent, jsparent);
 });
 
-EM_JS(JsVal, _python2js_cache_lookup, (JsVal cache, PyObject* pyparent), {
+EM_JS(JsVal, _Py_python2js_cache_lookup, (JsVal cache, PyObject* pyparent), {
   return cache.get(pyparent) || Module.error;
 });
 
 
 EM_JS(void,
-_python2js_addto_postprocess_list,
+_Py_python2js_addto_postprocess_list,
 (JsVal list, JsVal parent, JsVal key, PyObject* value), {
   list.push([ parent, key, value ]);
 });
 
-EM_JS(void, _python2js_handle_postprocess_list, (JsVal list, JsVal cache), {
+EM_JS(void, _Py_python2js_handle_postprocess_list, (JsVal list, JsVal cache), {
   for (const [parent, key, ptr] of list) {
     let val = cache.get(ptr);
     if (parent.constructor.name === "LiteralMap") {
@@ -301,22 +301,22 @@ _python2js_sequence(ConversionContext* context, PyObject* x)
   bool success = false;
   PyObject* pyitem = NULL;
 
-  JsVal jsarray = JsvArray_New();
+  JsVal jsarray = _PyJsvArray_New();
   FAIL_IF_MINUS_ONE(
-    _python2js_add_to_cache(hiwire_get(context->cache), x, jsarray));
+    _Py_python2js_add_to_cache(hiwire_get(context->cache), x, jsarray));
   Py_ssize_t length = PySequence_Size(x);
   FAIL_IF_MINUS_ONE(length);
   for (Py_ssize_t i = 0; i < length; ++i) {
     PyObject* pyitem = PySequence_GetItem(x, i);
     FAIL_IF_NULL(pyitem);
-    JsVal jsitem = _python2js(context, pyitem);
+    JsVal jsitem = _Py_python2js_helper(context, pyitem);
     FAIL_IF_JS_ERROR(jsitem);
-    if (JsvNoValue_Check(jsitem)) {
-      JsVal index = JsvNum_fromInt(JsvArray_Push(jsarray, JS_ERROR));
-      _python2js_addto_postprocess_list(
+    if (_PyJsvNoValue_Check(jsitem)) {
+      JsVal index = _PyJsvNum_fromInt(_PyJsvArray_Push(jsarray, JS_ERROR));
+      _Py_python2js_addto_postprocess_list(
         hiwire_get(context->jspostprocess_list), jsarray, index, pyitem);
     } else {
-      JsvArray_Push(jsarray, jsitem);
+      _PyJsvArray_Push(jsarray, jsitem);
     }
     Py_CLEAR(pyitem);
   }
@@ -340,7 +340,7 @@ _python2js_dict(ConversionContext* context, PyObject* x)
   JsVal jsdict = context->dict_new(context);
   FAIL_IF_JS_ERROR(jsdict);
   FAIL_IF_MINUS_ONE(
-    _python2js_add_to_cache(hiwire_get(context->cache), x, Jsv_novalue));
+    _Py_python2js_add_to_cache(hiwire_get(context->cache), x, Jsv_novalue));
 
   // PyDict_Next may or may not work on dict subclasses, so get the `.items()`
   // and iterate that instead. See issue #4636.
@@ -358,16 +358,16 @@ _python2js_dict(ConversionContext* context, PyObject* x)
     PyObject* pyval = PyTuple_GetItem(item, 1);
     FAIL_IF_NULL(pyval);
     JsVal jskey = _python2js_immutable(pykey);
-    if (JsvError_Check(jskey) || JsvNoValue_Check(jskey)) {
+    if (_PyJsvError_Check(jskey) || _PyJsvNoValue_Check(jskey)) {
       FAIL_IF_ERR_OCCURRED();
       PyErr_Format(
         PyExc_ValueError, "Cannot use %R as a key for a Javascript Map", pykey);
       FAIL();
     }
-    JsVal jsval = _python2js(context, pyval);
+    JsVal jsval = _Py_python2js_helper(context, pyval);
     FAIL_IF_JS_ERROR(jsval);
-    if (JsvNoValue_Check(jsval)) {
-      _python2js_addto_postprocess_list(
+    if (_PyJsvNoValue_Check(jsval)) {
+      _Py_python2js_addto_postprocess_list(
         hiwire_get(context->jspostprocess_list), jsdict, jskey, pyval);
     } else {
       FAIL_IF_MINUS_ONE(
@@ -381,7 +381,7 @@ _python2js_dict(ConversionContext* context, PyObject* x)
     FAIL_IF_JS_ERROR(jsdict);
   }
   FAIL_IF_MINUS_ONE(
-    _python2js_add_to_cache(hiwire_get(context->cache), x, jsdict));
+    _Py_python2js_add_to_cache(hiwire_get(context->cache), x, jsdict));
   success = true;
 finally:
   Py_CLEAR(items);
@@ -408,25 +408,25 @@ _python2js_set(ConversionContext* context, PyObject* x)
   PyObject* pykey = NULL;
   // result:
 
-  JsVal jsset = JsvSet_New();
+  JsVal jsset = _PyJsvSet_New();
   iter = PyObject_GetIter(x);
   FAIL_IF_NULL(iter);
   while ((pykey = PyIter_Next(iter))) {
     JsVal jskey = _python2js_immutable(pykey);
-    if (JsvError_Check(jskey) || JsvNoValue_Check(jskey)) {
+    if (_PyJsvError_Check(jskey) || _PyJsvNoValue_Check(jskey)) {
       FAIL_IF_ERR_OCCURRED();
       PyErr_Format(
         PyExc_ValueError, "Cannot use %R as a key for a Javascript Set", pykey);
       FAIL();
     }
-    FAIL_IF_MINUS_ONE(JsvSet_Add(jsset, jskey));
+    FAIL_IF_MINUS_ONE(_PyJsvSet_Add(jsset, jskey));
     Py_CLEAR(pykey);
   }
   FAIL_IF_ERR_OCCURRED();
   // Because we only convert immutable keys, we can do this here.
   // Otherwise, we'd fail on the set that contains itself.
   FAIL_IF_MINUS_ONE(
-    _python2js_add_to_cache(hiwire_get(context->cache), x, jsset));
+    _Py_python2js_add_to_cache(hiwire_get(context->cache), x, jsset));
   success = true;
 finally:
   Py_CLEAR(pykey);
@@ -434,10 +434,10 @@ finally:
 }
 
 
-JsVal
+static JsVal
 python2js__eager_converter(JsVal jscontext, PyObject* object);
 
-JsVal
+static JsVal
 python2js__default_converter(JsVal jscontext, PyObject* object);
 
 /**
@@ -467,7 +467,7 @@ _python2js_deep(ConversionContext* context, PyObject* x)
     return python2js__default_converter(hiwire_get(context->jscontext), x);
   }
   if (context->proxies) {
-    return pyproxy_new(x);
+    return _PyProxy_New(x);
   }
   PyErr_SetString(PyExc_ValueError, "No conversion known for x.");
 finally:
@@ -483,10 +483,10 @@ finally:
  * the cache. It leaves any real work to python2js or _python2js_deep.
  */
 EMSCRIPTEN_KEEPALIVE JsVal
-_python2js(ConversionContext *context, PyObject* x)
+_Py_python2js_helper(ConversionContext *context, PyObject* x)
 {
-  JsVal val = _python2js_cache_lookup(hiwire_get(context->cache), x);
-  if (!JsvError_Check(val)) {
+  JsVal val = _Py_python2js_cache_lookup(hiwire_get(context->cache), x);
+  if (!_PyJsvError_Check(val)) {
     return val;
   }
   FAIL_IF_ERR_OCCURRED();
@@ -496,12 +496,12 @@ _python2js(ConversionContext *context, PyObject* x)
     if (context->default_converter) {
       return python2js__default_converter(hiwire_get(context->jscontext), x);
     }
-    return python2js_track_proxies(x, hiwire_get(context->proxies), true);
+    return _Py_python2js_track_proxies(x, hiwire_get(context->proxies), true);
   } else {
     context->depth--;
     JsVal result = _python2js_deep(context, x);
-    if (context->proxies && PyProxy_Check(result)) {
-      JsvArray_Push(hiwire_get(context->proxies), result);
+    if (context->proxies && _PyProxy_Check(result)) {
+      _PyJsvArray_Push(hiwire_get(context->proxies), result);
     }
     context->depth++;
     return result;
@@ -515,19 +515,19 @@ finally:
  * equivalent JavaScript immutable types, but all other types are proxied.
  *
  */
-JsVal
+static JsVal
 python2js_inner(PyObject* x, JsVal proxies, bool track_proxies, bool gc_register)
 {
   RETURN_IF_HAS_VALUE(_python2js_immutable(x));
   RETURN_IF_HAS_VALUE(_python2js_proxy(x));
-  if (track_proxies && JsvError_Check(proxies)) {
+  if (track_proxies && _PyJsvError_Check(proxies)) {
     PyErr_SetString(PyExc_ValueError, "No conversion known for x.");
     FAIL();
   }
-  JsVal proxy = pyproxy_new_ex(x, false, false, gc_register);
+  JsVal proxy = _PyProxy_NewEx(x, false, false, gc_register);
   FAIL_IF_JS_ERROR(proxy);
   if (track_proxies) {
-    JsvArray_Push(proxies, proxy);
+    _PyJsvArray_Push(proxies, proxy);
   }
   return proxy;
 finally:
@@ -551,7 +551,7 @@ finally:
  * of creating a proxy.
  */
 JsVal
-python2js_track_proxies(PyObject* x, JsVal proxies, bool gc_register)
+_Py_python2js_track_proxies(PyObject* x, JsVal proxies, bool gc_register)
 {
   return python2js_inner(x, proxies, true, gc_register);
 }
@@ -561,7 +561,7 @@ python2js_track_proxies(PyObject* x, JsVal proxies, bool gc_register)
  * equivalent JavaScript immutable types, but all other types are proxied.
  */
 EMSCRIPTEN_KEEPALIVE JsVal
-python2js(PyObject* x)
+_Py_python2js(PyObject* x)
 {
   return python2js_inner(x, JS_ERROR, false, true);
 }
@@ -570,20 +570,20 @@ python2js(PyObject* x)
 static JsVal
 _JsMap_New(ConversionContext *context)
 {
-  return JsvLiteralMap_New();
+  return _PyJsvLiteralMap_New();
 }
 
 static int
 _JsMap_Set(ConversionContext *context, JsVal map, JsVal key, JsVal value)
 {
-  return JsvMap_Set(map, key, value);
+  return _PyJsvMap_Set(map, key, value);
 }
 
 
 static JsVal
 _JsArray_New(ConversionContext *context)
 {
-  return JsvArray_New();
+  return _PyJsvArray_New();
 }
 
 // clang-format off
@@ -611,7 +611,7 @@ EM_JS_VAL(JsVal, _JsArray_PostProcess_helper, (JsVal jscontext, JsVal array), {
 // clang-format off
 EM_JS_VAL(
 JsVal,
-python2js__default_converter_js,
+_Py_python2js__default_converter_js,
 (JsVal jscontext, PyObject* object),
 {
   let proxy = Module.pyproxy_new(object);
@@ -627,16 +627,16 @@ python2js__default_converter_js,
 })
 // clang-format on
 
-JsVal
+static JsVal
 python2js__default_converter(JsVal jscontext, PyObject* object)
 {
-  return python2js__default_converter_js(jscontext, object);
+  return _Py_python2js__default_converter_js(jscontext, object);
 }
 
 // clang-format off
 EM_JS_VAL(
 JsVal,
-python2js__eager_converter_js,
+_Py_python2js__eager_converter_js,
 (JsVal jscontext, PyObject* object),
 {
   // If the user calls `convert()`, we need to be careful to avoid recursion
@@ -666,10 +666,10 @@ python2js__eager_converter_js,
 })
 // clang-format on
 
-JsVal
+static JsVal
 python2js__eager_converter(JsVal jscontext, PyObject* object)
 {
-  return python2js__eager_converter_js(jscontext, object);
+  return _Py_python2js__eager_converter_js(jscontext, object);
 }
 
 static JsVal
@@ -681,7 +681,7 @@ _JsArray_PostProcess(ConversionContext* context, JsVal array)
 // clang-format off
 EM_JS_VAL(
 JsVal,
-python2js_custom__create_jscontext,
+_Py_python2js_custom__create_jscontext,
 (ConversionContext *context,
   JsVal cache,
   JsVal dict_converter,
@@ -717,12 +717,12 @@ python2js_custom__create_jscontext,
       const ptr = Module.PyProxy_getPtr(x);
       let res;
       try {
-        res = __python2js(context, ptr);
+        res = __Py_python2js_helper(context, ptr);
       } catch(e) {
         API.fatal_error(e);
       }
       if (res === Module.error) {
-        _pythonexc2js();
+        throw __Py_pythonexc2js();
       }
       return res;
     };
@@ -737,22 +737,22 @@ python2js_custom__create_jscontext,
  * python2js_with_depth which converts dicts to Map (the default)
  */
 EMSCRIPTEN_KEEPALIVE JsVal
-python2js_custom(PyObject* x,
+_Py_python2js_custom(PyObject* x,
                  int depth,
                  JsVal proxies,
                  JsVal dict_converter,
                  JsVal default_converter,
                  JsVal eager_converter)
 {
-  JsVal cache = JsvMap_New();
+  JsVal cache = _PyJsvMap_New();
   ConversionContext context = { .cache = hiwire_new(cache),
                                 .depth = depth,
-                                .proxies = JsRef_new(proxies),
+                                .proxies = _PyJsRef_new(proxies),
                                 .jscontext = NULL,
                                 .default_converter = false,
                                 .eager_converter = false,
                                 .jspostprocess_list =
-                                  hiwire_new(JsvArray_New()) };
+                                  hiwire_new(_PyJsvArray_New()) };
   if (JsvNull_Check(dict_converter)) {
     // No custom converter provided, go back to default conversion to Map.
     context.dict_new = _JsMap_New;
@@ -771,17 +771,17 @@ python2js_custom(PyObject* x,
   }
   if (!JsvNull_Check(dict_converter) || context.default_converter ||
       context.eager_converter) {
-    context.jscontext = hiwire_new(python2js_custom__create_jscontext(
+    context.jscontext = hiwire_new(_Py_python2js_custom__create_jscontext(
       &context, cache, dict_converter, default_converter, eager_converter));
   }
-  JsVal result = _python2js(&context, x);
-  _python2js_handle_postprocess_list(hiwire_get(context.jspostprocess_list),
+  JsVal result = _Py_python2js_helper(&context, x);
+  _Py_python2js_handle_postprocess_list(hiwire_get(context.jspostprocess_list),
                                      hiwire_get(context.cache));
   hiwire_CLEAR(context.jspostprocess_list);
   hiwire_CLEAR(context.jscontext);
   hiwire_CLEAR(context.proxies);
   hiwire_CLEAR(context.cache);
-  if (JsvNull_Check(result) || JsvNoValue_Check(result)) {
+  if (JsvNull_Check(result) || _PyJsvNoValue_Check(result)) {
     result = JS_ERROR;
     if (PyErr_Occurred()) {
       if (!PyErr_ExceptionMatches(PyExc_ValueError)) {
@@ -845,7 +845,7 @@ to_js(PyObject* self,
   }
 
   if (Py_IsNone(obj) || PyBool_Check(obj) || PyLong_Check(obj) ||
-      PyFloat_Check(obj) || PyUnicode_Check(obj) || JsProxy_Check(obj)) {
+      PyFloat_Check(obj) || PyUnicode_Check(obj) || _PyJsProxy_Check(obj)) {
     // No point in converting these and it'd be useless to proxy them since
     // they'd just get converted back by `js2python` at the end
     Py_INCREF(obj);
@@ -857,59 +857,59 @@ to_js(PyObject* self,
   if (!create_proxies) {
     proxies = Jsv_null;
   } else if (pyproxies) {
-    if (!JsProxy_Check(pyproxies)) {
+    if (!_PyJsProxy_Check(pyproxies)) {
       PyErr_SetString(PyExc_TypeError,
                       "Expected a JsArray for the pyproxies argument");
       return NULL;
     }
-    proxies = JsProxy_Val(pyproxies);
-    if (!JsvArray_Check(proxies)) {
+    proxies = _PyJsProxy_Val(pyproxies);
+    if (!_PyJsvArray_Check(proxies)) {
       PyErr_SetString(PyExc_TypeError,
                       "Expected a JsArray for the pyproxies argument");
       return NULL;
     }
   } else {
-    proxies = JsvArray_New();
+    proxies = _PyJsvArray_New();
   }
   JsVal js_dict_converter = Jsv_null;
   if (py_dict_converter) {
-    js_dict_converter = python2js(py_dict_converter);
+    js_dict_converter = _Py_python2js(py_dict_converter);
   }
   JsVal js_default_converter = Jsv_null;
   if (py_default_converter) {
-    js_default_converter = python2js(py_default_converter);
+    js_default_converter = _Py_python2js(py_default_converter);
   }
   JsVal js_eager_converter = Jsv_null;
   if (py_eager_converter) {
-    js_eager_converter = python2js(py_eager_converter);
+    js_eager_converter = _Py_python2js(py_eager_converter);
   }
-  JsVal js_result = python2js_custom(obj,
+  JsVal js_result = _Py_python2js_custom(obj,
                                      depth,
                                      proxies,
                                      js_dict_converter,
                                      js_default_converter,
                                      js_eager_converter);
   FAIL_IF_JS_ERROR(js_result);
-  if (PyProxy_Check(js_result)) {
+  if (_PyProxy_Check(js_result)) {
     // Oops, just created a PyProxy. Wrap it I guess?
-    py_result = JsProxy_create(js_result);
+    py_result = _PyJsProxy_create(js_result);
   } else {
-    py_result = js2python(js_result);
+    py_result = _Py_js2python(js_result);
   }
 finally:
-  if (PyProxy_Check(js_dict_converter)) {
-    PyProxy_Destroy(js_dict_converter, NULL);
+  if (_PyProxy_Check(js_dict_converter)) {
+    _PyProxy_Destroy(js_dict_converter, NULL);
   }
-  if (PyProxy_Check(js_default_converter)) {
-    PyProxy_Destroy(js_default_converter, NULL);
+  if (_PyProxy_Check(js_default_converter)) {
+    _PyProxy_Destroy(js_default_converter, NULL);
   }
-  if (PyProxy_Check(js_eager_converter)) {
-    PyProxy_Destroy(js_eager_converter, NULL);
+  if (_PyProxy_Check(js_eager_converter)) {
+    _PyProxy_Destroy(js_eager_converter, NULL);
   }
   return py_result;
 }
 
-EM_JS_NUM(int, destroy_proxies_js, (JsVal proxies_id), {
+EM_JS_NUM(int, _Py_destroy_proxies_js, (JsVal proxies_id), {
   for (const proxy of proxies_id) {
     proxy.destroy();
   }
@@ -918,19 +918,19 @@ EM_JS_NUM(int, destroy_proxies_js, (JsVal proxies_id), {
 static PyObject*
 destroy_proxies_(PyObject* self, PyObject* arg)
 {
-  if (!JsProxy_Check(arg)) {
+  if (!_PyJsProxy_Check(arg)) {
     PyErr_SetString(PyExc_TypeError, "Expected a JsProxy for the argument");
     return NULL;
   }
   bool success = false;
 
-  JsVal proxies = JsProxy_Val(arg);
-  if (!JsvArray_Check(proxies)) {
+  JsVal proxies = _PyJsProxy_Val(arg);
+  if (!_PyJsvArray_Check(proxies)) {
     PyErr_SetString(PyExc_TypeError,
                     "Expected a Js Array for the pyproxies argument");
     FAIL();
   }
-  FAIL_IF_MINUS_ONE(destroy_proxies_js(proxies));
+  FAIL_IF_MINUS_ONE(_Py_destroy_proxies_js(proxies));
 
   success = true;
 finally:
@@ -958,7 +958,7 @@ static PyMethodDef methods[] = {
 PyObject* py_jsnull = NULL;
 
 int
-python2js_init(PyObject* core)
+_Py_python2js_init(PyObject* core)
 {
   PyObject* _pyodide = NULL;
   bool success = false;

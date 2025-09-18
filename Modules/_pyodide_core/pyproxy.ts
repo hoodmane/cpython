@@ -12,34 +12,34 @@ declare function _PyObject_Size(ptr: number): number;
 declare function _PyObject_GetIter(ptr: number): number;
 
 
-declare function _pythonexc2js(): never;
-declare function __pyproxy_type(ptr: number): string;
-declare function __pyproxy_str(ptr: number): string;
-declare function _pyproxy_getflags(ptr: number): number;
+declare function __Py_pythonexc2js(): Error;
+declare function __PyProxy_type(ptr: number): string;
+declare function __PyProxy_str(ptr: number): string;
+declare function __PyProxy_getflags(ptr: number): number;
 
-declare function __pyproxy_hasattr(ptr: number, key: any): number;
-declare function __pyproxy_getattr(ptr: number, key: any, cache: Map<string, any>): any;
-declare function __pyproxy_setattr(ptr: number, key: any, val: any): number;
-declare function __pyproxy_delattr(ptr: number, key: any): number;
-declare function __pyproxy_ownKeys(ptr: number): (string | symbol)[];
+declare function __PyProxy_hasattr(ptr: number, key: any): number;
+declare function __PyProxy_getattr(ptr: number, key: any, cache: Map<string, any>): any;
+declare function __PyProxy_setattr(ptr: number, key: any, val: any): number;
+declare function __PyProxy_delattr(ptr: number, key: any): number;
+declare function __PyProxy_ownKeys(ptr: number): (string | symbol)[];
 
-declare function __pyproxy_contains(ptr: number, key: any): number;
-declare function __pyproxy_getitem(ptr: number, key: any): any;
-declare function __pyproxy_setitem(ptr: number, key: any, val: any): number;
-declare function __pyproxy_delitem(ptr: number, key: any): number;
-declare function __pyproxy_apply(
+declare function __PyProxy_contains(ptr: number, key: any): number;
+declare function __PyProxy_getitem(ptr: number, key: any): any;
+declare function __PyProxy_setitem(ptr: number, key: any, val: any): number;
+declare function __PyProxy_delitem(ptr: number, key: any): number;
+declare function __PyProxy_apply(
   ptr: number,
   jsargs: any[],
   num_pos_args: number,
   kwargs_names: string[],
   num_kwargs: number,
 ): any;
-declare function __pyproxy_iter_next(ptr: number): any;
-declare function __pyproxyGen_Send(ptr: number, arg: any): IteratorResult<any>;
-declare function __pyproxyGen_return(ptr: number, arg: any): IteratorResult<any>;
-declare function __pyproxyGen_throw(ptr: number, arg: any): IteratorResult<any>;
-declare function __pyproxy_pop(ptr: number, pop_start: boolean): number;
-declare function __pyproxy_slice_assign(ptr: number, start: number, stop: number, value: any): any;
+declare function __PyProxy_IterNext(ptr: number): any;
+declare function __PyProxyGen_Send(ptr: number, arg: any): IteratorResult<any>;
+declare function __PyProxyGen_Return(ptr: number, arg: any): IteratorResult<any>;
+declare function __PyProxyGen_Throw(ptr: number, arg: any): IteratorResult<any>;
+declare function __PyProxy_pop(ptr: number, pop_start: boolean): number;
+declare function __PyProxy_slice_assign(ptr: number, start: number, stop: number, value: any): any;
 
 // pyodide-skip
 
@@ -52,7 +52,6 @@ declare function __pyproxy_slice_assign(ptr: number, start: number, stop: number
 // These declarations make Typescript accept the raw file. However, if we macro
 // preprocess these lines, we get a bunch of syntax errors so they need to be
 // removed from the preprocessed version.
-
 // This also has the benefit that it makes intellisense happy.
 declare var HAS_CONTAINS: number;
 declare var HAS_GET: number;
@@ -142,7 +141,7 @@ const pyproxyAttrsSymbol = Symbol("pyproxy.attrs");
 function pyproxy_getflags(ptrobj: number) {
   Py_ENTER();
   try {
-    return _pyproxy_getflags(ptrobj);
+    return __PyProxy_getflags(ptrobj);
   } finally {
     Py_EXIT();
   }
@@ -189,7 +188,7 @@ function pyproxy_new(
   }
   const flags = flags_arg !== undefined ? flags_arg : pyproxy_getflags(ptr);
   if (flags === -1) {
-    _pythonexc2js();
+    throw __Py_pythonexc2js();
   }
   const is_sequence = flags & IS_SEQUENCE;
   const is_dict = flags & IS_DICT;
@@ -383,7 +382,7 @@ class PyProxy {
    */
   get type(): string {
     let ptrobj = _getPtr(this);
-    return __pyproxy_type(ptrobj);
+    return __PyProxy_type(ptrobj);
   }
   /**
    * Returns `str(o)` (unless `pyproxyToStringRepr: true` was passed to
@@ -394,13 +393,13 @@ class PyProxy {
     let result;
     try {
       Py_ENTER();
-      result = __pyproxy_str(ptrobj);
+      result = __PyProxy_str(ptrobj);
       Py_EXIT();
     } catch (e) {
       API.fatal_error(e);
     }
     if (result === null) {
-      _pythonexc2js();
+      throw __Py_pythonexc2js();
     }
     return result;
   }
@@ -585,13 +584,13 @@ const PyProxyHandlers = {
     let result;
     try {
       Py_ENTER();
-      result = __pyproxy_ownKeys(ptrobj);
+      result = __PyProxy_ownKeys(ptrobj);
       Py_EXIT();
     } catch (e) {
       API.fatal_error(e);
     }
     if (result === Module.error) {
-      _pythonexc2js();
+      throw __Py_pythonexc2js();
     }
     result.push(...Reflect.ownKeys(jsobj));
     return result;
@@ -812,13 +811,13 @@ function python_hasattr(jsobj: PyProxy, jskey: any) {
   let result;
   try {
     Py_ENTER();
-    result = __pyproxy_hasattr(ptrobj, jskey);
+    result = __PyProxy_hasattr(ptrobj, jskey);
     Py_EXIT();
   } catch (e) {
     API.fatal_error(e);
   }
   if (result === -1) {
-    _pythonexc2js();
+    throw __Py_pythonexc2js();
   }
   return result !== 0;
 }
@@ -832,14 +831,14 @@ function python_getattr(jsobj: PyProxy, key: any) {
   let result;
   try {
     Py_ENTER();
-    result = __pyproxy_getattr(shared.ptr, key, cache);
+    result = __PyProxy_getattr(shared.ptr, key, cache);
     Py_EXIT();
   } catch (e) {
     API.fatal_error(e);
   }
   if (result === Module.error) {
     if (_PyErr_Occurred()) {
-      _pythonexc2js();
+      throw __Py_pythonexc2js();
     }
     return undefined;
   }
@@ -851,13 +850,13 @@ function python_setattr(jsobj: PyProxy, jskey: any, jsval: any) {
   let err;
   try {
     Py_ENTER();
-    err = __pyproxy_setattr(ptrobj, jskey, jsval);
+    err = __PyProxy_setattr(ptrobj, jskey, jsval);
     Py_EXIT();
   } catch (e) {
     API.fatal_error(e);
   }
   if (err === -1) {
-    _pythonexc2js();
+    throw __Py_pythonexc2js();
   }
 }
 
@@ -866,13 +865,13 @@ function python_delattr(jsobj: PyProxy, jskey: any) {
   let err;
   try {
     Py_ENTER();
-    err = __pyproxy_delattr(ptrobj, jskey);
+    err = __PyProxy_delattr(ptrobj, jskey);
     Py_EXIT();
   } catch (e) {
     API.fatal_error(e);
   }
   if (err === -1) {
-    _pythonexc2js();
+    throw __Py_pythonexc2js();
   }
 }
 
@@ -899,13 +898,13 @@ class PyContainsMethods {
     let result;
     try {
       Py_ENTER();
-      result = __pyproxy_contains(ptrobj, key);
+      result = __PyProxy_contains(ptrobj, key);
       Py_EXIT();
     } catch (e) {
       API.fatal_error(e);
     }
     if (result === -1) {
-      _pythonexc2js();
+      throw __Py_pythonexc2js();
     }
     return result === 1;
   }
@@ -936,7 +935,7 @@ export class PyGetItemMethods {
     try {
       Py_ENTER();
       // Cache is only used if isJsonAdaptor is true.
-      result = __pyproxy_getitem(
+      result = __PyProxy_getitem(
         shared.ptr,
         key,
       );
@@ -946,7 +945,7 @@ export class PyGetItemMethods {
     }
     if (result === Module.error) {
       if (_PyErr_Occurred()) {
-        _pythonexc2js();
+        throw __Py_pythonexc2js();
       } else {
         return undefined;
       }
@@ -981,7 +980,7 @@ class PyLengthMethods {
       API.fatal_error(e);
     }
     if (length === -1) {
-      _pythonexc2js();
+      throw __Py_pythonexc2js();
     }
     return length;
   }
@@ -1004,13 +1003,13 @@ class PySetItemMethods {
     let err;
     try {
       Py_ENTER();
-      err = __pyproxy_setitem(ptrobj, key, value);
+      err = __PyProxy_setitem(ptrobj, key, value);
       Py_EXIT();
     } catch (e) {
       API.fatal_error(e);
     }
     if (err === -1) {
-      _pythonexc2js();
+      throw __Py_pythonexc2js();
     }
   }
   /**
@@ -1023,13 +1022,13 @@ class PySetItemMethods {
     let err;
     try {
       Py_ENTER();
-      err = __pyproxy_delitem(ptrobj, key);
+      err = __PyProxy_delitem(ptrobj, key);
       Py_EXIT();
     } catch (e) {
       API.fatal_error(e);
     }
     if (err === -1) {
-      _pythonexc2js();
+      throw __Py_pythonexc2js();
     }
   }
 }
@@ -1241,7 +1240,7 @@ function callPyObjectKwargs(ptrobj: number, jsargs: any[], kwargs: any) {
   let result;
   try {
     Py_ENTER();
-    result = __pyproxy_apply(
+    result = __PyProxy_apply(
       ptrobj,
       jsargs,
       num_pos_args,
@@ -1254,7 +1253,7 @@ function callPyObjectKwargs(ptrobj: number, jsargs: any[], kwargs: any) {
     return;
   }
   if (result === Module.error) {
-    _pythonexc2js();
+    throw __Py_pythonexc2js();
   }
   return result;
 }
@@ -1287,7 +1286,7 @@ function* iter_helper(
   try {
     while (true) {
       Py_ENTER();
-      const item = __pyproxy_iter_next(iterptr);
+      const item = __PyProxy_IterNext(iterptr);
       Py_EXIT();
       if (item === Module.error) {
         break;
@@ -1313,7 +1312,7 @@ function* iter_helper(
     );
   } catch (e) {}
   if (_PyErr_Occurred()) {
-    _pythonexc2js();
+    throw __Py_pythonexc2js();
   }
 }
 
@@ -1349,13 +1348,13 @@ class PyGeneratorMethods {
     let result;
     try {
       Py_ENTER();
-      result = __pyproxyGen_throw(_getPtr(this), exc);
+      result = __PyProxyGen_Throw(_getPtr(this), exc);
       Py_EXIT();
     } catch (e) {
       API.fatal_error(e);
     }
     if (result === Module.error) {
-      _pythonexc2js();
+      throw __Py_pythonexc2js();
     }
     return result;
   }
@@ -1382,13 +1381,13 @@ class PyGeneratorMethods {
     let result: IteratorResult<any, any>;
     try {
       Py_ENTER();
-      result = __pyproxyGen_return(_getPtr(this), v);
+      result = __PyProxyGen_Return(_getPtr(this), v);
       Py_EXIT();
     } catch (e) {
       API.fatal_error(e);
     }
     if (result === Module.error) {
-      _pythonexc2js();
+      throw __Py_pythonexc2js();
     }
     return result;
   }
@@ -1433,7 +1432,7 @@ export class PyIterableMethods {
       API.fatal_error(e);
     }
     if (iterptr === 0) {
-      _pythonexc2js();
+      throw __Py_pythonexc2js();
     }
 
     // Cache is only used if isJsonAdaptor is true.
@@ -1488,13 +1487,13 @@ class PyIteratorMethods {
     let done;
     try {
       Py_ENTER();
-      result = __pyproxyGen_Send(_getPtr(this), arg);
+      result = __PyProxyGen_Send(_getPtr(this), arg);
       Py_EXIT();
     } catch (e) {
       API.fatal_error(e);
     }
     if (result === Module.error) {
-      _pythonexc2js();
+      throw __Py_pythonexc2js();
     }
     return result;
   }
@@ -1816,13 +1815,13 @@ function python_slice_assign(
   let res;
   try {
     Py_ENTER();
-    res = __pyproxy_slice_assign(ptrobj, start, stop, val);
+    res = __PyProxy_slice_assign(ptrobj, start, stop, val);
     Py_EXIT();
   } catch (e) {
     API.fatal_error(e);
   }
   if (res === Module.error) {
-    _pythonexc2js();
+    throw __Py_pythonexc2js();
   }
   return res;
 }
@@ -1832,13 +1831,13 @@ function python_pop(jsobj: any, pop_start: boolean): any {
   let res;
   try {
     Py_ENTER();
-    res = __pyproxy_pop(ptrobj, pop_start);
+    res = __PyProxy_pop(ptrobj, pop_start);
     Py_EXIT();
   } catch (e) {
     API.fatal_error(e);
   }
   if (res === Module.error) {
-    _pythonexc2js();
+    throw __Py_pythonexc2js();
   }
   return res;
 }

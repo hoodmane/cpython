@@ -1,8 +1,8 @@
 #include "emscripten.h"
 #include "jslib.h"
 
-EM_JS_DEPS(JsvError_Create, "getJsErrorModule");
-EM_JS(JsVal, JsvError_Create, (void), {
+EM_JS_DEPS(_PyJsvError_Create, "_Py_getJsErrorModule");
+EM_JS(JsVal, _PyJsvError_Create, (void), {
     return errorMarker;
 }
 let errorInstance;
@@ -20,9 +20,9 @@ let errorInstance;
     return;
   }
   try {
-    const errorModule = getJsErrorModule();
+    const errorModule = _Py_getJsErrorModule();
     errorInstance = new WebAssembly.Instance(errorModule);
-    JsvError_Create = errorInstance.exports.JsvError_Create;
+    _PyJsvError_Create = errorInstance.exports.JsvError_Create;
   } catch (e) {}
 })();
 let errorMarker;
@@ -31,11 +31,11 @@ if (!errorInstance) {
 }
 );
 
-EM_JS_DEPS(JsvError_Check, "JsvError_Create");
-EM_JS(int, JsvError_Check, (JsVal x), {
+EM_JS_DEPS(_PyJsvError_Check, "_PyJsvError_Create");
+EM_JS(int, _PyJsvError_Check, (JsVal x), {
     return x === errorMarker;
 }
 if (errorInstance) {
-    JsvError_Check = errorInstance.exports.JsvError_Check;
+    _PyJsvError_Check = errorInstance.exports.JsvError_Check;
 }
 );

@@ -11,37 +11,37 @@
 
 // PyUnicodeDATA is a macro, we need to access it from JavaScript
 EMSCRIPTEN_KEEPALIVE void*
-PyUnicode_Data(PyObject* obj)
+_Py_js2python_PyUnicode_Data(PyObject* obj)
 {
   return PyUnicode_DATA(obj);
 }
 
 EMSCRIPTEN_KEEPALIVE PyObject*
-_js2python_none(void)
+_Py_js2python_none(void)
 {
   Py_RETURN_NONE;
 }
 
 EMSCRIPTEN_KEEPALIVE PyObject*
-_js2python_null(void)
+_Py_js2python_null(void)
 {
   Py_INCREF(py_jsnull);
   return py_jsnull;
 }
 
 EMSCRIPTEN_KEEPALIVE PyObject*
-_js2python_true(void)
+_Py_js2python_true(void)
 {
   Py_RETURN_TRUE;
 }
 
 EMSCRIPTEN_KEEPALIVE PyObject*
-_js2python_false(void)
+_Py_js2python_false(void)
 {
   Py_RETURN_FALSE;
 }
 
-EM_JS_REF(PyObject*, js2python_js, (JsVal value), {
+EM_JS_REF(PyObject*, _Py_js2python_js, (JsVal value), {
   let result = Module.js2python_convertImmutable(value);
   // clang-format off
   if (result !== undefined) {
@@ -52,11 +52,11 @@ EM_JS_REF(PyObject*, js2python_js, (JsVal value), {
 })
 
 EMSCRIPTEN_KEEPALIVE PyObject*
-js2python(JsVal val)
+_Py_js2python(JsVal val)
 {
-  PyObject* res = js2python_js(val);
+  PyObject* res = _Py_js2python_js(val);
   if (res == NULL) {
-    return JsProxy_create(val);
+    return _PyJsProxy_create(val);
   }
   return res;
 }
@@ -78,7 +78,7 @@ __attribute__((constructor)) void js2python_init(void) {
  * implementation of `toJs`.
  */
 // clang-format off
-EM_JS_REF(PyObject*, js2python_convert, (JsVal v, int depth, JsVal defaultConverter), {
+EM_JS_REF(PyObject*, _Py_js2python_convert, (JsVal v, int depth, JsVal defaultConverter), {
   return Module.js2python_convert(v, { depth, defaultConverter });
 });
 // clang-format on
