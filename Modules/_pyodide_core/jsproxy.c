@@ -1,4 +1,3 @@
-#include "pytypedefs.h"
 #ifndef Py_BUILD_CORE_BUILTIN
 #  define Py_BUILD_CORE_MODULE 1
 #endif
@@ -1402,8 +1401,18 @@ finally:
   return NULL;
 }
 
-static PyObject*
-JsArray_append(PyObject* self, PyObject* arg)
+/*[clinic input]
+_pyodide_core.JsArray.append
+
+  arg: object
+  /
+
+Append object to the end of the list.
+[clinic start generated code]*/
+
+static PyObject *
+_pyodide_core_JsArray_append(PyObject *self, PyObject *arg)
+/*[clinic end generated code: output=7bcbece121484fa8 input=24978f1a5efdb28f]*/
 {
   bool success = false;
 
@@ -1420,12 +1429,6 @@ finally:
   }
 }
 
-static PyMethodDef JsArray_append_MethodDef = {
-  "append",
-  (PyCFunction)JsArray_append,
-  METH_O,
-};
-
 // Copied directly from Python
 static inline int
 valid_index(Py_ssize_t i, Py_ssize_t limit)
@@ -1440,24 +1443,23 @@ valid_index(Py_ssize_t i, Py_ssize_t limit)
   return (size_t)i < (size_t)limit;
 }
 
-static PyObject*
-JsArray_pop(PyObject* self, PyObject* const* args, Py_ssize_t nargs)
+/*[clinic input]
+_pyodide_core.JsArray.pop
+
+  index: Py_ssize_t = -1
+  /
+
+Remove and return item at index (default last).
+
+Raises IndexError if list is empty or index is out of range
+[clinic start generated code]*/
+
+static PyObject *
+_pyodide_core_JsArray_pop_impl(PyObject *self, Py_ssize_t index)
+/*[clinic end generated code: output=24746ba91016c701 input=6b7db7a1eed28077]*/
 {
   PyObject* pyresult = NULL;
   PyObject* iobj = NULL;
-  Py_ssize_t index = -1;
-
-  if (!_PyArg_CheckPositional("pop", nargs, 0, 1)) {
-    FAIL();
-  }
-  if (nargs > 0) {
-    iobj = PyNumber_Index(args[0]);
-    FAIL_IF_NULL(iobj);
-    index = PyLong_AsSsize_t(iobj);
-    if (index == -1) {
-      FAIL_IF_ERR_OCCURRED();
-    }
-  }
 
   int length = get_length(JsProxy_VAL(self));
   FAIL_IF_MINUS_ONE(length);
@@ -1482,12 +1484,6 @@ finally:
   Py_CLEAR(iobj);
   return pyresult;
 }
-
-static PyMethodDef JsArray_pop_MethodDef = {
-  "pop",
-  (PyCFunction)JsArray_pop,
-  METH_FASTCALL,
-};
 
 EM_JS(JsVal, JsArray_reversed_iterator, (JsVal array), {
   return new ReversedIterator(array);
@@ -1818,9 +1814,6 @@ JsMethod_cinit(PyObject* self, JsVal this_)
 //
 // A subclass of JsProxy for errors
 
-/**
- */
-
 /*[clinic input]
 _pyodide_core.JsException.__reduce__
 [clinic start generated code]*/
@@ -2035,8 +2028,8 @@ JsProxy_create_subtype(int flags)
                                        .pfunc = (void*)JsArray_sq_ass_item };
     AddMethods(
       _PYODIDE_CORE_JSARRAY_EXTEND_METHODDEF
-      JsArray_pop_MethodDef,
-      JsArray_append_MethodDef,
+      _PYODIDE_CORE_JSARRAY_APPEND_METHODDEF
+      _PYODIDE_CORE_JSARRAY_POP_METHODDEF
       JsArray_reversed_MethodDef,
       JsArray_reverse_MethodDef,
       JsArray_insert_MethodDef,
