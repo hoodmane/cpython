@@ -66,8 +66,9 @@ typedef struct
 module _pyodide_core
 
 class _pyodide_core.JsProxy "JsProxy *" "JsProxyType"
+class _pyodide_core.JsGenerator "JsProxy *" "JsProxyType"
 [clinic start generated code]*/
-/*[clinic end generated code: output=da39a3ee5e6b4b0d input=3f9ad81d9f4d5976]*/
+/*[clinic end generated code: output=da39a3ee5e6b4b0d input=96c41488ace1361b]*/
 #include "clinic/jsproxy.c.h"
 
 // Layout of dict and ExceptionFields needs to exactly match the layout of the
@@ -443,7 +444,7 @@ Convert the JsProxy to a native Python object.
 static PyObject *
 _pyodide_core_JsProxy_to_py_impl(JsProxy *self, int depth,
                                  PyObject *default_converter)
-/*[clinic end generated code: output=8ee2e2e45d67050c input=79b7ae317bc25af1]*/
+/*[clinic end generated code: output=8ee2e2e45d67050c input=a1c5cada6a5f5fb2]*/
 {
   JsVal default_converter_js = Jsv_undefined;
   if (!Py_IsNone(default_converter)) {
@@ -644,8 +645,17 @@ JsProxy_IterNext(PyObject* self)
   return result;
 }
 
-PyObject*
-JsGenerator_send(PyObject* self, PyObject* arg)
+/*[clinic input]
+_pyodide_core.JsGenerator.send
+
+    arg: object
+    /
+
+[clinic start generated code]*/
+
+static PyObject *
+_pyodide_core_JsGenerator_send_impl(JsProxy *self, PyObject *arg)
+/*[clinic end generated code: output=53f105c33c93b196 input=96e32bf91e18b7c7]*/
 {
   PyObject* result;
   if (JsProxy_am_send(self, arg, &result) == PYGEN_RETURN) {
@@ -658,13 +668,6 @@ JsGenerator_send(PyObject* self, PyObject* arg)
   }
   return result;
 }
-
-static PyMethodDef JsGenerator_send_MethodDef = {
-  "send",
-  (PyCFunction)JsGenerator_send,
-  METH_O,
-};
-
 
 /**
  * Shared logic between throw and async throw.
@@ -2070,7 +2073,7 @@ JsProxy_create_subtype(int flags)
       (PyType_Slot){ .slot = Py_tp_iternext, .pfunc = (void*)JsProxy_IterNext };
     slots[cur_slot++] =
       (PyType_Slot){ .slot = Py_am_send, .pfunc = (void*)JsProxy_am_send };
-    methods[cur_method++] = JsGenerator_send_MethodDef;
+    AddMethods(_PYODIDE_CORE_JSGENERATOR_SEND_METHODDEF);
   }
 
 
