@@ -833,6 +833,7 @@ _PyStaticObjects_CheckAll(PyInterpreterState *interp) {
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(stdout), "stdout", 6);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(step), "step", 4);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(steps), "steps", 5);
+    _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(stop), "stop", 4);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(stop_exception), "stop_exception", 14);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(stop_value), "stop_value", 10);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(store_name), "store_name", 10);

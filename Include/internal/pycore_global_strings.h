@@ -845,6 +845,7 @@ struct _Py_global_strings {
         STRUCT_FOR_ID(stdout)
         STRUCT_FOR_ID(step)
         STRUCT_FOR_ID(steps)
+        STRUCT_FOR_ID(stop)
         STRUCT_FOR_ID(stop_exception)
         STRUCT_FOR_ID(stop_value)
         STRUCT_FOR_ID(store_name)
