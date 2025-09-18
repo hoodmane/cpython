@@ -251,10 +251,75 @@ class ConversionTest(TestCase):
         to_js(recursive_dict, eager_converter=proxy_tuples)
         proxylist = Array.new()
         res = to_js(a_thing, eager_converter=proxy_tuples, pyproxies=proxylist)
-        assert res[-1] == (2, 4, 6)
-        assert len(proxylist) == 1
+        self.assertEqual(res[-1], (2, 4, 6))
+        self.assertEqual(len(proxylist), 1)
         destroy_proxies(proxylist)
 
+    def test_create_proxy(self):
+        [testAddListener, testCallListener, testRemoveListener] = run_js(
+            """
+            function testAddListener(f){
+                globalThis.listener = f;
+            }
+            function testCallListener(f){
+                return globalThis.listener();
+            }
+            function testRemoveListener(f){
+                return globalThis.listener === f;
+            }
+            [testAddListener, testCallListener, testRemoveListener]
+            """
+        )
+
+        destroyed = False
+
+        class Test:
+            def __call__(self):
+                return 7
+
+            def __del__(self):
+                nonlocal destroyed
+                destroyed = True
+
+        f = Test()
+        import sys
+
+        self.assertEqual(sys.getrefcount(f), 1)
+        proxy = create_proxy(f)
+        self.assertEqual(sys.getrefcount(f), 2)
+        self.assertEqual(proxy(), 7)
+        testAddListener(proxy)
+        self.assertEqual(sys.getrefcount(f), 2)
+        self.assertEqual(testCallListener(), 7)
+        self.assertEqual(sys.getrefcount(f), 2)
+        self.assertEqual(testCallListener(), 7)
+        self.assertEqual(sys.getrefcount(f), 2)
+        self.assertTrue(testRemoveListener(proxy))
+        self.assertEqual(sys.getrefcount(f), 2)
+        proxy.destroy()
+        self.assertEqual(sys.getrefcount(f), 1)
+        destroyed = False
+        del f
+        self.assertTrue(destroyed)
+
+    def test_create_proxy_capture_this(self):
+        o = run_js("({})")
+
+        def f(x):
+            self.assertEqual(x, o)
+
+        o.f = create_proxy(f, capture_this=True)
+        run_js("(o) => { o.f(); o.f.destroy(); }")(o)
+
+    def test_create_proxy_roundtrip(self):
+        f = {}  # type: ignore[var-annotated]
+        o = run_js("({})")
+        o.f = create_proxy(f, roundtrip=True)
+        assert o.f.unwrap() is f
+        o.f.destroy()
+        o.f = create_proxy(f, roundtrip=False)
+        assert o.f is f  # type: ignore[comparison-overlap]
+        run_js("(o) => { o.f.destroy(); }")(o)
 
 class JsProxyTest(TestCase):
     def test_jsproxy(self):
