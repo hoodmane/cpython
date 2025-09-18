@@ -1923,6 +1923,12 @@ static PyTypeObject JsProxyType = {
   .tp_getset = JsProxy_GetSet,
 };
 
+static PyMethodDef JsProxyBaseMethods[] = {
+  JsProxy_Dir_MethodDef,
+  JsProxy_toPy_MethodDef,
+  {0}
+};
+
 /**
  * This dynamically creates a subtype of JsProxy using PyType_FromSpecWithBases.
  * It is called from JsProxy_get_subtype(flags) when a type with the given flags
@@ -1948,8 +1954,16 @@ JsProxy_create_subtype(int flags)
   char* type_name = "pyodide.ffi.JsProxy";
   int basicsize = sizeof(JsProxy);
 
-  methods[cur_method++] = JsProxy_Dir_MethodDef;
-  methods[cur_method++] = JsProxy_toPy_MethodDef;
+  #define AddMethods(to_add)           \
+    do {                               \
+      PyMethodDef *meths = to_add;     \
+      while (meths->ml_name != NULL) { \
+        methods[cur_method++] = meths; \
+        meths++;                       \
+      }                                \
+    } while(0)                         \
+
+  AddMethods(JsProxyBaseMethods);
 
   if (flags & HAS_GET) {
     slots[cur_slot++] = (PyType_Slot){ .slot = Py_mp_subscript,
