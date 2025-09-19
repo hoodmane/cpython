@@ -1,3 +1,7 @@
+#ifndef Py_BUILD_CORE_BUILTIN
+#  define Py_BUILD_CORE_MODULE 1
+#endif
+
 #include "jslib.h"
 #include "python2js.h"
 #include "js2python.h"
@@ -10,6 +14,12 @@
 #include <emscripten.h>
 #include "internal/pycore_modsupport.h"
 #include "internal/pycore_pyerrors.h"
+
+/*[clinic input]
+module _pyodide_core
+[clinic start generated code]*/
+/*[clinic end generated code: output=da39a3ee5e6b4b0d input=fcac4389838df104]*/
+#include "clinic/python2js.c.h"
 
 ///////////////////////////////////////////////////////////////////////////////
 //
@@ -796,54 +806,48 @@ _Py_python2js_custom(PyObject* x,
   return result;
 }
 
-static PyObject*
-to_js(PyObject* self,
-      PyObject* const* args,
-      Py_ssize_t nargs,
-      PyObject* kwnames)
-{
-  PyObject* obj = NULL;
-  int depth = -1;
-  PyObject* pyproxies = NULL;
-  bool create_proxies = true;
-  PyObject* py_dict_converter = NULL;
-  PyObject* py_default_converter = NULL;
-  PyObject* py_eager_converter = NULL;
-  static const char* const _keywords[] = { "",
-                                           "depth",
-                                           "create_pyproxies",
-                                           "pyproxies",
-                                           "dict_converter",
-                                           "default_converter",
-                                           "eager_converter",
-                                           0 };
-  // See argparse docs on format strings:
-  // https://docs.python.org/3/c-api/arg.html?highlight=pyarg_parse#parsing-arguments
-  // O|$iOpOO:to_js
-  // O              - self -- Object
-  //  |             - start of optional args
-  //   $            - start of kwonly args
-  //    i           - depth -- signed integer
-  //     p          - create_pyproxies -- predicate (ie bool)
-  //      OOO       - PyObject* arguments for pyproxies, dict_converter, and
-  //      default_converter.
-  //         :to_js - name of this function for error messages
-  static struct _PyArg_Parser _parser = { .format = "O|$ipOOOO:to_js",
-                                          .keywords = _keywords };
-  if (!_PyArg_ParseStackAndKeywords(args,
-                                    nargs,
-                                    kwnames,
-                                    &_parser,
-                                    &obj,
-                                    &depth,
-                                    &create_proxies,
-                                    &pyproxies,
-                                    &py_dict_converter,
-                                    &py_default_converter,
-                                    &py_eager_converter)) {
-    return NULL;
+static JsVal callback2js(PyObject* cb) {
+  if (Py_IsNone(cb)) {
+    return Jsv_null;
   }
+  return _Py_python2js(cb);
+}
 
+/*[clinic input]
+_pyodide_core.to_js
+
+    obj: object
+
+    /
+    *
+
+    depth: int = -1
+    pyproxies: object = None
+    create_pyproxies: bool = True
+    dict_converter: object = None
+    default_converter: object = None
+    eager_converter: object = None
+
+
+Convert the object to JavaScript.
+
+This is similar to pyodide.ffi.PyProxy.toJs, but for use from Python. If
+the object can be implicitly translated to JavaScript, it will be returned
+unchanged. If the object cannot be converted into JavaScript, this method
+will return a JsProxy of a pyodide.ffi.PyProxy, as if you had used
+pyodide.ffi.create_proxy.
+
+See :ref:`type-translations-pyproxy-to-js` for more information.
+[clinic start generated code]*/
+
+static PyObject *
+_pyodide_core_to_js_impl(PyObject *module, PyObject *obj, int depth,
+                         PyObject *pyproxies, int create_pyproxies,
+                         PyObject *dict_converter,
+                         PyObject *default_converter,
+                         PyObject *eager_converter)
+/*[clinic end generated code: output=3206e43f0fc852e6 input=4e61e657d4be00c2]*/
+{
   if (Py_IsNone(obj) || PyBool_Check(obj) || PyLong_Check(obj) ||
       PyFloat_Check(obj) || PyUnicode_Check(obj) || _PyJsProxy_Check(obj)) {
     // No point in converting these and it'd be useless to proxy them since
@@ -854,9 +858,9 @@ to_js(PyObject* self,
   PyObject* py_result = NULL;
 
   JsVal proxies;
-  if (!create_proxies) {
+  if (!create_pyproxies) {
     proxies = Jsv_null;
-  } else if (pyproxies) {
+  } else if (!Py_IsNone(pyproxies)) {
     if (!_PyJsProxy_Check(pyproxies)) {
       PyErr_SetString(PyExc_TypeError,
                       "Expected a JsArray for the pyproxies argument");
@@ -871,24 +875,15 @@ to_js(PyObject* self,
   } else {
     proxies = _PyJsvArray_New();
   }
-  JsVal js_dict_converter = Jsv_null;
-  if (py_dict_converter) {
-    js_dict_converter = _Py_python2js(py_dict_converter);
-  }
-  JsVal js_default_converter = Jsv_null;
-  if (py_default_converter) {
-    js_default_converter = _Py_python2js(py_default_converter);
-  }
-  JsVal js_eager_converter = Jsv_null;
-  if (py_eager_converter) {
-    js_eager_converter = _Py_python2js(py_eager_converter);
-  }
+  JsVal js_dict_converter = callback2js(dict_converter);
+  JsVal js_default_converter = callback2js(default_converter);
+  JsVal js_eager_converter = callback2js(eager_converter);
   JsVal js_result = _Py_python2js_custom(obj,
-                                     depth,
-                                     proxies,
-                                     js_dict_converter,
-                                     js_default_converter,
-                                     js_eager_converter);
+                                         depth,
+                                         proxies,
+                                         js_dict_converter,
+                                         js_default_converter,
+                                         js_eager_converter);
   FAIL_IF_JS_ERROR(js_result);
   if (_PyProxy_Check(js_result)) {
     // Oops, just created a PyProxy. Wrap it I guess?
@@ -915,8 +910,24 @@ EM_JS_NUM(int, _Py_destroy_proxies_js, (JsVal proxies_id), {
   }
 })
 
-static PyObject*
-destroy_proxies_(PyObject* self, PyObject* arg)
+/*[clinic input]
+_pyodide_core.destroy_proxies
+
+    arg: object
+
+    /
+
+Destroy all PyProxies in a JavaScript array.
+
+pyproxies must be a JavaScript Array of PyProxies. Intended for use
+with the arrays created from the "pyproxies" argument of PyProxy.toJs
+and to_js. This method is necessary because indexing the Array from
+Python automatically unwraps the PyProxy into the wrapped Python object.
+[clinic start generated code]*/
+
+static PyObject *
+_pyodide_core_destroy_proxies(PyObject *module, PyObject *arg)
+/*[clinic end generated code: output=8f2656790854e48f input=2f532d2949742795]*/
 {
   if (!_PyJsProxy_Check(arg)) {
     PyErr_SetString(PyExc_TypeError, "Expected a JsProxy for the argument");
@@ -942,16 +953,8 @@ finally:
 }
 
 static PyMethodDef methods[] = {
-  {
-    "to_js",
-    (PyCFunction)to_js,
-    METH_FASTCALL | METH_KEYWORDS,
-  },
-  {
-    "destroy_proxies",
-    (PyCFunction)destroy_proxies_,
-    METH_O,
-  },
+  _PYODIDE_CORE_TO_JS_METHODDEF
+  _PYODIDE_CORE_DESTROY_PROXIES_METHODDEF
   { NULL } /* Sentinel */
 };
 

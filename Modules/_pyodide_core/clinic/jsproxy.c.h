@@ -533,7 +533,8 @@ _pyodide_core_JsException___reduce__(PyObject *self, PyObject *Py_UNUSED(ignored
 PyDoc_STRVAR(_pyodide_core_JsDoubleProxy_unwrap__doc__,
 "unwrap($self, /)\n"
 "--\n"
-"\n");
+"\n"
+"Unwrap a double proxy created with create_proxy.");
 
 #define _PYODIDE_CORE_JSDOUBLEPROXY_UNWRAP_METHODDEF    \
     {"unwrap", (PyCFunction)_pyodide_core_JsDoubleProxy_unwrap, METH_NOARGS, _pyodide_core_JsDoubleProxy_unwrap__doc__},
@@ -546,4 +547,4 @@ _pyodide_core_JsDoubleProxy_unwrap(PyObject *self, PyObject *Py_UNUSED(ignored))
 {
     return _pyodide_core_JsDoubleProxy_unwrap_impl(self);
 }
-/*[clinic end generated code: output=04c9fd14dfb6bcde input=a9049054013a1b77]*/
+/*[clinic end generated code: output=c925685b7a95e63f input=a9049054013a1b77]*/

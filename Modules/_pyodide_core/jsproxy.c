@@ -1881,7 +1881,7 @@ Unwrap a double proxy created with create_proxy.
 
 static PyObject *
 _pyodide_core_JsDoubleProxy_unwrap_impl(PyObject *self)
-/*[clinic end generated code: output=082ded3e691dfd38 input=d35b5960b5d818fc]*/
+/*[clinic end generated code: output=082ded3e691dfd38 input=a1ebbeedfb1c9ed6]*/
 {
   PyObject* result = JsDoubleProxy_unwrap_js(JsProxy_VAL(self));
   Py_XINCREF(result);
