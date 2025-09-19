@@ -1353,11 +1353,15 @@ extern "C" {
     INIT_ID(GEN_CREATED), \
     INIT_ID(GEN_RUNNING), \
     INIT_ID(GEN_SUSPENDED), \
+    INIT_ID(ItemsView), \
     INIT_ID(JSONDecodeError), \
+    INIT_ID(KeysView), \
+    INIT_ID(MutableMapping), \
     INIT_ID(PENDING), \
     INIT_ID(Py_Repr), \
     INIT_ID(TextIOWrapper), \
     INIT_ID(True), \
+    INIT_ID(ValuesView), \
     INIT_ID(WarningMessage), \
     INIT_ID(_WindowsConsoleIO), \
     INIT_ID(__IOBase_closed), \
@@ -2014,6 +2018,7 @@ extern "C" {
     INIT_ID(pointer_bits), \
     INIT_ID(policy), \
     INIT_ID(pop), \
+    INIT_ID(popitem), \
     INIT_ID(port), \
     INIT_ID(pos), \
     INIT_ID(pos1), \
@@ -2177,6 +2182,7 @@ extern "C" {
     INIT_ID(unboundop), \
     INIT_ID(unlink), \
     INIT_ID(unraisablehook), \
+    INIT_ID(update), \
     INIT_ID(updates), \
     INIT_ID(uri), \
     INIT_ID(usedforsecurity), \

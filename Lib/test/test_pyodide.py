@@ -667,6 +667,46 @@ class JsProxyTest(TestCase):
         self.assertEqual(next(g), 1)
         g.close()
 
+    def test_mappings(self):
+        m = run_js("new Map([[1,2], [3,4]])")
+        # Iterate using keys() function
+        self.assertEqual(set(m), {1, 3})
+        self.assertIn(1, m.keys())
+        self.assertEqual(m.keys() | {2}, {1, 2, 3})
+        self.assertIn(2, m.values())
+        self.assertEqual(set(m.values()), {2, 4})
+        self.assertIn((1, 2), m.items())
+        self.assertEqual(m.items(), {(1, 2), (3, 4)})
+
+        self.assertEqual(m.get(1, 7), 2)
+        self.assertEqual(m.get(2, 7), 7)
+
+        self.assertEqual(m.pop(1), 2)
+        self.assertEqual(m.pop(1, 7), 7)
+        m[1] = 2
+        self.assertEqual(m.pop(1, 7), 2)
+        self.assertEqual(m.pop(1, 7), 7)
+        assert 1 not in m
+        with self.assertRaises(KeyError):
+            print("=====")
+            m.pop(1)
+
+        self.assertEqual(m.setdefault(1, 8), 8)
+        self.assertEqual(m.setdefault(3, 8), 4)
+        self.assertEqual(m.setdefault(3), 4)
+        self.assertIsNone(m.setdefault(4))
+        self.assertIn(1, m)
+        self.assertEqual(m[1], 8)
+
+        m.update({6: 7, 8: 9})
+        self.assertEqual(dict(m), {1: 8, 3: 4, 4: None, 6: 7, 8: 9})
+
+        self.assertIn(m.popitem(), set({1: 8, 3: 4, 4: None, 6: 7, 8: 9}.items()))
+        self.assertEqual(len(m), 4)
+        m.clear()
+        self.assertEqual(dict(m), {})
+
+
 
 class PyProxyTest(TestCase):
     def test_pyproxy(self):

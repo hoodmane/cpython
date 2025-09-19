@@ -66,11 +66,15 @@ _PyStaticObjects_CheckAll(PyInterpreterState *interp) {
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(GEN_CREATED), "GEN_CREATED", 11);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(GEN_RUNNING), "GEN_RUNNING", 11);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(GEN_SUSPENDED), "GEN_SUSPENDED", 13);
+    _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(ItemsView), "ItemsView", 9);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(JSONDecodeError), "JSONDecodeError", 15);
+    _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(KeysView), "KeysView", 8);
+    _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(MutableMapping), "MutableMapping", 14);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(PENDING), "PENDING", 7);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(Py_Repr), "Py_Repr", 7);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(TextIOWrapper), "TextIOWrapper", 13);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(True), "True", 4);
+    _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(ValuesView), "ValuesView", 10);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(WarningMessage), "WarningMessage", 14);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(_WindowsConsoleIO), "_WindowsConsoleIO", 17);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(__IOBase_closed), "__IOBase_closed", 15);
@@ -727,6 +731,7 @@ _PyStaticObjects_CheckAll(PyInterpreterState *interp) {
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(pointer_bits), "pointer_bits", 12);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(policy), "policy", 6);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(pop), "pop", 3);
+    _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(popitem), "popitem", 7);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(port), "port", 4);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(pos), "pos", 3);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(pos1), "pos1", 4);
@@ -890,6 +895,7 @@ _PyStaticObjects_CheckAll(PyInterpreterState *interp) {
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(unboundop), "unboundop", 9);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(unlink), "unlink", 6);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(unraisablehook), "unraisablehook", 14);
+    _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(update), "update", 6);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(updates), "updates", 7);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(uri), "uri", 3);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(usedforsecurity), "usedforsecurity", 15);

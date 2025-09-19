@@ -179,6 +179,231 @@ _pyodide_core_JsGenerator_close(PyObject *self, PyObject *Py_UNUSED(ignored))
     return _pyodide_core_JsGenerator_close_impl(self);
 }
 
+PyDoc_STRVAR(_pyodide_core_JsMap_keys__doc__,
+"keys($self, /)\n"
+"--\n"
+"\n");
+
+#define _PYODIDE_CORE_JSMAP_KEYS_METHODDEF    \
+    {"keys", (PyCFunction)_pyodide_core_JsMap_keys, METH_NOARGS, _pyodide_core_JsMap_keys__doc__},
+
+static PyObject *
+_pyodide_core_JsMap_keys_impl(PyObject *self);
+
+static PyObject *
+_pyodide_core_JsMap_keys(PyObject *self, PyObject *Py_UNUSED(ignored))
+{
+    return _pyodide_core_JsMap_keys_impl(self);
+}
+
+PyDoc_STRVAR(_pyodide_core_JsMap_values__doc__,
+"values($self, /)\n"
+"--\n"
+"\n");
+
+#define _PYODIDE_CORE_JSMAP_VALUES_METHODDEF    \
+    {"values", (PyCFunction)_pyodide_core_JsMap_values, METH_NOARGS, _pyodide_core_JsMap_values__doc__},
+
+static PyObject *
+_pyodide_core_JsMap_values_impl(PyObject *self);
+
+static PyObject *
+_pyodide_core_JsMap_values(PyObject *self, PyObject *Py_UNUSED(ignored))
+{
+    return _pyodide_core_JsMap_values_impl(self);
+}
+
+PyDoc_STRVAR(_pyodide_core_JsMap_items__doc__,
+"items($self, /)\n"
+"--\n"
+"\n");
+
+#define _PYODIDE_CORE_JSMAP_ITEMS_METHODDEF    \
+    {"items", (PyCFunction)_pyodide_core_JsMap_items, METH_NOARGS, _pyodide_core_JsMap_items__doc__},
+
+static PyObject *
+_pyodide_core_JsMap_items_impl(PyObject *self);
+
+static PyObject *
+_pyodide_core_JsMap_items(PyObject *self, PyObject *Py_UNUSED(ignored))
+{
+    return _pyodide_core_JsMap_items_impl(self);
+}
+
+PyDoc_STRVAR(_pyodide_core_JsMap_get__doc__,
+"get($self, /, key, default=None)\n"
+"--\n"
+"\n"
+"Return the value for key if key is in the dictionary, else default.");
+
+#define _PYODIDE_CORE_JSMAP_GET_METHODDEF    \
+    {"get", _PyCFunction_CAST(_pyodide_core_JsMap_get), METH_FASTCALL|METH_KEYWORDS, _pyodide_core_JsMap_get__doc__},
+
+static PyObject *
+_pyodide_core_JsMap_get_impl(PyObject *self, PyObject *key,
+                             PyObject *default_value);
+
+static PyObject *
+_pyodide_core_JsMap_get(PyObject *self, PyObject *const *args, Py_ssize_t nargs, PyObject *kwnames)
+{
+    PyObject *return_value = NULL;
+    #if defined(Py_BUILD_CORE) && !defined(Py_BUILD_CORE_MODULE)
+
+    #define NUM_KEYWORDS 2
+    static struct {
+        PyGC_Head _this_is_not_used;
+        PyObject_VAR_HEAD
+        Py_hash_t ob_hash;
+        PyObject *ob_item[NUM_KEYWORDS];
+    } _kwtuple = {
+        .ob_base = PyVarObject_HEAD_INIT(&PyTuple_Type, NUM_KEYWORDS)
+        .ob_hash = -1,
+        .ob_item = { &_Py_ID(key), &_Py_ID(default), },
+    };
+    #undef NUM_KEYWORDS
+    #define KWTUPLE (&_kwtuple.ob_base.ob_base)
+
+    #else  // !Py_BUILD_CORE
+    #  define KWTUPLE NULL
+    #endif  // !Py_BUILD_CORE
+
+    static const char * const _keywords[] = {"key", "default", NULL};
+    static _PyArg_Parser _parser = {
+        .keywords = _keywords,
+        .fname = "get",
+        .kwtuple = KWTUPLE,
+    };
+    #undef KWTUPLE
+    PyObject *argsbuf[2];
+    Py_ssize_t noptargs = nargs + (kwnames ? PyTuple_GET_SIZE(kwnames) : 0) - 1;
+    PyObject *key;
+    PyObject *default_value = Py_None;
+
+    args = _PyArg_UnpackKeywords(args, nargs, NULL, kwnames, &_parser,
+            /*minpos*/ 1, /*maxpos*/ 2, /*minkw*/ 0, /*varpos*/ 0, argsbuf);
+    if (!args) {
+        goto exit;
+    }
+    key = args[0];
+    if (!noptargs) {
+        goto skip_optional_pos;
+    }
+    default_value = args[1];
+skip_optional_pos:
+    return_value = _pyodide_core_JsMap_get_impl(self, key, default_value);
+
+exit:
+    return return_value;
+}
+
+PyDoc_STRVAR(_pyodide_core_JsMap_pop__doc__,
+"pop($self, key, default=<unrepresentable>, /)\n"
+"--\n"
+"\n"
+"Return the value for key if key is in the Map, else default.");
+
+#define _PYODIDE_CORE_JSMAP_POP_METHODDEF    \
+    {"pop", _PyCFunction_CAST(_pyodide_core_JsMap_pop), METH_FASTCALL, _pyodide_core_JsMap_pop__doc__},
+
+static PyObject *
+_pyodide_core_JsMap_pop_impl(PyObject *self, PyObject *key,
+                             PyObject *default_value);
+
+static PyObject *
+_pyodide_core_JsMap_pop(PyObject *self, PyObject *const *args, Py_ssize_t nargs)
+{
+    PyObject *return_value = NULL;
+    PyObject *key;
+    PyObject *default_value = NULL;
+
+    if (!_PyArg_CheckPositional("pop", nargs, 1, 2)) {
+        goto exit;
+    }
+    key = args[0];
+    if (nargs < 2) {
+        goto skip_optional;
+    }
+    default_value = args[1];
+skip_optional:
+    return_value = _pyodide_core_JsMap_pop_impl(self, key, default_value);
+
+exit:
+    return return_value;
+}
+
+PyDoc_STRVAR(_pyodide_core_JsMap_popitem__doc__,
+"popitem($self, /)\n"
+"--\n"
+"\n"
+"Remove and return a (key, value) pair as a 2-tuple.");
+
+#define _PYODIDE_CORE_JSMAP_POPITEM_METHODDEF    \
+    {"popitem", (PyCFunction)_pyodide_core_JsMap_popitem, METH_NOARGS, _pyodide_core_JsMap_popitem__doc__},
+
+static PyObject *
+_pyodide_core_JsMap_popitem_impl(PyObject *self);
+
+static PyObject *
+_pyodide_core_JsMap_popitem(PyObject *self, PyObject *Py_UNUSED(ignored))
+{
+    return _pyodide_core_JsMap_popitem_impl(self);
+}
+
+PyDoc_STRVAR(_pyodide_core_JsMap_clear__doc__,
+"clear($self, /)\n"
+"--\n"
+"\n"
+"Remove all items from the dict.");
+
+#define _PYODIDE_CORE_JSMAP_CLEAR_METHODDEF    \
+    {"clear", (PyCFunction)_pyodide_core_JsMap_clear, METH_NOARGS, _pyodide_core_JsMap_clear__doc__},
+
+static PyObject *
+_pyodide_core_JsMap_clear_impl(PyObject *self);
+
+static PyObject *
+_pyodide_core_JsMap_clear(PyObject *self, PyObject *Py_UNUSED(ignored))
+{
+    return _pyodide_core_JsMap_clear_impl(self);
+}
+
+PyDoc_STRVAR(_pyodide_core_JsMap_setdefault__doc__,
+"setdefault($self, key, default=None, /)\n"
+"--\n"
+"\n"
+"Insert key with a value of default if key is not in the Map.\n"
+"\n"
+"Return the value for key if key is in the Map, else default.");
+
+#define _PYODIDE_CORE_JSMAP_SETDEFAULT_METHODDEF    \
+    {"setdefault", _PyCFunction_CAST(_pyodide_core_JsMap_setdefault), METH_FASTCALL, _pyodide_core_JsMap_setdefault__doc__},
+
+static PyObject *
+_pyodide_core_JsMap_setdefault_impl(PyObject *self, PyObject *key,
+                                    PyObject *default_value);
+
+static PyObject *
+_pyodide_core_JsMap_setdefault(PyObject *self, PyObject *const *args, Py_ssize_t nargs)
+{
+    PyObject *return_value = NULL;
+    PyObject *key;
+    PyObject *default_value = Py_None;
+
+    if (!_PyArg_CheckPositional("setdefault", nargs, 1, 2)) {
+        goto exit;
+    }
+    key = args[0];
+    if (nargs < 2) {
+        goto skip_optional;
+    }
+    default_value = args[1];
+skip_optional:
+    return_value = _pyodide_core_JsMap_setdefault_impl(self, key, default_value);
+
+exit:
+    return return_value;
+}
+
 PyDoc_STRVAR(_pyodide_core_JsArray_extend__doc__,
 "extend($self, /, iterable)\n"
 "--\n"
@@ -547,4 +772,4 @@ _pyodide_core_JsDoubleProxy_unwrap(PyObject *self, PyObject *Py_UNUSED(ignored))
 {
     return _pyodide_core_JsDoubleProxy_unwrap_impl(self);
 }
-/*[clinic end generated code: output=c925685b7a95e63f input=a9049054013a1b77]*/
+/*[clinic end generated code: output=c1b6b1f87d52c13a input=a9049054013a1b77]*/
