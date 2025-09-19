@@ -1338,11 +1338,15 @@ _PyStaticObjects_CheckRefcnt(PyInterpreterState *interp) {
     _PyStaticObject_CheckRefcnt((PyObject *)&_Py_ID(Emin));
     _PyStaticObject_CheckRefcnt((PyObject *)&_Py_ID(FINISHED));
     _PyStaticObject_CheckRefcnt((PyObject *)&_Py_ID(False));
+    _PyStaticObject_CheckRefcnt((PyObject *)&_Py_ID(ItemsView));
     _PyStaticObject_CheckRefcnt((PyObject *)&_Py_ID(JSONDecodeError));
+    _PyStaticObject_CheckRefcnt((PyObject *)&_Py_ID(KeysView));
+    _PyStaticObject_CheckRefcnt((PyObject *)&_Py_ID(MutableMapping));
     _PyStaticObject_CheckRefcnt((PyObject *)&_Py_ID(PENDING));
     _PyStaticObject_CheckRefcnt((PyObject *)&_Py_ID(Py_Repr));
     _PyStaticObject_CheckRefcnt((PyObject *)&_Py_ID(TextIOWrapper));
     _PyStaticObject_CheckRefcnt((PyObject *)&_Py_ID(True));
+    _PyStaticObject_CheckRefcnt((PyObject *)&_Py_ID(ValuesView));
     _PyStaticObject_CheckRefcnt((PyObject *)&_Py_ID(WarningMessage));
     _PyStaticObject_CheckRefcnt((PyObject *)&_Py_ID(_WindowsConsoleIO));
     _PyStaticObject_CheckRefcnt((PyObject *)&_Py_ID(__IOBase_closed));
@@ -1966,6 +1970,7 @@ _PyStaticObjects_CheckRefcnt(PyInterpreterState *interp) {
     _PyStaticObject_CheckRefcnt((PyObject *)&_Py_ID(pointer_bits));
     _PyStaticObject_CheckRefcnt((PyObject *)&_Py_ID(policy));
     _PyStaticObject_CheckRefcnt((PyObject *)&_Py_ID(pop));
+    _PyStaticObject_CheckRefcnt((PyObject *)&_Py_ID(popitem));
     _PyStaticObject_CheckRefcnt((PyObject *)&_Py_ID(pos));
     _PyStaticObject_CheckRefcnt((PyObject *)&_Py_ID(pos1));
     _PyStaticObject_CheckRefcnt((PyObject *)&_Py_ID(pos2));
@@ -2116,6 +2121,7 @@ _PyStaticObjects_CheckRefcnt(PyInterpreterState *interp) {
     _PyStaticObject_CheckRefcnt((PyObject *)&_Py_ID(unboundop));
     _PyStaticObject_CheckRefcnt((PyObject *)&_Py_ID(unlink));
     _PyStaticObject_CheckRefcnt((PyObject *)&_Py_ID(unraisablehook));
+    _PyStaticObject_CheckRefcnt((PyObject *)&_Py_ID(update));
     _PyStaticObject_CheckRefcnt((PyObject *)&_Py_ID(updates));
     _PyStaticObject_CheckRefcnt((PyObject *)&_Py_ID(uri));
     _PyStaticObject_CheckRefcnt((PyObject *)&_Py_ID(usedforsecurity));

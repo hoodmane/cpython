@@ -71,8 +71,9 @@ class _pyodide_core.JsArray "PyObject *" "JsProxyType"
 class _pyodide_core.JsDoubleProxy "PyObject *" "JsProxyType"
 class _pyodide_core.JsException "PyObject *" "JsProxyType"
 class _pyodide_core.JsGenerator "PyObject *" "JsProxyType"
+class _pyodide_core.JsMap "PyObject *" "JsProxyType"
 [clinic start generated code]*/
-/*[clinic end generated code: output=da39a3ee5e6b4b0d input=3f0f523b438110b3]*/
+/*[clinic end generated code: output=da39a3ee5e6b4b0d input=3c5b38b8249a30cb]*/
 #include "clinic/jsproxy.c.h"
 
 // Layout of dict and ExceptionFields needs to exactly match the layout of the
@@ -114,6 +115,9 @@ _Static_assert(sizeof(PyBaseExceptionObject) ==
 #define JsMethod_VECTORCALL(x) (((JsProxy*)x)->tf.mf.vectorcall)
 
 #define JsException_ARGS(x) (((JsProxy*)x)->tf.ef.args)
+
+static PyObject* collections_abc;
+static PyObject* MutableMapping;
 
 
 static PyTypeObject*
@@ -914,6 +918,227 @@ JsProxy_includes(JsProxy* self, PyObject* obj)
 
 finally:
   return result;
+}
+
+EM_JS_VAL(JsVal, JsMap_GetIter_js, (JsVal obj), {
+  let result;
+  // clang-format off
+  if(typeof obj.keys === 'function') {
+    // clang-format on
+    result = obj.keys();
+  } else {
+    result = obj[Symbol.iterator]();
+  }
+  return result;
+})
+
+/**
+ * iter overload for maps. Present if IS_ITERABLE but not IS_ITERATOR (if the
+ * IS_ITERATOR flag is present we use PyObject_SelfIter).
+ * Prefers to iterate using map.keys() over map[Symbol.iterator]().
+ */
+static PyObject*
+JsMap_GetIter(PyObject* self)
+{
+  JsVal iter = JsMap_GetIter_js(JsProxy_VAL(self));
+  FAIL_IF_JS_ERROR(iter);
+  return _Py_js2python(iter);
+finally:
+  return NULL;
+}
+
+/*[clinic input]
+_pyodide_core.JsMap.keys
+[clinic start generated code]*/
+
+static PyObject *
+_pyodide_core_JsMap_keys_impl(PyObject *self)
+/*[clinic end generated code: output=7ed2af5c68741228 input=7126f4035073a0cb]*/
+{
+  return PyObject_CallMethodOneArg(collections_abc, &_Py_ID(KeysView), self);
+}
+
+/*[clinic input]
+_pyodide_core.JsMap.values
+[clinic start generated code]*/
+
+static PyObject *
+_pyodide_core_JsMap_values_impl(PyObject *self)
+/*[clinic end generated code: output=1d0da65e8c96f35c input=1001f65975e32683]*/
+{
+  return PyObject_CallMethodOneArg(collections_abc, &_Py_ID(ValuesView), self);
+}
+
+/*[clinic input]
+_pyodide_core.JsMap.items
+[clinic start generated code]*/
+
+static PyObject *
+_pyodide_core_JsMap_items_impl(PyObject *self)
+/*[clinic end generated code: output=5e9548c7fac354d1 input=54315017f32f6cec]*/
+{
+  return PyObject_CallMethodOneArg(collections_abc, &_Py_ID(ItemsView), self);
+}
+
+/*[clinic input]
+_pyodide_core.JsMap.get
+
+    key: object
+    default: object = None
+
+Return the value for key if key is in the dictionary, else default.
+[clinic start generated code]*/
+
+static PyObject *
+_pyodide_core_JsMap_get_impl(PyObject *self, PyObject *key,
+                             PyObject *default_value)
+/*[clinic end generated code: output=b0d6609942fe2a74 input=7dc3639e7f7eb096]*/
+{
+  PyObject* result = PyObject_GetItem(self, key);
+  if (result != NULL) {
+    return result;
+  }
+  PyErr_Clear();
+  Py_INCREF(default_value);
+  return default_value;
+}
+
+/*[clinic input]
+_pyodide_core.JsMap.pop
+
+    key: object
+    default: object = NULL
+    /
+
+Return the value for key if key is in the Map, else default.
+[clinic start generated code]*/
+
+static PyObject *
+_pyodide_core_JsMap_pop_impl(PyObject *self, PyObject *key,
+                             PyObject *default_value)
+/*[clinic end generated code: output=4d52a2e1bb5e4406 input=5f8ceaddb1636240]*/
+{
+  PyObject* result = PyObject_GetItem(self, key);
+  if (result == NULL) {
+    if (default_value == NULL) {
+      return NULL;
+    } else {
+      PyErr_Clear();
+      Py_INCREF(default_value);
+      return default_value;
+    }
+  }
+  if (PyObject_DelItem(self, key) == -1) {
+    Py_CLEAR(result);
+    return NULL;
+  }
+  return result;
+}
+
+/*[clinic input]
+_pyodide_core.JsMap.popitem
+
+Remove and return a (key, value) pair as a 2-tuple.
+[clinic start generated code]*/
+
+static PyObject *
+_pyodide_core_JsMap_popitem_impl(PyObject *self)
+/*[clinic end generated code: output=73aa024a982f3b99 input=af4ebd4eec73fa65]*/
+{
+  return PyObject_CallMethodOneArg(MutableMapping, &_Py_ID(popitem), self);
+}
+
+EM_JS_NUM(int, JsMap_clear_js, (JsVal map), {
+  // clang-format off
+  if(map && typeof map.clear === "function") {
+    // clang-format on
+    map.clear();
+    return 1;
+  }
+  return 0;
+})
+
+/*[clinic input]
+_pyodide_core.JsMap.clear
+
+Remove all items from the dict.
+[clinic start generated code]*/
+
+static PyObject *
+_pyodide_core_JsMap_clear_impl(PyObject *self)
+/*[clinic end generated code: output=128878a918c5ef68 input=a7bc2c8e1f846ed9]*/
+{
+  // If the map has a JavaScript "clear" function, use that.
+  int status = JsMap_clear_js(JsProxy_VAL(self));
+  if (status == -1) {
+    return NULL;
+  }
+  if (status) {
+    Py_RETURN_NONE;
+  }
+  // Otherwise iterate the map and delete the entries one at a time.
+  return PyObject_CallMethodOneArg(MutableMapping, &_Py_ID(clear), self);
+}
+
+PyObject*
+JsMap_update(JsProxy* self, PyObject* args, PyObject* kwds)
+{
+  PyObject* arg = NULL;
+  if (!PyArg_ParseTuple(args, "|O:update", &arg)) {
+    return NULL;
+  }
+  if (arg != NULL) {
+    PyObject* status = PyObject_CallMethodObjArgs(
+      MutableMapping, &_Py_ID(update), self, arg, NULL);
+    if (status == NULL) {
+      return NULL;
+    }
+    Py_CLEAR(status);
+  }
+  if (kwds != NULL) {
+    PyObject* status = PyObject_CallMethodObjArgs(
+      MutableMapping, &_Py_ID(update), self, arg, NULL);
+    if (status == NULL) {
+      return NULL;
+    }
+    Py_CLEAR(status);
+  }
+  Py_RETURN_NONE;
+}
+
+static PyMethodDef JsMap_update_MethodDef = {
+  "update",
+  (PyCFunction)JsMap_update,
+  METH_VARARGS | METH_KEYWORDS,
+};
+
+/*[clinic input]
+_pyodide_core.JsMap.setdefault
+
+    key: object
+    default: object = None
+    /
+
+Insert key with a value of default if key is not in the Map.
+
+Return the value for key if key is in the Map, else default.
+[clinic start generated code]*/
+
+static PyObject *
+_pyodide_core_JsMap_setdefault_impl(PyObject *self, PyObject *key,
+                                    PyObject *default_value)
+/*[clinic end generated code: output=fecfdc61d67be71b input=f4d6c0d8aa105875]*/
+{
+  PyObject* result = PyObject_GetItem(self, key);
+  if (result != NULL) {
+    return result;
+  }
+  PyErr_Clear();
+  if (PyObject_SetItem(self, key, default_value) == -1) {
+    return NULL;
+  }
+  Py_INCREF(default_value);
+  return default_value;
 }
 
 #define ERR_NO_LENGTH -2
@@ -1934,6 +2159,10 @@ JsProxy_create_subtype(int flags)
 
   int tp_flags = Py_TPFLAGS_DEFAULT;
 
+  int mapping_flags = HAS_GET | HAS_LENGTH | IS_ITERABLE;
+  bool mapping = (flags & mapping_flags) == mapping_flags;
+  bool mutable_mapping = mapping && (flags & HAS_SET);
+
   char* type_name = "pyodide.ffi.JsProxy";
   int basicsize = sizeof(JsProxy);
 
@@ -1951,6 +2180,23 @@ JsProxy_create_subtype(int flags)
     _PYODIDE_CORE_JSPROXY___DIR___METHODDEF
     _PYODIDE_CORE_JSPROXY_TO_PY_METHODDEF
   );
+  if (mapping) {
+    AddMethods(
+      _PYODIDE_CORE_JSMAP_KEYS_METHODDEF
+      _PYODIDE_CORE_JSMAP_VALUES_METHODDEF
+      _PYODIDE_CORE_JSMAP_ITEMS_METHODDEF
+      _PYODIDE_CORE_JSMAP_GET_METHODDEF
+    );
+  }
+  if (mutable_mapping) {
+    AddMethods(
+      _PYODIDE_CORE_JSMAP_POP_METHODDEF
+      _PYODIDE_CORE_JSMAP_POPITEM_METHODDEF
+      _PYODIDE_CORE_JSMAP_CLEAR_METHODDEF
+      _PYODIDE_CORE_JSMAP_SETDEFAULT_METHODDEF
+      JsMap_update_MethodDef,
+    );
+  }
 
   if (flags & HAS_GET) {
     slots[cur_slot++] = (PyType_Slot){ .slot = Py_mp_subscript,
@@ -2029,8 +2275,14 @@ JsProxy_create_subtype(int flags)
 
   if ((flags & IS_ITERABLE) && !(flags & IS_ITERATOR)) {
     // If it is an iterator we should use SelfIter instead.
-    slots[cur_slot++] =
-      (PyType_Slot){ .slot = Py_tp_iter, .pfunc = (void*)JsProxy_GetIter };
+    if (mapping) {
+      // Prefer `obj.keys()` over `obj[Symbol.iterator]()`
+      slots[cur_slot++] =
+        (PyType_Slot){ .slot = Py_tp_iter, .pfunc = (void*)JsMap_GetIter };
+    } else {
+      slots[cur_slot++] =
+        (PyType_Slot){ .slot = Py_tp_iter, .pfunc = (void*)JsProxy_GetIter };
+    }
   }
 
   // If it's an iterator, we aren't sure whether it is an async iterator or a
@@ -2350,6 +2602,12 @@ _Py_jsproxy_init(PyObject* core_module)
   FAIL_IF_NULL(JsProxy_TypeDict);
   FAIL_IF_MINUS_ONE(
     PyModule_AddObjectRef(core_module, "jsproxy_typedict", JsProxy_TypeDict));
+
+  collections_abc = PyImport_ImportModule("collections.abc");
+  FAIL_IF_NULL(collections_abc);
+  MutableMapping = PyObject_GetAttr(collections_abc, &_Py_ID(MutableMapping));
+  FAIL_IF_NULL(MutableMapping);
+
 
   success = true;
 finally:
