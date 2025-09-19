@@ -14,3 +14,6 @@ _Py_js2python(JsVal x);
  */
 PyObject*
 _Py_js2python_convert(JsVal x, int depth, JsVal defaultConverter);
+
+PyObject*
+_Py_js2python_immutable(JsVal val);

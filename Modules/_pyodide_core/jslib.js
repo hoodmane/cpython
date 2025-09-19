@@ -163,3 +163,11 @@ function normalizeReservedWords(word) {
   return word;
   // clang-format on
 }
+
+function* iterObject(object) {
+  for (let k in object) {
+    if (Object.hasOwn(object, k)) {
+      yield k;
+    }
+  }
+};

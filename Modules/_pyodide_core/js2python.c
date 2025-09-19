@@ -62,6 +62,23 @@ _Py_js2python(JsVal val)
 }
 
 
+EM_JS_REF(PyObject*, _Py_js2python_immutable_js, (JsVal value), {
+  let result = Module.js2python_convertImmutable(value);
+  // clang-format off
+  if (result !== undefined) {
+    // clang-format on
+    return result;
+  }
+  return 0;
+});
+
+EMSCRIPTEN_KEEPALIVE PyObject*
+_Py_js2python_immutable(JsVal val)
+{
+  return _Py_js2python_immutable_js(val);
+}
+
+
 #define UNPAIRED_OPEN {
 #define UNPAIRED_CLOSE }
 #define JSFILE(junk, rest...) \

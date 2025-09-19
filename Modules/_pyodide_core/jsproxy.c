@@ -18,18 +18,20 @@
 #include "pycore_setobject.h"     // _PySet_Update()
 #include "pycore_runtime.h"     // _Py_ID()
 
-#define HAS_GET            (1 << 0)
-#define HAS_HAS            (1 << 1)
-#define HAS_INCLUDES       (1 << 2)
-#define HAS_LENGTH         (1 << 3)
-#define HAS_SET            (1 << 4)
-#define IS_ARRAY           (1 << 5)
-#define IS_CALLABLE        (1 << 6)
-#define IS_ERROR           (1 << 7)
-#define IS_GENERATOR       (1 << 8)
-#define IS_ITERABLE        (1 << 9)
-#define IS_ITERATOR        (1 << 10)
-#define IS_DOUBLE_PROXY    (1 << 11)
+#define HAS_GET             (1 << 0)
+#define HAS_HAS             (1 << 1)
+#define HAS_INCLUDES        (1 << 2)
+#define HAS_LENGTH          (1 << 3)
+#define HAS_SET             (1 << 4)
+#define IS_ARRAY            (1 << 5)
+#define IS_CALLABLE         (1 << 6)
+#define IS_ERROR            (1 << 7)
+#define IS_GENERATOR        (1 << 8)
+#define IS_ITERABLE         (1 << 9)
+#define IS_ITERATOR         (1 << 10)
+#define IS_DOUBLE_PROXY     (1 << 11)
+#define IS_PY_JSON_DICT     (1 << 12)
+#define IS_PY_JSON_SEQUENCE (1 << 13)
 
 Js_IDENTIFIER(next);
 
@@ -119,9 +121,16 @@ _Static_assert(sizeof(PyBaseExceptionObject) ==
 static PyObject* collections_abc;
 static PyObject* MutableMapping;
 
+static PyObject*
+JsProxy_create_pyjson(JsVal object, bool pyjson);
 
 static PyTypeObject*
 JsProxy_get_subtype(int flags);
+
+static PyObject*
+JsProxy_create_with_type(int type_flags,
+                            JsVal object,
+                            JsVal this);
 
 static int
 JsProxy_getflags(PyObject* self)
@@ -135,6 +144,28 @@ JsProxy_getflags(PyObject* self)
   Py_CLEAR(pyflags);
   return result;
 }
+
+static int
+JsProxy_is_py_json(PyObject* self)
+{
+  return !!(JsProxy_getflags(self) & (IS_PY_JSON_DICT | IS_PY_JSON_SEQUENCE));
+}
+
+static PyObject*
+js2python_pyjson(JsVal jsval, bool pyjson)
+{
+  PyObject* result = NULL;
+
+  result = _Py_js2python_immutable(jsval);
+  if (result != NULL) {
+    return result;
+  }
+  return JsProxy_create_pyjson(jsval, pyjson);
+}
+
+#define INCLUDE_PYJSON_METHODS(flags)                                          \
+  !((flags) & (IS_DOUBLE_PROXY | IS_ITERATOR | IS_CALLABLE | IS_ERROR))
+
 
 static int
 JsProxy_clear(PyObject* self)
@@ -510,7 +541,6 @@ JsProxy_cinit(PyObject* obj, JsVal val)
   return 0;
 }
 
-
 EM_JS_VAL(JsVal, _PyJsProxy_GetIter_js, (JsVal obj), {
   return obj[Symbol.iterator]();
 });
@@ -524,7 +554,7 @@ JsProxy_GetIter(PyObject* self)
 {
   JsVal iter = _PyJsProxy_GetIter_js(JsProxy_VAL(self));
   FAIL_IF_JS_ERROR(iter);
-  return _Py_js2python(iter);
+  return js2python_pyjson(iter, JsProxy_is_py_json(self));
 finally:
   return NULL;
 }
@@ -554,7 +584,7 @@ _Py_handle_next_result_js,
 });
 
 static PySendResult
-handle_next_result(JsVal next_res, PyObject** result){
+handle_next_result(JsVal next_res, PyObject** result, bool pyjson){
   PySendResult res = PYGEN_ERROR;
   char* msg = NULL;
   *result = NULL;
@@ -574,7 +604,10 @@ handle_next_result(JsVal next_res, PyObject** result){
   FAIL_IF_MINUS_ONE(done);
   // If there was no "value", "idresult" will be jsundefined
   // so pyvalue will be set to Py_None.
-  *result = _Py_js2python(jsresult);
+  *result = _Py_js2python_immutable(jsresult);
+  if (!*result) {
+    *result = JsProxy_create_pyjson(jsresult, pyjson);
+  }
   FAIL_IF_NULL(*result);
 
   res = done ? PYGEN_RETURN : PYGEN_NEXT;
@@ -598,7 +631,7 @@ JsProxy_am_send(PyObject* self, PyObject* arg, PyObject** result)
   JsVal next_res =
     _PyJsvObject_CallMethodId_OneArg(JsProxy_VAL(self), &JsId_next, jsarg);
   FAIL_IF_JS_ERROR(next_res);
-  ret = handle_next_result(next_res, result);
+  ret = handle_next_result(next_res, result, JsProxy_is_py_json(self));
 finally:
   return ret;
 }
@@ -741,7 +774,7 @@ static PyObject* JsGenerator_throw_inner(PyObject *self, PyObject *value,
   PyObject* result = NULL;
   JsVal throw_res = process_throw_args(self, value, val, tb);
   FAIL_IF_JS_ERROR(throw_res);
-  PySendResult ret = handle_next_result(throw_res, &result);
+  PySendResult ret = handle_next_result(throw_res, &result, false);
   if (ret == PYGEN_RETURN) {
     if (Py_IsNone(result)) {
       PyErr_SetNone(PyExc_StopIteration);
@@ -1257,7 +1290,7 @@ JsArray_subscript(PyObject* self, PyObject* item)
       }
       FAIL();
     }
-    pyresult = _Py_js2python(jsresult);
+    pyresult = js2python_pyjson(jsresult, JsProxy_is_py_json(self));
     goto success;
   }
   if (PySlice_Check(item)) {
@@ -1275,7 +1308,7 @@ JsArray_subscript(PyObject* self, PyObject* item)
         _PyJsvArray_slice(JsProxy_VAL(self), slicelength, start, stop, step);
     }
     FAIL_IF_JS_ERROR(jsresult);
-    pyresult = _Py_js2python(jsresult);
+    pyresult = js2python_pyjson(jsresult, JsProxy_is_py_json(self));
     goto success;
   }
   PyErr_Format(PyExc_TypeError,
@@ -2113,6 +2146,164 @@ _pyodide_core_JsDoubleProxy_unwrap_impl(PyObject *self)
   return result;
 }
 
+/*[clinic input]
+_pyodide_core.JsProxy.as_py_json
+
+Returns a new JsProxy that treats a JavaScript object as Python json.
+
+It allows one to treat a JavaScript object that is a mixture of
+JavaScript arrays and objects as a mixture of Python lists and dicts.
+[clinic start generated code]*/
+
+static PyObject *
+_pyodide_core_JsProxy_as_py_json_impl(PyObject *self)
+/*[clinic end generated code: output=f5714861b7b1656d input=a896600d4ec0052c]*/
+{
+  int flags = JsProxy_getflags(self);
+  if (flags & IS_ARRAY) {
+    flags |= IS_PY_JSON_SEQUENCE;
+  } else {
+    flags |= IS_PY_JSON_DICT;
+  }
+  return JsProxy_create_with_type(
+    flags, JsProxy_VAL(self), JsMethod_THIS(self));
+}
+
+EM_JS_VAL(JsVal, _PyJsObjMap_GetIter_js, (JsVal obj), {
+  return iterObject(obj);
+})
+
+static PyObject*
+JsObjMap_GetIter(PyObject* self)
+{
+  JsVal iter = _PyJsObjMap_GetIter_js(JsProxy_VAL(self));
+  FAIL_IF_JS_ERROR(iter);
+  return _Py_js2python(iter);
+finally:
+  return NULL;
+}
+
+EM_JS_NUM(int, _PyJsObjMap_length_js, (JsVal obj), {
+  let length = 0;
+  for (let _ of iterObject(obj)) {
+    length++;
+  }
+  return length;
+})
+
+static int
+JsObjMap_length(PyObject* self)
+{
+  return _PyJsObjMap_length_js(JsProxy_VAL(self));
+}
+
+// A helper method for JsObjMap_subscript.
+EM_JS_VAL(JsVal, _PyJsObjMap_subscript_js, (JsVal obj, JsVal key), {
+  if (!Object.prototype.hasOwnProperty.call(obj, key)) {
+    return Module.error;
+  }
+  return obj[key];
+});
+
+static PyObject*
+JsObjMap_subscript(PyObject* self, PyObject* pyidx)
+{
+  if (!PyUnicode_Check(pyidx)) {
+    PyErr_SetObject(PyExc_KeyError, pyidx);
+    return NULL;
+  }
+
+  PyObject* pyresult = NULL;
+
+  JsVal key = _Py_python2js(pyidx);
+  FAIL_IF_JS_ERROR(key);
+  JsVal result = _PyJsObjMap_subscript_js(JsProxy_VAL(self), key);
+  if (_PyJsvError_Check(result)) {
+    if (!PyErr_Occurred()) {
+      PyErr_SetObject(PyExc_KeyError, pyidx);
+    }
+    FAIL();
+  }
+  pyresult = _Py_js2python_immutable(result);
+  if (pyresult == NULL) {
+    pyresult = JsProxy_create_pyjson(result, true);
+  }
+
+finally:
+  return pyresult;
+}
+
+// A helper method for JsObjMap_ass_subscript.
+// clang-format off
+EM_JS_NUM(int,
+_PyJsObjMap_ass_subscript_js,
+(JsVal obj, JsVal key, JsVal value),
+{
+  if(value === Module.error) {
+    if (!Object.prototype.hasOwnProperty.call(obj, key)) {
+      return -1;
+    }
+    delete obj[key];
+  } else {
+    obj[key] = value;
+  }
+  return 0;
+});
+// clang-format on
+
+static int
+JsObjMap_ass_subscript(PyObject* self, PyObject* pykey, PyObject* pyvalue)
+{
+  if (!PyUnicode_Check(pykey)) {
+    if (pyvalue) {
+      PyErr_SetString(
+        PyExc_TypeError,
+        "Can only assign keys of type string to JavaScript object map");
+    } else {
+      PyErr_SetObject(PyExc_KeyError, pykey);
+    }
+    return -1;
+  }
+
+  bool success = false;
+  JsVal value = JS_ERROR;
+  JsVal key = _Py_python2js(pykey);
+  if (pyvalue != NULL) {
+    value = _Py_python2js(pyvalue);
+    FAIL_IF_JS_ERROR(value);
+  }
+  int status = _PyJsObjMap_ass_subscript_js(JsProxy_VAL(self), key, value);
+  if (status == -1) {
+    if (!PyErr_Occurred()) {
+      PyErr_SetObject(PyExc_KeyError, pykey);
+    }
+    FAIL();
+  }
+  success = true;
+finally:
+  return success ? 0 : -1;
+}
+
+EM_JS_NUM(int, _PyJsObjMap_contains_js, (JsVal obj, JsVal key), {
+  return Object.prototype.hasOwnProperty.call(obj, key);
+});
+
+static int
+JsObjMap_contains(PyObject* self, PyObject* obj)
+{
+  if (!PyUnicode_Check(obj)) {
+    // All keys are strings or symbols so if it's not a string don't check.
+    // TODO: maybe support symbols??
+    return 0;
+  }
+  JsVal jsobj = _Py_python2js(obj);
+  FAIL_IF_JS_ERROR(jsobj);
+  return _PyJsObjMap_contains_js(JsProxy_VAL(self), jsobj);
+
+finally:
+  return -1;
+}
+
 // clang-format off
 static PyNumberMethods JsProxy_NumberMethods = {
   .nb_bool = JsProxy_Bool
@@ -2147,7 +2338,7 @@ static PyTypeObject JsProxyType = {
  * go together very well.
  */
 static PyObject*
-JsProxy_create_subtype(int flags)
+JsProxy_create_subtype(int flags, bool is_py_json)
 {
   // Make sure these stack allocations are large enough to fit!
   PyType_Slot slots[20];
@@ -2159,9 +2350,12 @@ JsProxy_create_subtype(int flags)
 
   int tp_flags = Py_TPFLAGS_DEFAULT;
 
+  bool objmap = (flags & IS_PY_JSON_DICT);
   int mapping_flags = HAS_GET | HAS_LENGTH | IS_ITERABLE;
   bool mapping = (flags & mapping_flags) == mapping_flags;
   bool mutable_mapping = mapping && (flags & HAS_SET);
+  mapping = mapping || objmap;
+  mutable_mapping = mutable_mapping || objmap;
 
   char* type_name = "pyodide.ffi.JsProxy";
   int basicsize = sizeof(JsProxy);
@@ -2196,6 +2390,19 @@ JsProxy_create_subtype(int flags)
       _PYODIDE_CORE_JSMAP_SETDEFAULT_METHODDEF
       JsMap_update_MethodDef,
     );
+  }
+  if (objmap) {
+    slots[cur_slot++] =
+      (PyType_Slot){ .slot = Py_tp_iter, .pfunc = (void*)JsObjMap_GetIter };
+    slots[cur_slot++] =
+      (PyType_Slot){ .slot = Py_mp_length, .pfunc = (void*)JsObjMap_length };
+    slots[cur_slot++] = (PyType_Slot){ .slot = Py_mp_subscript,
+                                       .pfunc = (void*)JsObjMap_subscript };
+    slots[cur_slot++] = (PyType_Slot){ .slot = Py_mp_ass_subscript,
+                                       .pfunc = (void*)JsObjMap_ass_subscript };
+    slots[cur_slot++] = (PyType_Slot){ .slot = Py_sq_contains,
+                                       .pfunc = (void*)JsObjMap_contains };
+    goto skip_container_slots;
   }
 
   if (flags & HAS_GET) {
@@ -2307,6 +2514,7 @@ JsProxy_create_subtype(int flags)
     AddMethods(_PYODIDE_CORE_JSGENERATOR_SEND_METHODDEF);
   }
 
+skip_container_slots:
 
   if (flags & IS_CALLABLE) {
     tp_flags |= Py_TPFLAGS_HAVE_VECTORCALL;
@@ -2341,6 +2549,9 @@ JsProxy_create_subtype(int flags)
 
   if (flags & IS_DOUBLE_PROXY) {
     AddMethods(_PYODIDE_CORE_JSDOUBLEPROXY_UNWRAP_METHODDEF);
+  }
+  if (INCLUDE_PYJSON_METHODS(flags)) {
+    AddMethods(_PYODIDE_CORE_JSPROXY_AS_PY_JSON_METHODDEF);
   }
 
   members[cur_member++] = (PyMemberDef){ 0 };
@@ -2453,7 +2664,7 @@ JsProxy_get_subtype(int flags)
   if (type != NULL || PyErr_Occurred()) {
     goto finally;
   }
-  type = JsProxy_create_subtype(flags);
+  type = JsProxy_create_subtype(flags, false);
   FAIL_IF_NULL(type);
   FAIL_IF_MINUS_ONE(PyDict_SetItem(JsProxy_TypeDict, flags_key, type));
 finally:
@@ -2471,7 +2682,7 @@ finally:
   SET_FLAG_IF(flag, hasMethod(obj, meth))
 
 
-EM_JS_NUM(int, JsProxy_compute_typeflags, (JsVal obj), {
+EM_JS_NUM(int, JsProxy_compute_typeflags, (JsVal obj, bool is_py_json), {
   let type_flags = 0;
 
   function safeCall(cb){
@@ -2516,11 +2727,18 @@ EM_JS_NUM(int, JsProxy_compute_typeflags, (JsVal obj), {
       )
     ) && !(type_flags & (IS_CALLABLE)));
 
+  if (is_py_json && (type_flags & (IS_ARRAY | IS_ITERATOR))) {
+    // tagging IS_PY_JSON_SEQUENCE on IS_ITERATOR is a bit of a hack
+    type_flags |= IS_PY_JSON_SEQUENCE;
+  } else if (is_py_json && INCLUDE_PYJSON_METHODS(type_flags)) {
+    type_flags |= IS_PY_JSON_DICT;
+  }
+
   return type_flags;
 });
 
-PyObject*
-_PyJsProxy_create_with_type(int type_flags,
+static PyObject*
+JsProxy_create_with_type(int type_flags,
                          JsVal object,
                          JsVal this)
 {
@@ -2538,7 +2756,7 @@ _PyJsProxy_create_with_type(int type_flags,
   }
   if (type_flags & IS_ERROR) {
     PyObject* arg =
-      _PyJsProxy_create_with_type(type_flags & (~IS_ERROR), object, this);
+      JsProxy_create_with_type(type_flags & (~IS_ERROR), object, this);
     FAIL_IF_NULL(arg);
     PyObject* args = PyTuple_Pack(1, arg);
     Py_CLEAR(arg);
@@ -2563,21 +2781,28 @@ finally:
  */
 PyObject*
 _PyJsProxy_create_with_this(JsVal object,
-                         JsVal this)
+                            JsVal this)
 {
-  int type_flags = JsProxy_compute_typeflags(object);
+  int type_flags = JsProxy_compute_typeflags(object, false);
   if (type_flags == -1) {
     PyErr_SetString(PyExc_SystemError,
                     "Internal error occurred in JsProxy_compute_typeflags");
     return NULL;
   }
-  return _PyJsProxy_create_with_type(type_flags, object, this);
+  return JsProxy_create_with_type(type_flags, object, this);
 }
 
 EMSCRIPTEN_KEEPALIVE PyObject*
 _PyJsProxy_create(JsVal object)
 {
   return _PyJsProxy_create_with_this(object, JS_NULL);
+}
+
+static PyObject*
+JsProxy_create_pyjson(JsVal object, bool pyjson)
+{
+  int typeflags = JsProxy_compute_typeflags(object, pyjson);
+  return JsProxy_create_with_type(typeflags, object, JS_ERROR);
 }
 
 EMSCRIPTEN_KEEPALIVE bool
@@ -2592,11 +2817,28 @@ _PyJsProxy_Val(PyObject* x)
   return JsProxy_VAL(x);
 }
 
+static int
+add_flag(PyObject* dict, char* name, int value)
+{
+  PyObject* value_py = NULL;
+  bool success = false;
+
+  value_py = PyLong_FromLong(value);
+  FAIL_IF_NULL(value_py);
+  FAIL_IF_MINUS_ONE(PyDict_SetItemString(dict, name, value_py));
+
+  success = true;
+finally:
+  Py_CLEAR(value_py);
+  return success ? 0 : -1;
+}
 
 int
 _Py_jsproxy_init(PyObject* core_module)
 {
   bool success = false;
+  PyObject* flag_dict = NULL;
+
   FAIL_IF_MINUS_ONE(PyType_Ready(&JsProxyType));
   JsProxy_TypeDict = PyDict_New();
   FAIL_IF_NULL(JsProxy_TypeDict);
@@ -2608,8 +2850,32 @@ _Py_jsproxy_init(PyObject* core_module)
   MutableMapping = PyObject_GetAttr(collections_abc, &_Py_ID(MutableMapping));
   FAIL_IF_NULL(MutableMapping);
 
+  flag_dict = PyDict_New();
+  FAIL_IF_NULL(flag_dict);
+
+#define AddFlag(flag) FAIL_IF_MINUS_ONE(add_flag(flag_dict, #flag, flag))
+
+  AddFlag(IS_ITERABLE);
+  AddFlag(IS_ITERATOR);
+  AddFlag(HAS_LENGTH);
+  AddFlag(HAS_GET);
+  AddFlag(HAS_SET);
+  AddFlag(HAS_HAS);
+  AddFlag(HAS_INCLUDES);
+  AddFlag(IS_CALLABLE);
+  AddFlag(IS_ARRAY);
+  AddFlag(IS_DOUBLE_PROXY);
+  AddFlag(IS_GENERATOR);
+  AddFlag(IS_ERROR);
+  AddFlag(IS_PY_JSON_DICT);
+  AddFlag(IS_PY_JSON_SEQUENCE);
+
+#undef AddFlag
+  FAIL_IF_MINUS_ONE(PyObject_SetAttrString(core_module, "js_flags", flag_dict));
+
 
   success = true;
 finally:
+  Py_CLEAR(flag_dict);
   return success ? 0 : -1;
 }

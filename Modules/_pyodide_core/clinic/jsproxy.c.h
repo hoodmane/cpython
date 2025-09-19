@@ -772,4 +772,25 @@ _pyodide_core_JsDoubleProxy_unwrap(PyObject *self, PyObject *Py_UNUSED(ignored))
 {
     return _pyodide_core_JsDoubleProxy_unwrap_impl(self);
 }
-/*[clinic end generated code: output=c1b6b1f87d52c13a input=a9049054013a1b77]*/
+
+PyDoc_STRVAR(_pyodide_core_JsProxy_as_py_json__doc__,
+"as_py_json($self, /)\n"
+"--\n"
+"\n"
+"Returns a new JsProxy that treats a JavaScript object as Python json.\n"
+"\n"
+"It allows one to treat a JavaScript object that is a mixture of\n"
+"JavaScript arrays and objects as a mixture of Python lists and dicts.");
+
+#define _PYODIDE_CORE_JSPROXY_AS_PY_JSON_METHODDEF    \
+    {"as_py_json", (PyCFunction)_pyodide_core_JsProxy_as_py_json, METH_NOARGS, _pyodide_core_JsProxy_as_py_json__doc__},
+
+static PyObject *
+_pyodide_core_JsProxy_as_py_json_impl(PyObject *self);
+
+static PyObject *
+_pyodide_core_JsProxy_as_py_json(PyObject *self, PyObject *Py_UNUSED(ignored))
+{
+    return _pyodide_core_JsProxy_as_py_json_impl(self);
+}
+/*[clinic end generated code: output=a472925e265f0bec input=a9049054013a1b77]*/

@@ -1,5 +1,5 @@
 from unittest import TestCase
-from _pyodide_core import run_js, to_js, destroy_proxies, create_proxy
+from _pyodide_core import run_js, to_js, destroy_proxies, create_proxy, js_flags
 from _pyodide import jsnull
 
 JsError = type(run_js("new Error()"))
@@ -706,6 +706,37 @@ class JsProxyTest(TestCase):
         m.clear()
         self.assertEqual(dict(m), {})
 
+    def test_as_py_json(self):
+        dict_flag = js_flags["IS_PY_JSON_DICT"]
+        seq_flag = js_flags["IS_PY_JSON_SEQUENCE"]
+        either_flag = dict_flag | seq_flag
+
+        o = run_js("([1,2])").as_py_json()
+        self.assertNotEqual(o._js_type_flags & seq_flag, 0)
+
+        o = run_js("({a: [1,2, {b: 7}]})").as_py_json()
+        self.assertTrue(o._js_type_flags & dict_flag)
+        self.assertIn("a", o)
+        self.assertEqual(len(o), 1)
+        self.assertEqual(o["a"]._js_type_flags & either_flag, seq_flag)
+        self.assertEqual(len(o["a"]), 3)
+        self.assertEqual(o["a"][0], 1)
+        self.assertNotEqual(o["a"][-1]._js_type_flags & dict_flag, 0)
+        self.assertEqual(len(o["a"][-1]), 1)
+        self.assertEqual(o["a"][-1]["b"], 7)
+
+        self.assertEqual(list(o.keys()), ["a"])
+        self.assertEqual([(k, v.to_py()) for (k, v) in o.items()], [("a", [1, 2, {"b": 7}])])
+
+        o2 = run_js("([[1, 2], ()=>{}])").as_py_json()
+        self.assertNotEqual(o2._js_type_flags & seq_flag, 0)
+        self.assertNotEqual(o2[0]._js_type_flags & seq_flag, 0)
+        self.assertEqual(o2[1]._js_type_flags & either_flag, 0)
+
+        a = run_js("([{b: 1}, {b: 3}, {b: 7}])").as_py_json()
+        self.assertEqual(iter(a)._js_type_flags & either_flag, seq_flag)
+        l = [e["b"] for e in a]
+        self.assertEqual(l, [1, 3, 7])
 
 
 class PyProxyTest(TestCase):
