@@ -715,25 +715,23 @@ _pyodide_core.create_proxy
 
     roundtrip: bool = True
         When the proxy is converted back from JavaScript to Python, if this is
-        ``True`` it is converted into a double proxy. If ``False``, it is
-        unwrapped into a Python object. In the case that ``roundtrip`` is
-        ``True`` it is possible to unwrap a double proxy with the
-        :py:meth:`JsDoubleProxy.unwrap` method. This is useful to allow easier
+        True it is converted into a double proxy. If False, it is
+        unwrapped into a Python object. In the case that roundtrip is
+        True it is possible to unwrap a double proxy with the
+        JsDoubleProxy.unwrap method. This is useful to allow easier
         control of lifetimes from Python:
 
 
-Spam
-
-This allows explicit control over the lifetime of the PyProxy from Python. call the
-:py:meth:`~JsDoubleProxy.destroy` API when done.
-
 Create a JsProxy of a pyodide.ffi.PyProxy.
+
+This allows explicit control over the lifetime of the PyProxy from Python.
+Call JsDoubleProxy.destroy API when done.
 [clinic start generated code]*/
 
 static PyObject *
 _pyodide_core_create_proxy_impl(PyObject *module, PyObject *obj,
                                 int capture_this, int roundtrip)
-/*[clinic end generated code: output=365b44a6c783bf4d input=e07c02de2d4b44c8]*/
+/*[clinic end generated code: output=365b44a6c783bf4d input=52e14cb92c4ac57d]*/
 {
   bool gc_register = true;
   return _PyJsProxy_create(

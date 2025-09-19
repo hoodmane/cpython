@@ -12,7 +12,7 @@ PyDoc_STRVAR(_pyodide_core_create_proxy__doc__,
 "create_proxy($module, obj, /, *, capture_this=False, roundtrip=True)\n"
 "--\n"
 "\n"
-"Spam\n"
+"Create a JsProxy of a pyodide.ffi.PyProxy.\n"
 "\n"
 "  obj\n"
 "    The object to wrap.\n"
@@ -21,16 +21,14 @@ PyDoc_STRVAR(_pyodide_core_create_proxy__doc__,
 "    argument when calling it from JavaScript.\n"
 "  roundtrip\n"
 "    When the proxy is converted back from JavaScript to Python, if this is\n"
-"    ``True`` it is converted into a double proxy. If ``False``, it is\n"
-"    unwrapped into a Python object. In the case that ``roundtrip`` is\n"
-"    ``True`` it is possible to unwrap a double proxy with the\n"
-"    :py:meth:`JsDoubleProxy.unwrap` method. This is useful to allow easier\n"
+"    True it is converted into a double proxy. If False, it is\n"
+"    unwrapped into a Python object. In the case that roundtrip is\n"
+"    True it is possible to unwrap a double proxy with the\n"
+"    JsDoubleProxy.unwrap method. This is useful to allow easier\n"
 "    control of lifetimes from Python:\n"
 "\n"
-"This allows explicit control over the lifetime of the PyProxy from Python. call the\n"
-":py:meth:`~JsDoubleProxy.destroy` API when done.\n"
-"\n"
-"Create a JsProxy of a pyodide.ffi.PyProxy.");
+"This allows explicit control over the lifetime of the PyProxy from Python.\n"
+"Call JsDoubleProxy.destroy API when done.");
 
 #define _PYODIDE_CORE_CREATE_PROXY_METHODDEF    \
     {"create_proxy", _PyCFunction_CAST(_pyodide_core_create_proxy), METH_FASTCALL|METH_KEYWORDS, _pyodide_core_create_proxy__doc__},
@@ -104,4 +102,4 @@ skip_optional_kwonly:
 exit:
     return return_value;
 }
-/*[clinic end generated code: output=45fa08db6e0f220a input=a9049054013a1b77]*/
+/*[clinic end generated code: output=5b0b8fe3f9ea1d34 input=a9049054013a1b77]*/
