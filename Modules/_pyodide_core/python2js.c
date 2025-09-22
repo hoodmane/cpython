@@ -691,7 +691,7 @@ _JsArray_PostProcess(ConversionContext* context, JsVal array)
 // clang-format off
 EM_JS_VAL(
 JsVal,
-_Py_python2js_custom__create_jscontext,
+_Py_python2js_deep__create_jscontext,
 (ConversionContext *context,
   JsVal cache,
   JsVal dict_converter,
@@ -747,7 +747,7 @@ _Py_python2js_custom__create_jscontext,
  * python2js_with_depth which converts dicts to Map (the default)
  */
 EMSCRIPTEN_KEEPALIVE JsVal
-_Py_python2js_custom(PyObject* x,
+_Py_python2js_deep(PyObject* x,
                  int depth,
                  JsVal proxies,
                  JsVal dict_converter,
@@ -781,7 +781,7 @@ _Py_python2js_custom(PyObject* x,
   }
   if (!JsvNull_Check(dict_converter) || context.default_converter ||
       context.eager_converter) {
-    context.jscontext = hiwire_new(_Py_python2js_custom__create_jscontext(
+    context.jscontext = hiwire_new(_Py_python2js_deep__create_jscontext(
       &context, cache, dict_converter, default_converter, eager_converter));
   }
   JsVal result = _Py_python2js_helper(&context, x);
@@ -878,7 +878,7 @@ _pyodide_core_to_js_impl(PyObject *module, PyObject *obj, int depth,
   JsVal js_dict_converter = callback2js(dict_converter);
   JsVal js_default_converter = callback2js(default_converter);
   JsVal js_eager_converter = callback2js(eager_converter);
-  JsVal js_result = _Py_python2js_custom(obj,
+  JsVal js_result = _Py_python2js_deep(obj,
                                          depth,
                                          proxies,
                                          js_dict_converter,
