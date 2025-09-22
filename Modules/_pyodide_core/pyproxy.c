@@ -33,22 +33,25 @@ module _pyodide_core
 #define IS_ITERATOR            (1 << 8)
 #define IS_MUTABLE_SEQUENCE    (1 << 9)
 #define IS_SEQUENCE            (1 << 10)
+#define IS_JS_JSON_DICT        (1 << 11)
+#define IS_JS_JSON_SEQUENCE    (1 << 12)
 
 
 PyAPI_FUNC(int) _PyGen_FetchStopIterationValue(PyObject **);
 
 
-EM_JS_VAL(JsVal, _PyProxy_New, (PyObject * ptrobj), {
+EM_JS_VAL(JsVal, _PyProxy_New, (PyObject *ptrobj), {
   return Module.pyproxy_new(ptrobj);
 });
 
 EM_JS_VAL(JsVal,
 _PyProxy_NewEx,
-(PyObject * ptrobj, bool capture_this, bool roundtrip, bool gcRegister),
+(PyObject *ptrobj, bool capture_this, bool roundtrip, bool gcRegister, bool jsonAdaptor),
 {
   return Module.pyproxy_new(ptrobj, {
     props: { captureThis: !!capture_this, roundtrip: !!roundtrip },
     gcRegister,
+    jsonAdaptor,
   });
 });
 
@@ -179,23 +182,40 @@ static int tuple_flags;
 static int list_flags;
 
 EMSCRIPTEN_KEEPALIVE int
-_PyProxy_getflags(PyObject* pyobj)
+_PyProxy_getflags(PyObject* pyobj, bool is_js_json)
 {
   // Fast paths for some common cases
   if (PyDict_CheckExact(pyobj)) {
     int result = dict_flags;
+    if (is_js_json) {
+      result |= IS_JS_JSON_DICT;
+    }
     return result;
   }
   if (PyTuple_CheckExact(pyobj)) {
     int result = tuple_flags;
+    if (is_js_json) {
+      result |= IS_JS_JSON_SEQUENCE;
+    }
     return result;
   }
   if (PyList_CheckExact(pyobj)) {
     int result = list_flags;
+    if (is_js_json) {
+      result |= IS_JS_JSON_SEQUENCE;
+    }
     return result;
   }
   PyTypeObject* obj_type = Py_TYPE(pyobj);
-  return type_getflags(obj_type);
+  int result = type_getflags(obj_type);
+  if (is_js_json) {
+    if (result & IS_SEQUENCE) {
+      result |= IS_JS_JSON_SEQUENCE;
+    } else if (result & HAS_GET) {
+      result |= IS_JS_JSON_DICT;
+    }
+  }
+  return result;
 }
 
 EMSCRIPTEN_KEEPALIVE int
@@ -248,6 +268,32 @@ _PyProxy_cache_set,
   proxyCache.set(descr, proxy);
 })
 // clang-format on
+
+/**
+ * Used by pyproxy_iter_next and pyproxy_get_item for handling json adaptors.
+ *
+ * If is_json_adaptor,
+ *  1. check json adaptor cache for x, if it's already there get existing value
+ *  2. If it's not already there, convert x. Add an appropriate json adaptor
+ *     type flag if x needs it.
+ *  3. Add result to proxy cache.
+ */
+static JsVal
+python2js_json_adaptor(PyObject* x, JsVal proxyCache, bool is_json_adaptor)
+{
+  if (!is_json_adaptor) {
+    return _Py_python2js(x);
+  }
+  JsVal cached_proxy = _PyProxy_cache_get(proxyCache, x); /* borrowed */
+  if (!_PyJsvError_Check(cached_proxy)) {
+    return cached_proxy;
+  }
+  JsVal result = _Py_python2js_options(x, JS_ERROR, (struct _python2js_options) { .track_proxies=false, .gc_register=true, .is_json_adaptor=is_json_adaptor});
+  if (_PyProxy_Check(result)) {
+    _PyProxy_cache_set(proxyCache, x, result);
+  }
+  return result;
+}
 
 EMSCRIPTEN_KEEPALIVE JsVal
 _PyProxy_getattr(PyObject* pyobj, JsVal key, JsVal proxyCache)
@@ -388,8 +434,10 @@ finally:
 
 
 EMSCRIPTEN_KEEPALIVE JsVal
-_PyProxy_getitem(PyObject* pyobj,
-                 JsVal jskey)
+_PyProxy_GetItem(PyObject* pyobj,
+                 JsVal jskey,
+                 JsVal proxyCache,
+                 bool is_json_adaptor)
 {
   bool success = false;
   PyObject* pykey = NULL;
@@ -400,7 +448,7 @@ _PyProxy_getitem(PyObject* pyobj,
   FAIL_IF_NULL(pykey);
   pyresult = PyObject_GetItem(pyobj, pykey);
   FAIL_IF_NULL(pyresult);
-  result = _Py_python2js(pyresult);
+  result = python2js_json_adaptor(pyresult, proxyCache, is_json_adaptor);
   FAIL_IF_JS_ERROR(result);
 
   success = true;
@@ -418,7 +466,7 @@ finally:
 }
 
 EMSCRIPTEN_KEEPALIVE int
-_PyProxy_setitem(PyObject* pyobj, JsVal jskey, JsVal jsval)
+_PyProxy_SetItem(PyObject* pyobj, JsVal jskey, JsVal jsval)
 {
   bool success = false;
   PyObject* pykey = NULL;
@@ -438,7 +486,7 @@ finally:
 }
 
 EMSCRIPTEN_KEEPALIVE int
-_PyProxy_delitem(PyObject* pyobj, JsVal idkey)
+_PyProxy_DelItem(PyObject* pyobj, JsVal idkey)
 {
   bool success = false;
   PyObject* pykey = NULL;
@@ -538,13 +586,13 @@ finally:
 }
 
 EMSCRIPTEN_KEEPALIVE JsVal
-_PyProxy_IterNext(PyObject* iterator)
+_PyProxy_IterNext(PyObject* iterator, JsVal proxyCache, bool is_json_adaptor)
 {
   PyObject* item = PyIter_Next(iterator);
   if (item == NULL) {
     return JS_ERROR;
   }
-  JsVal result = _Py_python2js(item);
+  JsVal result = python2js_json_adaptor(item, proxyCache, is_json_adaptor);
   Py_CLEAR(item);
   return result;
 }
@@ -752,7 +800,7 @@ _pyodide_core_create_proxy_impl(PyObject *module, PyObject *obj,
 {
   bool gc_register = true;
   return _PyJsProxy_create(
-    _PyProxy_NewEx(obj, capture_this, roundtrip, gc_register));
+    _PyProxy_NewEx(obj, capture_this, roundtrip, gc_register, false));
 }
 
 static PyMethodDef methods[] = {

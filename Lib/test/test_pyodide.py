@@ -127,7 +127,7 @@ class ConversionTest(TestCase):
             new Temp();
             """
         )
-        assert repr(type(a.to_py())) == "<class 'pyodide.ffi.JsProxy'>"
+        self.assertEqual(repr(type(a.to_py())), "<class 'pyodide.ffi.JsProxy'>")
 
     def test_to_py4(self):
         for obj, msg in [
@@ -312,13 +312,13 @@ class ConversionTest(TestCase):
         run_js("(o) => { o.f(); o.f.destroy(); }")(o)
 
     def test_create_proxy_roundtrip(self):
-        f = {}  # type: ignore[var-annotated]
+        f = {}
         o = run_js("({})")
         o.f = create_proxy(f, roundtrip=True)
-        assert o.f.unwrap() is f
+        self.assertIs(o.f.unwrap(), f)
         o.f.destroy()
         o.f = create_proxy(f, roundtrip=False)
-        assert o.f is f  # type: ignore[comparison-overlap]
+        self.assertIs(o.f, f)
         run_js("(o) => { o.f.destroy(); }")(o)
 
 class JsProxyTest(TestCase):
@@ -527,7 +527,7 @@ class JsProxyTest(TestCase):
     def test_js_proxy_array(self):
         a = Array.new()
         a.push(1)
-        assert a.to_py() == [1]
+        self.assertEqual(a.to_py(), [1])
 
     def test_array(self):
         pyl = [5, 1, 2, 3]
@@ -686,7 +686,7 @@ class JsProxyTest(TestCase):
         m[1] = 2
         self.assertEqual(m.pop(1, 7), 2)
         self.assertEqual(m.pop(1, 7), 7)
-        assert 1 not in m
+        self.assertNotIn(1, m)
         with self.assertRaises(KeyError):
             print("=====")
             m.pop(1)
@@ -1472,3 +1472,149 @@ class PyProxyTest(TestCase):
             self.assertIs(func(a), a)
             func(ajs)
             self.assertEqual(a, list(ajs))
+
+    def test_as_js_json_simple(self):
+        o = [1, 2, "x", "y"]
+
+        f = run_js("(o, x) => o.asJsJson()[x]")
+
+        self.assertEqual(f(o, 0), 1)
+        self.assertEqual(f(o, 1), 2)
+        self.assertEqual(f(o, 2), "x")
+        self.assertEqual(f(o, 3), "y")
+
+    def test_as_js_json_heritability1(self):
+        o = [1, 2, {"a": 3, "b": {"c": 4, "d": [1, {"c": 2}]}}]
+
+        f = run_js(
+            """
+            (o, l) =>  {
+                const o2 = o.asJsJson();
+                return l.reduce((x, y) => x[y], o2);
+            }
+            """
+        )
+
+        self.assertEqual(f(o, [0]), 1)
+        self.assertEqual(f(o, [1]), 2)
+        self.assertEqual(f(o, [2, "a"]), 3)
+        self.assertEqual(f(o, [2, "b", "c"]), 4)
+        self.assertEqual(f(o, [2, "b", "d", 0]), 1)
+        self.assertEqual(f(o, [2, "b", "d", 1, "c"]), 2)
+
+
+    def test_as_js_json_heritability2(self):
+        class T1:
+            a = {"x": 2}
+
+        class T2:
+            a = {"x": 2}
+
+            def __getitem__(self, key):
+                return {"y": 3}
+
+        o = [T1(), T2()]
+
+        f = run_js(
+            """
+            (o) => {
+                const x = o.asJsJson();
+                const x0 = x[0];
+                const x1 = x[1];
+                const x1a = x1.a;
+                return {
+                    x0,
+                    x1,
+                    xflags: x.$$flags,
+                    x0flags: x0.$$flags,
+                    x1flags: x1.$$flags,
+                    x0a: x0.a,
+                    x1a,
+                    x1ay: x1a.y,
+                };
+            }
+            """
+        )
+        res = f(o).to_py()
+        self.assertNotEqual(res["xflags"] & (1 << 12), 0)
+        self.assertEqual(res["x0flags"] & (1 << 11), 0)
+        self.assertNotEqual(res["x1flags"] & (1 << 11), 0)
+        self.assertEqual(res["x0a"], {"x": 2})
+        self.assertEqual(res["x1a"], {"y": 3})
+        self.assertEqual(res["x1ay"], 3)
+
+
+    def test_as_js_json_ownkeys(self):
+        o = {"c": 7, "x": 99, "z": 29}
+        f = run_js("(o) => Reflect.ownKeys(o.asJsJson())")
+        self.assertEqual(set(f(o)), set(o.keys()))
+
+        d = {
+            1: "int",
+            "1": "string",
+            2: "int",
+            "3": "string",
+            "items": "some value",
+            "$dollar": 8,
+            "$$dollar": 9,
+            (1, 2, 3): 12,
+        }
+        self.assertEqual(set(f(d)), {"$$dollar", "$dollar", "1", "2", "3", "items"})
+
+
+    def test_as_js_json_get(self):
+        o = {0: "a", "1": "b", "3c": 4}
+
+        self.assertIsNone(run_js("(o) => o.asJsJson()['']")(o))
+
+        self.assertEqual(run_js("(o) => o.asJsJson()[0]")(o), "a")
+        self.assertEqual(run_js("(o) => o.asJsJson()['0']")(o), "a")
+        self.assertEqual(run_js("(o) => o.asJsJson().get(0)")(o), "a")
+        self.assertIsNone(run_js("(o) => o.asJsJson().get('0')")(o))
+
+        self.assertEqual(run_js("(o) => o.asJsJson()[1]")(o), "b")
+        self.assertEqual(run_js("(o) => o.asJsJson()['1']")(o), "b")
+        self.assertIsNone(run_js("(o) => o.asJsJson().get(1)")(o))
+        self.assertEqual(run_js("(o) => o.asJsJson().get('1')")(o), "b")
+
+        self.assertEqual(run_js("(o) => o.asJsJson()['3c']")(o), 4)
+
+
+    def test_as_js_json_set(self):
+        o = {}
+
+        run_js(
+            """
+            (o) => {
+                x = o.asJsJson();
+                x.a = 1;
+                x[2] = 3;
+                x["4"] = 5;
+                x.b5 = "c";
+                x[""] = 6;
+            }
+            """
+        )(o)
+
+        self.assertEqual(o, {"a": 1, 2: 3, 4: 5, "b5": "c", "": 6})
+        self.assertNotIn("2", o)
+        self.assertNotIn("4", o)
+
+
+    def test_as_js_json_stringify(self):
+        self.skipTest("TODO: Fix me")
+        from json import loads
+
+        f = run_js("(o) => JSON.stringify(o.asJsJson())")
+
+        test_objects = [
+            [7],
+            [[7]],
+            {"c": 7},
+            {"c": [7]},
+            [1, {"c": 2}],
+            [1, 2, {"a": 3, "b": {"c": 4, "d": [1, {"c": 2}]}}],
+        ]
+
+        for o in test_objects:
+            self.assertEqual(loads(f(o)), o)
