@@ -174,9 +174,26 @@ finally:
 #undef SET_FLAG_IF
 }
 
+static int dict_flags;
+static int tuple_flags;
+static int list_flags;
+
 EMSCRIPTEN_KEEPALIVE int
 _PyProxy_getflags(PyObject* pyobj)
 {
+  // Fast paths for some common cases
+  if (PyDict_CheckExact(pyobj)) {
+    int result = dict_flags;
+    return result;
+  }
+  if (PyTuple_CheckExact(pyobj)) {
+    int result = tuple_flags;
+    return result;
+  }
+  if (PyList_CheckExact(pyobj)) {
+    int result = list_flags;
+    return result;
+  }
   PyTypeObject* obj_type = Py_TYPE(pyobj);
   return type_getflags(obj_type);
 }
@@ -759,6 +776,10 @@ _Py_pyproxy_init(PyObject* core)
   FAIL_IF_NULL(Sequence);
   MutableSequence = PyObject_GetAttrString(collections_abc, "MutableSequence");
   FAIL_IF_NULL(MutableSequence);
+
+  dict_flags = type_getflags(&PyDict_Type);
+  tuple_flags = type_getflags(&PyTuple_Type);
+  list_flags = type_getflags(&PyList_Type);
 
   success = true;
 finally:
