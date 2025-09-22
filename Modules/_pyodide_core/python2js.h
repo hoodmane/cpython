@@ -29,12 +29,12 @@ _Py_python2js_track_proxies(PyObject* x, JsVal proxies, bool gc_register);
  * python2js_with_depth which converts dicts to Map (the default)
  */
 JsVal
-_Py_python2js_custom(PyObject* x,
-                 int depth,
-                 JsVal proxies,
-                 JsVal dict_converter,
-                 JsVal default_converter,
-                 JsVal eager_converter);
+_Py_python2js_deep(PyObject* x,
+                   int depth,
+                   JsVal proxies,
+                   JsVal dict_converter,
+                   JsVal default_converter,
+                   JsVal eager_converter);
 
 
 int
