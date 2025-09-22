@@ -23,6 +23,15 @@ _Py_python2js(PyObject* x);
 JsVal
 _Py_python2js_track_proxies(PyObject* x, JsVal proxies, bool gc_register);
 
+struct _python2js_options {
+    bool track_proxies;
+    bool gc_register;
+    bool is_json_adaptor;
+};
+
+JsVal
+_Py_python2js_options(PyObject* x, JsVal proxies, struct _python2js_options options);
+
 /**
  * dict_converter should be a JavaScript function that converts an Iterable of
  * pairs into the desired JavaScript object. If dict_converter is NULL, we use

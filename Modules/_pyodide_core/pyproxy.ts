@@ -15,7 +15,7 @@ declare function _PyObject_GetIter(ptr: number): number;
 declare function __Py_pythonexc2js(): Error;
 declare function __PyProxy_type(ptr: number): string;
 declare function __PyProxy_str(ptr: number): string;
-declare function __PyProxy_getflags(ptr: number): number;
+declare function __PyProxy_getflags(ptr: number, is_json_adaptor: boolean): number;
 
 declare function __PyProxy_hasattr(ptr: number, key: any): number;
 declare function __PyProxy_getattr(ptr: number, key: any, cache: Map<string, any>): any;
@@ -24,9 +24,9 @@ declare function __PyProxy_delattr(ptr: number, key: any): number;
 declare function __PyProxy_ownKeys(ptr: number): (string | symbol)[];
 
 declare function __PyProxy_contains(ptr: number, key: any): number;
-declare function __PyProxy_getitem(ptr: number, key: any): any;
-declare function __PyProxy_setitem(ptr: number, key: any, val: any): number;
-declare function __PyProxy_delitem(ptr: number, key: any): number;
+declare function __PyProxy_GetItem(ptr: number, key: any, cache: Map<string, any>, is_json_adaptor: boolean): any;
+declare function __PyProxy_SetItem(ptr: number, key: any, val: any): number;
+declare function __PyProxy_DelItem(ptr: number, key: any): number;
 declare function __PyProxy_apply(
   ptr: number,
   jsargs: any[],
@@ -34,7 +34,7 @@ declare function __PyProxy_apply(
   kwargs_names: string[],
   num_kwargs: number,
 ): any;
-declare function __PyProxy_IterNext(ptr: number): any;
+declare function __PyProxy_IterNext(ptr: number, cache: Map<string, any>, is_json_adaptor: boolean,): any;
 declare function __PyProxyGen_Send(ptr: number, arg: any): IteratorResult<any>;
 declare function __PyProxyGen_Return(ptr: number, arg: any): IteratorResult<any>;
 declare function __PyProxyGen_Throw(ptr: number, arg: any): IteratorResult<any>;
@@ -64,6 +64,8 @@ declare var IS_ITERABLE: number;
 declare var IS_ITERATOR: number;
 declare var IS_SEQUENCE: number;
 declare var IS_MUTABLE_SEQUENCE: number;
+declare var IS_JS_JSON_DICT: number;
+declare var IS_JS_JSON_SEQUENCE: number;
 
 declare function DEREF_U32(ptr: number, offset: number): number;
 declare function Py_ENTER(): void;
@@ -138,10 +140,10 @@ type PyProxyAttrs = {
 
 const pyproxyAttrsSymbol = Symbol("pyproxy.attrs");
 
-function pyproxy_getflags(ptrobj: number) {
+function pyproxy_getflags(ptrobj: number, is_json_adaptor: boolean) {
   Py_ENTER();
   try {
-    return __PyProxy_getflags(ptrobj);
+    return __PyProxy_getflags(ptrobj, is_json_adaptor);
   } finally {
     Py_EXIT();
   }
@@ -174,23 +176,26 @@ function pyproxy_new(
     shared,
     cache,
     gcRegister,
+    jsonAdaptor,
   }: {
     flags?: number;
     cache?: PyProxyCache;
     shared?: PyProxyShared;
     props?: any;
     gcRegister?: boolean;
+    jsonAdaptor?: boolean;
   } = {},
 ): PyProxy {
   if (gcRegister === undefined) {
     // register by default
     gcRegister = true;
   }
-  const flags = flags_arg !== undefined ? flags_arg : pyproxy_getflags(ptr);
+  const flags = flags_arg !== undefined ? flags_arg : pyproxy_getflags(ptr, !!jsonAdaptor);
   if (flags === -1) {
     throw __Py_pythonexc2js();
   }
   const is_sequence = flags & IS_SEQUENCE;
+  const is_dict_adaptor = flags & IS_JS_JSON_DICT;
   const is_dict = flags & IS_DICT;
   const cls = getPyProxyClass(flags);
   let target: any;
@@ -239,7 +244,9 @@ function pyproxy_new(
     props,
   );
   let handlers;
-  if (is_dict) {
+  if (is_dict_adaptor) {
+    handlers = PyProxyJsonAdaptorDictHandlers;
+  } else if (is_dict) {
     handlers = PyProxyDictHandlers;
   } else if (is_sequence) {
     handlers = PyProxySequenceHandlers;
@@ -291,6 +298,13 @@ function _getFlags(jsobj: any): number {
   return Object.getPrototypeOf(jsobj).$$flags;
 }
 
+function isJsJson(jsobj: any): boolean {
+  return !!(
+    _getFlags(jsobj) &
+    (IS_JS_JSON_SEQUENCE | IS_JS_JSON_DICT)
+  );
+}
+
 let pyproxyClassMap = new Map();
 /**
  * Retrieve the appropriate mixins based on the features requested in flags.
@@ -325,6 +339,12 @@ function getPyProxyClass(flags: number) {
         Object.getOwnPropertyDescriptors(methods.prototype),
       );
     }
+  }
+  if (flags & IS_SEQUENCE || flags & HAS_GET) {
+    Object.assign(
+      descriptors,
+      Object.getOwnPropertyDescriptors(PyAsJsonAdaptorMethods.prototype),
+    );
   }
   // Use base constructor (just throws an error if construction is attempted).
   descriptors.constructor = Object.getOwnPropertyDescriptor(
@@ -600,6 +620,23 @@ const PyProxyHandlers = {
   },
 };
 
+class PyAsJsonAdaptorMethods {
+  asJsJson() {
+    let { shared, props } = _getAttrs(this);
+    let flags = _getFlags(this);
+    if (flags & IS_SEQUENCE) {
+      flags |= IS_JS_JSON_SEQUENCE;
+    } else {
+      flags |= IS_JS_JSON_DICT;
+    }
+    return pyproxy_new(shared.ptr, {
+      shared,
+      flags,
+      props,
+    });
+  }
+}
+
 
 
 const PyProxyDictHandlersSet = new Set([
@@ -688,7 +725,7 @@ const PyProxySequenceHandlers = {
   },
 };
 
-const PyProxyDictHandlers = {
+const PyProxyJsonAdaptorDictHandlers = {
   isExtensible(): boolean {
     return true;
   },
@@ -702,10 +739,6 @@ const PyProxyDictHandlers = {
     return false;
   },
   get(jsobj: PyProxy, jskey: string | symbol): any {
-    let result = PyProxyHandlers.get(jsobj, jskey);
-    if (result !== undefined || PyProxyHandlers.has(jsobj, jskey)) {
-      return result;
-    }
     if (
       typeof jskey === "symbol" ||
       PyProxyDictHandlersSet.has(jskey)
@@ -713,7 +746,7 @@ const PyProxyDictHandlers = {
       // @ts-ignore
       return Reflect.get(...arguments);
     }
-    result = PyGetItemMethods.prototype.get.call(jsobj, jskey);
+    const result = PyGetItemMethods.prototype.get.call(jsobj, jskey);
     if (
       result !== undefined ||
       PyContainsMethods.prototype.has.call(jsobj, jskey)
@@ -769,10 +802,10 @@ const PyProxyDictHandlers = {
     }
   },
   getOwnPropertyDescriptor(jsobj: PyProxy, prop: any) {
-    if (!PyProxyDictHandlers.has(jsobj, prop)) {
+    if (!PyProxyJsonAdaptorDictHandlers.has(jsobj, prop)) {
       return undefined;
     }
-    const value = PyProxyDictHandlers.get(jsobj, prop);
+    const value = PyProxyJsonAdaptorDictHandlers.get(jsobj, prop);
     return {
       configurable: true,
       enumerable: true,
@@ -782,6 +815,48 @@ const PyProxyDictHandlers = {
   },
   ownKeys(jsobj: PyProxy): (string | symbol)[] {
     const result: Set<string | symbol> = new Set();
+    dictOwnKeysHelper(jsobj, result);
+    return Array.from(result);
+  },
+};
+
+const PyProxyDictHandlers = {
+  isExtensible(): boolean {
+    return true;
+  },
+  has(jsobj: PyProxy, jskey: string | symbol): boolean {
+    if (PyProxyHandlers.has(jsobj, jskey)) {
+      return true;
+    }
+    return PyProxyJsonAdaptorDictHandlers.has(jsobj, jskey);
+  },
+  get(jsobj: PyProxy, jskey: string | symbol): any {
+    let result = PyProxyHandlers.get(jsobj, jskey);
+    if (result !== undefined || PyProxyHandlers.has(jsobj, jskey)) {
+      return result;
+    }
+    return PyProxyJsonAdaptorDictHandlers.get(jsobj, jskey);
+  },
+  set(jsobj: PyProxy, jskey: string | symbol, jsval: any): boolean {
+    if (PyProxyHandlers.has(jsobj, jskey)) {
+      return PyProxyHandlers.set(jsobj, jskey, jsval);
+    }
+    return PyProxyJsonAdaptorDictHandlers.set(jsobj, jskey, jsval);
+  },
+  deleteProperty(jsobj: PyProxy, jskey: string | symbol): boolean {
+    if (PyProxyHandlers.has(jsobj, jskey)) {
+      return PyProxyHandlers.deleteProperty(jsobj, jskey);
+    }
+    return PyProxyJsonAdaptorDictHandlers.deleteProperty(jsobj, jskey);
+  },
+  getOwnPropertyDescriptor(jsobj: PyProxy, prop: any) {
+    return (
+      Reflect.getOwnPropertyDescriptor(jsobj, prop) ??
+      PyProxyJsonAdaptorDictHandlers.getOwnPropertyDescriptor(jsobj, prop)
+    );
+  },
+  ownKeys(jsobj: PyProxy): (string | symbol)[] {
+    const result = new Set(PyProxyHandlers.ownKeys(jsobj));
     dictOwnKeysHelper(jsobj, result);
     return Array.from(result);
   },
@@ -935,9 +1010,11 @@ export class PyGetItemMethods {
     try {
       Py_ENTER();
       // Cache is only used if isJsonAdaptor is true.
-      result = __PyProxy_getitem(
+      result = __PyProxy_GetItem(
         shared.ptr,
         key,
+        shared.cache.json_adaptor_map,
+        isJsJson(this),
       );
       Py_EXIT();
     } catch (e) {
@@ -1003,7 +1080,7 @@ class PySetItemMethods {
     let err;
     try {
       Py_ENTER();
-      err = __PyProxy_setitem(ptrobj, key, value);
+      err = __PyProxy_SetItem(ptrobj, key, value);
       Py_EXIT();
     } catch (e) {
       API.fatal_error(e);
@@ -1022,7 +1099,7 @@ class PySetItemMethods {
     let err;
     try {
       Py_ENTER();
-      err = __PyProxy_delitem(ptrobj, key);
+      err = __PyProxy_DelItem(ptrobj, key);
       Py_EXIT();
     } catch (e) {
       API.fatal_error(e);
@@ -1281,12 +1358,14 @@ function callPyObject(ptrobj: number, jsargs: any) {
 function* iter_helper(
   iterptr: number,
   token: {},
+  proxyCache: Map<string, any>,
+  is_json_adaptor: boolean,
 ): Generator<any> {
   const to_destroy = [];
   try {
     while (true) {
       Py_ENTER();
-      const item = __PyProxy_IterNext(iterptr);
+      const item = __PyProxy_IterNext(iterptr, proxyCache, is_json_adaptor);
       Py_EXIT();
       if (item === Module.error) {
         break;
@@ -1439,6 +1518,8 @@ export class PyIterableMethods {
     let result = iter_helper(
       iterptr,
       token,
+      shared.cache.json_adaptor_map,
+      isJsJson(this),
     );
     Module.finalizationRegistry.register(result, [iterptr, undefined], token);
     return result;

@@ -526,7 +526,7 @@ finally:
  *
  */
 static JsVal
-python2js_inner(PyObject* x, JsVal proxies, bool track_proxies, bool gc_register)
+python2js_inner(PyObject* x, JsVal proxies, bool track_proxies, bool gc_register, bool is_json_adaptor)
 {
   RETURN_IF_HAS_VALUE(_python2js_immutable(x));
   RETURN_IF_HAS_VALUE(_python2js_proxy(x));
@@ -534,7 +534,7 @@ python2js_inner(PyObject* x, JsVal proxies, bool track_proxies, bool gc_register
     PyErr_SetString(PyExc_ValueError, "No conversion known for x.");
     FAIL();
   }
-  JsVal proxy = _PyProxy_NewEx(x, false, false, gc_register);
+  JsVal proxy = _PyProxy_NewEx(x, false, false, gc_register, is_json_adaptor);
   FAIL_IF_JS_ERROR(proxy);
   if (track_proxies) {
     _PyJsvArray_Push(proxies, proxy);
@@ -563,7 +563,12 @@ finally:
 JsVal
 _Py_python2js_track_proxies(PyObject* x, JsVal proxies, bool gc_register)
 {
-  return python2js_inner(x, proxies, true, gc_register);
+  return python2js_inner(x, proxies, true, gc_register, false);
+}
+
+JsVal
+_Py_python2js_options(PyObject* x, JsVal proxies, struct _python2js_options options) {
+  return python2js_inner(x, proxies, options.track_proxies, options.gc_register, options.is_json_adaptor);
 }
 
 /**
@@ -573,7 +578,7 @@ _Py_python2js_track_proxies(PyObject* x, JsVal proxies, bool gc_register)
 EMSCRIPTEN_KEEPALIVE JsVal
 _Py_python2js(PyObject* x)
 {
-  return python2js_inner(x, JS_ERROR, false, true);
+  return python2js_inner(x, JS_ERROR, false, true, false);
 }
 
 // taking function pointers to EM_JS functions leads to linker errors.

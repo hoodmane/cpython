@@ -9,7 +9,8 @@ JsVal
 _PyProxy_NewEx(PyObject* obj,
                bool capture_this,
                bool roundtrip,
-               bool register);
+               bool register,
+               bool is_json_adaptor);
 
 int
 _PyProxy_Check(JsVal);
