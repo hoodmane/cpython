@@ -1,10 +1,9 @@
 from unittest import TestCase
 from _pyodide_core import js_flags
-from pyodide.ffi import jsnull, to_js, destroy_proxies, create_proxy
+from pyodide.ffi import jsnull, to_js, destroy_proxies, create_proxy, JsError
 from pyodide.code import run_js
+from js import Array
 
-JsError = type(run_js("new Error()"))
-Array = run_js("Array")
 
 
 class ConversionTest(TestCase):
@@ -185,8 +184,7 @@ class ConversionTest(TestCase):
 
     def test_to_js_default_converter(self):
         import json
-
-        JSON = run_js("JSON")
+        from js import JSON
 
         class Pair:
             __slots__ = ("first", "second")
@@ -386,7 +384,7 @@ class JsProxyTest(TestCase):
         self.assertEqual(f(o), 10)
 
     def test_jsproxy_construct(self):
-        URL = run_js("URL")
+        from js import URL
         with self.assertRaises(JsError):
             URL("http://example.com")
         r = URL.new("http://example.com/a/b?c=2")
@@ -1619,3 +1617,11 @@ class PyProxyTest(TestCase):
 
         for o in test_objects:
             self.assertEqual(loads(f(o)), o)
+
+    def test_js_import(self):
+        run_js("globalThis.a = { b : { c : { d : 2 } } }");
+        from js.a.b import c
+        self.assertEqual(c.d, 2)
+        # Make sure we haven't added __loader__, __name__, __package__, __path__, __spec__
+        # to the JS object
+        self.assertEqual(run_js("Reflect.ownKeys(a)").to_py(), ["b"])
