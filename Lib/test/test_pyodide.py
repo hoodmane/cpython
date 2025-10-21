@@ -1,6 +1,7 @@
 from unittest import TestCase
-from _pyodide_core import run_js, to_js, destroy_proxies, create_proxy, js_flags
-from _pyodide import jsnull
+from _pyodide_core import js_flags
+from pyodide.ffi import jsnull, to_js, destroy_proxies, create_proxy
+from pyodide.code import run_js
 
 JsError = type(run_js("new Error()"))
 Array = run_js("Array")
