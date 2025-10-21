@@ -1,7 +1,23 @@
 from unittest import TestCase
-from _pyodide_core import js_flags
-from pyodide.ffi import jsnull, to_js, destroy_proxies, create_proxy, JsError
+from pyodide.ffi import (
+    jsnull,
+    to_js,
+    destroy_proxies,
+    create_proxy,
+    JsException,
+    JsArray,
+    JsCallable,
+    JsDoubleProxy,
+    JsException,
+    JsGenerator,
+    JsIterable,
+    JsIterator,
+    JsMap,
+    JsMutableMap,
+)
+from collections.abc import Iterable, Iterator, Mapping, MutableMapping, MutableSequence, Generator, Callable
 from pyodide.code import run_js
+from _pyodide import js_flags
 from js import Array
 
 
@@ -9,7 +25,7 @@ from js import Array
 class ConversionTest(TestCase):
     def test_run_js(self):
         self.assertEqual(run_js("3 + 4"), 7)
-        with self.assertRaisesRegex(JsError, "Error: Hi!"):
+        with self.assertRaisesRegex(JsException, "Error: Hi!"):
             run_js("throw new Error('Hi!')")
 
     def test_jsproxy_call(self):
@@ -145,7 +161,7 @@ class ConversionTest(TestCase):
             ("Set([1, true])", "contains both 1 and true"),
         ]:
             a = run_js(f"new {obj}")
-            with self.assertRaisesRegex(JsError, msg):
+            with self.assertRaisesRegex(JsException, msg):
                 a.to_py()
 
     def test_to_py_default_converter(self):
@@ -209,7 +225,7 @@ class ConversionTest(TestCase):
 
         self.assertEqual(json.loads(JSON.stringify(p1js)), [1, 2])
 
-        with self.assertRaisesRegex(JsError, "TypeError"):
+        with self.assertRaisesRegex(JsException, "TypeError"):
             JSON.stringify(p2js)
 
         self.assertTrue(run_js("(x) => x[0] === x")(p2js))
@@ -385,7 +401,7 @@ class JsProxyTest(TestCase):
 
     def test_jsproxy_construct(self):
         from js import URL
-        with self.assertRaises(JsError):
+        with self.assertRaises(JsException):
             URL("http://example.com")
         r = URL.new("http://example.com/a/b?c=2")
         self.assertEqual(r.origin, "http://example.com")
@@ -428,7 +444,7 @@ class JsProxyTest(TestCase):
 
         try:
             f()
-        except JsError as e:
+        except JsException as e:
             err = e
         else:
             self.fail()
@@ -737,6 +753,49 @@ class JsProxyTest(TestCase):
         l = [e["b"] for e in a]
         self.assertEqual(l, [1, 3, 7])
 
+    def test_instance_checks(self):
+        assert isinstance(run_js("[]"), JsArray)
+        assert isinstance(run_js("[]"), MutableSequence)
+        assert issubclass(JsArray, MutableSequence)
+
+        assert isinstance(run_js("new Map()"), JsMutableMap)
+        assert isinstance(run_js("new Map()"), MutableMapping)
+        assert issubclass(JsMutableMap, MutableMapping)
+
+        assert isinstance(run_js("new Error()"), JsException)
+        assert isinstance(run_js("new Error()"), Exception)
+        assert issubclass(JsException, Exception)
+
+        assert isinstance(run_js("(() => {})"), JsCallable)
+        assert isinstance(run_js("(() => {})"), Callable)
+        assert isinstance(JsCallable, Callable)
+
+        assert isinstance(run_js("(function*(){})()"), JsGenerator)
+        assert isinstance(run_js("(function*(){})()"), Generator)
+        assert issubclass(JsGenerator, Generator)
+        assert issubclass(JsGenerator, JsIterator)
+
+        assert isinstance(run_js("({next(){}})"), JsIterator)
+        assert isinstance(run_js("({next(){}})"), Iterator)
+        assert issubclass(JsIterator, Iterator)
+
+        assert isinstance(run_js("({[Symbol.iterator](){}})"), JsIterable)
+        assert isinstance(run_js("({[Symbol.iterator](){}})"), Iterable)
+        assert issubclass(JsIterable, Iterable)
+
+        jsmap = run_js("({get(){}, size: 5, [Symbol.iterator](){}})")
+        assert isinstance(jsmap, JsMap)
+        assert not isinstance(jsmap, JsMutableMap)
+        assert isinstance(jsmap, Mapping)
+        assert not isinstance(jsmap, MutableMapping)
+        assert issubclass(JsMap, Mapping)
+        assert issubclass(JsMap, JsIterable)
+        assert issubclass(JsMutableMap, JsMap)
+
+        p = create_proxy({})
+        assert isinstance(p, JsDoubleProxy)
+        p.destroy()
+
 
 class PyProxyTest(TestCase):
     def test_pyproxy(self):
@@ -843,7 +902,7 @@ class PyProxyTest(TestCase):
         )
 
         with self.assertRaisesRegex(
-            JsError, "TypeError: callKwargs requires at least one argument"
+            JsException, "TypeError: callKwargs requires at least one argument"
         ):
             run_js("(f) => f.callKwargs()")(f)
 
@@ -1007,7 +1066,7 @@ class PyProxyTest(TestCase):
             }
         """
         )
-        with self.assertRaisesRegex(JsError, "hi"):
+        with self.assertRaisesRegex(JsException, "hi"):
             p(g1())
 
         def g2():

@@ -120,6 +120,8 @@ _Static_assert(sizeof(PyBaseExceptionObject) ==
 
 static PyObject* collections_abc;
 static PyObject* MutableMapping;
+static PyObject* JsProxy_metaclass;
+
 
 static PyObject*
 JsProxy_create_pyjson(JsVal object, bool pyjson);
@@ -2629,6 +2631,7 @@ skip_container_slots:
     result = PyType_FromSpecWithBases(&spec, bases);
   }
   FAIL_IF_NULL(result);
+  Py_SET_TYPE(result, (PyTypeObject*)JsProxy_metaclass);
 
   flags_obj = PyLong_FromLong(flags);
   FAIL_IF_NULL(flags_obj);
@@ -2838,6 +2841,14 @@ _Py_jsproxy_init(PyObject* core_module)
 {
   bool success = false;
   PyObject* flag_dict = NULL;
+  PyObject* JsException = NULL;
+  PyObject* _pyodide = NULL;
+
+  _pyodide = PyImport_ImportModule("_pyodide");
+  FAIL_IF_NULL(_pyodide);
+  JsProxy_metaclass =
+    PyObject_GetAttrString(_pyodide, "_JsProxyMetaClass");
+  FAIL_IF_NULL(JsProxy_metaclass);
 
   FAIL_IF_MINUS_ONE(PyType_Ready(&JsProxyType));
   JsProxy_TypeDict = PyDict_New();
@@ -2850,7 +2861,7 @@ _Py_jsproxy_init(PyObject* core_module)
   MutableMapping = PyObject_GetAttr(collections_abc, &_Py_ID(MutableMapping));
   FAIL_IF_NULL(MutableMapping);
 
-  flag_dict = PyDict_New();
+  flag_dict = PyObject_GetAttrString(_pyodide, "js_flags");
   FAIL_IF_NULL(flag_dict);
 
 #define AddFlag(flag) FAIL_IF_MINUS_ONE(add_flag(flag_dict, #flag, flag))
@@ -2871,11 +2882,16 @@ _Py_jsproxy_init(PyObject* core_module)
   AddFlag(IS_PY_JSON_SEQUENCE);
 
 #undef AddFlag
-  FAIL_IF_MINUS_ONE(PyObject_SetAttrString(core_module, "js_flags", flag_dict));
 
+
+  JsException = (PyObject*)JsProxy_get_subtype(IS_ERROR);
+  FAIL_IF_NULL(JsException);
+  FAIL_IF_MINUS_ONE(
+    PyObject_SetAttrString(core_module, "JsException", JsException));
 
   success = true;
 finally:
   Py_CLEAR(flag_dict);
+  Py_CLEAR(JsException);
   return success ? 0 : -1;
 }

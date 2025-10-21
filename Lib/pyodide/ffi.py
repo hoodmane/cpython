@@ -1,8 +1,19 @@
-from _pyodide import jsnull
-from _pyodide_core import to_js, destroy_proxies, create_proxy, run_js as _run_js
+from _pyodide import jsnull, JsProxy, JsDoubleProxy, JsIterator, JsIterable, JsGenerator, JsCallable, JsArray, JsMap, JsMutableMap
+from _pyodide_core import to_js, destroy_proxies, create_proxy, JsException
 
-JsProxy = type(_run_js("({})"))
-JsError = type(_run_js("new Error()"))
-
-
-__all__ = ["jsnull", "create_proxy", "destroy_proxies", "to_js", "JsProxy", "JsError"]
+__all__ = [
+    "create_proxy",
+    "destroy_proxies",
+    "jsnull",
+    "to_js",
+    "JsArray",
+    "JsCallable",
+    "JsDoubleProxy",
+    "JsException",
+    "JsGenerator",
+    "JsIterable",
+    "JsIterator",
+    "JsMap",
+    "JsMutableMap"
+    "JsProxy",
+]
