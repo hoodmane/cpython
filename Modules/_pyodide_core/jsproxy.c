@@ -283,7 +283,6 @@ _PyJsProxy_SetAttr_js,
   let jskey = normalizeReservedWords(UTF8ToString(ptrkey));
   jsobj[jskey] = jsval;
 });
-// clang-format on
 
 EM_JS_NUM(int, _PyJsProxy_DelAttr_js, (JsVal jsobj, const char* ptrkey), {
   let jskey = normalizeReservedWords(UTF8ToString(ptrkey));
@@ -291,8 +290,7 @@ EM_JS_NUM(int, _PyJsProxy_DelAttr_js, (JsVal jsobj, const char* ptrkey), {
 });
 
 /**
- * setattr / delttr overload. TODO: Raise an error if the attribute exists on
- * the proxy.
+ * setattr / delattr overload.
  */
 static int
 JsProxy_SetAttr(PyObject* self, PyObject* attr, PyObject* pyvalue)
@@ -325,7 +323,6 @@ finally:
 }
 
 EM_JS_BOOL(bool, _PyJsProxy_Bool_js, (JsVal val), {
-  // clang-format off
   if (!val) {
     return false;
   }
@@ -346,7 +343,6 @@ EM_JS_BOOL(bool, _PyJsProxy_Bool_js, (JsVal val), {
     return false;
   }
   return true;
-  // clang-format on
 });
 
 EM_JS_VAL(JsVal, _PyJsProxy_Dir_js, (JsVal jsobj), {
