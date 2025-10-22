@@ -835,7 +835,6 @@ _pyodide_core_JsGenerator_close_impl(PyObject *self)
 // A helper method for jsproxy_subscript.
 EM_JS_VAL(JsVal, _PyJsProxy_subscript_js, (JsVal obj, JsVal key), {
   let result = obj.get(key);
-  // clang-format off
   if (result === undefined) {
     // Try to distinguish between undefined and missing:
     // If the object has a "has" method and it returns false for this key, the
@@ -845,7 +844,6 @@ EM_JS_VAL(JsVal, _PyJsProxy_subscript_js, (JsVal obj, JsVal key), {
       return Module.error;
     }
   }
-  // clang-format on
   return result;
 });
 
@@ -2056,7 +2054,6 @@ _pyodide_core_JsException___reduce___impl(PyObject *self)
 /*[clinic end generated code: output=e18df4ef67cb9ddf input=01774b928904de24]*/
 {
   // Record name, message, and stack.
-  // See _core_docs.JsException._new_exc where the unpickling will happen.
   PyObject* res = NULL;
   PyObject* args = NULL;
   PyObject* name = NULL;

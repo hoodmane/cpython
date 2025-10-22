@@ -793,16 +793,21 @@ class JsProxyTest(TestCase):
         self.assertEqual(l, [1, 3, 7])
 
     def test_instance_checks(self):
-        assert isinstance(run_js("[]"), JsArray)
-        assert isinstance(run_js("[]"), MutableSequence)
+        jsarray = run_js("[]")
+        assert isinstance(jsarray, JsArray)
+        assert isinstance(jsarray, MutableSequence)
         assert issubclass(JsArray, MutableSequence)
+        assert issubclass(type(jsarray), MutableSequence)
 
-        assert isinstance(run_js("new Map()"), JsMutableMap)
-        assert isinstance(run_js("new Map()"), MutableMapping)
+        jsmap = run_js("new Map()")
+        assert isinstance(jsmap, JsMutableMap)
+        assert isinstance(jsmap, MutableMapping)
         assert issubclass(JsMutableMap, MutableMapping)
+        assert issubclass(type(jsmap), MutableMapping)
 
-        assert isinstance(run_js("new Error()"), JsException)
-        assert isinstance(run_js("new Error()"), Exception)
+        jserror = run_js("new Error()")
+        assert isinstance(jserror, JsException)
+        assert isinstance(jserror, Exception)
         assert issubclass(JsException, Exception)
 
         assert isinstance(run_js("(() => {})"), JsCallable)
