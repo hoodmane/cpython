@@ -50,6 +50,27 @@ class ConversionTest(TestCase):
         with self.assertRaisesRegex(JsException, m):
             run_js("y.toString()")
 
+    def test_jsproxy_generator_send(self):
+        gen = run_js(
+            """
+            (function*() {
+                globalThis.x = yield;
+                console.log(x.toString());
+                yield x.toString();
+            })
+            """
+        )()
+        self.assertEqual(next(gen), None)
+        d = {}
+        self.assertEqual(gen.send(d), "{}")
+        self.assertEqual(run_js("x.toString()"), "{}")
+
+        with self.assertRaises(StopIteration):
+            next(gen)
+        m = "This borrowed proxy was automatically destroyed when a generator completed execution."
+        with self.assertRaisesRegex(JsException, m):
+            run_js("x.toString()")
+
     def test_python2js(self):
         self.assertTrue(run_js("(x) => x === 7")(7))
         self.assertTrue(run_js("(x) => x === 2.3")(2.3))

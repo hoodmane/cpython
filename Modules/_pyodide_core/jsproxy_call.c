@@ -132,20 +132,20 @@ _PyJsMethod_Vectorcall_impl(JsVal func,
   bool success = false;
   JsVal jsresult = JS_ERROR;
   PyObject* pyresult = NULL;
-  JsVal proxies = _PyJsvArray_New();
-  bool destroy_args = false;
+  JsVal pyproxies = _PyJsvArray_New();
+  bool destroy_args = true;
 
   // Recursion error?
   FAIL_IF_NONZERO(Py_EnterRecursiveCall(" while calling a JavaScript object"));
   JsVal jsargs =
-    JsMethod_ConvertArgs(pyargs, nargsf, kwnames, proxies);
+    JsMethod_ConvertArgs(pyargs, nargsf, kwnames, pyproxies);
   FAIL_IF_JS_ERROR(jsargs);
   jsresult = _PyJsvFunction_CallBound(func, receiver, jsargs);
   FAIL_IF_JS_ERROR(jsresult);
   bool is_generator = _PyJsvGenerator_Check(jsresult);
   destroy_args = !is_generator;
   if (is_generator) {
-    jsresult = _Py_wrap_generator(jsresult, proxies);
+    jsresult = _Py_wrap_generator(jsresult, pyproxies);
   }
   pyresult = _Py_js2python(jsresult);
   FAIL_IF_NULL(pyresult);
@@ -158,9 +158,9 @@ finally:
     Py_CLEAR(pyresult);
   }
   if (destroy_args) {
-    destroy_proxies(jsresult, proxies);
+    destroy_proxies(jsresult, pyproxies);
   } else {
-    _Py_gc_register_pyproxies(proxies);
+    _Py_gc_register_pyproxies(pyproxies);
   }
   return pyresult;
 }
