@@ -32,6 +32,13 @@ class ConversionTest(TestCase):
         res = run_js("(x, y) => x + y")(1, 9)
         self.assertEqual(res, 10)
 
+    def test_jsproxy_call_destroyed(self):
+        d = {}
+        run_js("(x) => {globalThis.x = x}")(d)
+        m = "This borrowed proxy was automatically destroyed at the end of a function call."
+        with self.assertRaisesRegex(JsException, m):
+            run_js("x.toString()")
+
     def test_python2js(self):
         self.assertTrue(run_js("(x) => x === 7")(7))
         self.assertTrue(run_js("(x) => x === 2.3")(2.3))
