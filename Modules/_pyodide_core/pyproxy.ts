@@ -261,7 +261,7 @@ function pyproxy_new(
     // $$, but we can't use $$ itself as the held object since that would keep
     // $$ from being gc'd ever. So we make a copy. To prevent double free, we
     // have to be careful to unregister when we destroy.
-    // gc_register_proxy(shared);
+    gc_register_proxy(shared);
   }
   const attrs = { shared, props };
   target[pyproxyAttrsSymbol] = attrs;
@@ -279,7 +279,7 @@ Module.gc_register_proxy = gc_register_proxy;
 function _getAttrsQuiet(jsobj: any): PyProxyAttrs {
   return jsobj[pyproxyAttrsSymbol];
 }
-Module.PyProxy_getAttrsQuiet = _getAttrsQuiet;
+API.PyProxy_getAttrsQuiet = _getAttrsQuiet;
 function _getAttrs(jsobj: any): PyProxyAttrs {
   const attrs = _getAttrsQuiet(jsobj);
   if (!attrs.shared.ptr) {

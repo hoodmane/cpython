@@ -1,6 +1,7 @@
 #ifndef JSLIB_H
 #define JSLIB_H
 
+#include <stdbool.h>
 #include <sys/types.h>
 #include <hiwire.h>
 #include <emscripten.h>
@@ -131,6 +132,9 @@ _PyJsvObject_CallMethodId_TwoArgs(JsVal obj, Js_Identifier* name_id, JsVal arg1,
 
 bool
 _PyJsvFunction_Check(JsVal obj);
+
+bool
+_PyJsvGenerator_Check(JsVal obj);
 
 JsVal
 _PyJsvFunction_CallBound(JsVal func, JsVal this, JsVal args);

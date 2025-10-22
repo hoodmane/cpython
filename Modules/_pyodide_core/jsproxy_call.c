@@ -76,6 +76,49 @@ destroy_proxies(JsVal jsval, JsVal proxies)
   _Py_destroy_proxies(proxies, &PYPROXY_DESTROYED_AT_END_OF_FUNCTION_CALL);
 }
 
+EM_JS_VAL(JsVal, _Py_wrap_generator, (JsVal gen, JsVal proxies), {
+  proxies = new Set(proxies);
+  const msg =
+    "This borrowed proxy was automatically destroyed " +
+    "when a generator completed execution. Try " +
+    "using create_proxy or create_once_callable.";
+  function cleanup() {
+    proxies.forEach((px) => Module.pyproxy_destroy(px, msg));
+  }
+  function wrap(funcname) {
+    return function (val) {
+      if(API.isPyProxy(val)) {
+        val = val.copy();
+        proxies.add(val);
+      }
+      let res;
+      try {
+        res = gen[funcname](val);
+      } catch (e) {
+        cleanup();
+        throw e;
+      }
+      if (res.done) {
+        // Don't destroy the return value!
+        proxies.delete(res.value);
+        cleanup();
+      }
+      return res;
+    };
+  }
+  return {
+    get [Symbol.toStringTag]() {
+      return "Generator";
+    },
+    [Symbol.iterator]() {
+      return this;
+    },
+    next: wrap("next"),
+    throw: wrap("throw"),
+    return: wrap("return"),
+  };
+});
+
 /**
  * __call__ overload for methods. Controlled by IS_CALLABLE.
  */
@@ -90,6 +133,7 @@ _PyJsMethod_Vectorcall_impl(JsVal func,
   JsVal jsresult = JS_ERROR;
   PyObject* pyresult = NULL;
   JsVal proxies = _PyJsvArray_New();
+  bool destroy_args = false;
 
   // Recursion error?
   FAIL_IF_NONZERO(Py_EnterRecursiveCall(" while calling a JavaScript object"));
@@ -98,8 +142,14 @@ _PyJsMethod_Vectorcall_impl(JsVal func,
   FAIL_IF_JS_ERROR(jsargs);
   jsresult = _PyJsvFunction_CallBound(func, receiver, jsargs);
   FAIL_IF_JS_ERROR(jsresult);
+  bool is_generator = _PyJsvGenerator_Check(jsresult);
+  destroy_args = !is_generator;
+  if (is_generator) {
+    jsresult = _Py_wrap_generator(jsresult, proxies);
+  }
   pyresult = _Py_js2python(jsresult);
   FAIL_IF_NULL(pyresult);
+
 
   success = true;
 finally:
@@ -107,7 +157,11 @@ finally:
   if (!success) {
     Py_CLEAR(pyresult);
   }
-  destroy_proxies(jsresult, proxies);
+  if (destroy_args) {
+    destroy_proxies(jsresult, proxies);
+  } else {
+    _Py_gc_register_pyproxies(proxies);
+  }
   return pyresult;
 }
 

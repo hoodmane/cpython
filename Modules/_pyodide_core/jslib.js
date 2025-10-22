@@ -131,7 +131,7 @@ const LiteralMap = new Proxy(
 
 API.LiteralMap = LiteralMap;
 
-const PyProxy_IsAlive = (px) => !!Module.PyProxy_getAttrsQuiet(px).shared.ptr;
+const PyProxy_IsAlive = (px) => !!API.PyProxy_getAttrsQuiet(px).shared.ptr;
 
 
 const pythonReservedWords = new Set([
