@@ -178,6 +178,9 @@ _PyJsvFunction_Construct,
 });
 // clang-format on
 
+EM_JS_BOOL(bool, _PyJsvGenerator_Check, (JsVal obj), {
+  return getTypeTag(obj) === "[object Generator]";
+});
 
 // ==================== JsvArray API  ====================
 

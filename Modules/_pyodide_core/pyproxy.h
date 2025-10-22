@@ -18,6 +18,9 @@ _PyProxy_Check(JsVal);
 void
 _PyProxy_Destroy(JsVal pyproxy, Js_Identifier* msg);
 
+void
+_Py_gc_register_pyproxies(JsVal pyproxies);
+
 /**
  * If x is a PyProxy, return a borrowed version of the wrapped PyObject. Returns
  * NULL if x is NULL or a valid JsRef which is not a pyproxy. Fatally fails if x

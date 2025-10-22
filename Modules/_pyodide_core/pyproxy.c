@@ -66,8 +66,14 @@ EM_JS(PyObject*, _PyProxy_AsPyObject, (JsVal val), {
   return Module.PyProxy_getPtr(val);
 });
 
+EM_JS(void, _Py_gc_register_pyproxies, (JsVal proxies), {
+  for (let px of proxies) {
+    Module.gc_register_proxy(API.PyProxy_getAttrs(px).shared);
+  }
+});
+
 EM_JS(void, _PyProxy_Destroy, (JsVal px, Js_Identifier* msg_ptr), {
-  const { shared, props } = Module.PyProxy_getAttrsQuiet(px);
+  const { shared, props } = API.PyProxy_getAttrsQuiet(px);
   if (!shared.ptr) {
     // already destroyed
     return;

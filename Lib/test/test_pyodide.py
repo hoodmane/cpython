@@ -39,6 +39,17 @@ class ConversionTest(TestCase):
         with self.assertRaisesRegex(JsException, m):
             run_js("x.toString()")
 
+    def test_jsproxy_call_generator_destroyed(self):
+        d = {}
+        gen = run_js("(function*(x) { globalThis.y = x; yield x.toString(); yield x.toString(); })")(d)
+        self.assertEqual(next(gen), "{}")
+        self.assertEqual(next(gen), "{}")
+        with self.assertRaises(StopIteration):
+            next(gen)
+        m = "This borrowed proxy was automatically destroyed when a generator completed execution."
+        with self.assertRaisesRegex(JsException, m):
+            run_js("y.toString()")
+
     def test_python2js(self):
         self.assertTrue(run_js("(x) => x === 7")(7))
         self.assertTrue(run_js("(x) => x === 2.3")(2.3))
@@ -1600,14 +1611,15 @@ class PyProxyTest(TestCase):
             }
             """
         )
-        res = f(o).to_py()
+        opx = create_proxy(o)
+        res = f(opx).to_py()
         self.assertNotEqual(res["xflags"] & (1 << 12), 0)
         self.assertEqual(res["x0flags"] & (1 << 11), 0)
         self.assertNotEqual(res["x1flags"] & (1 << 11), 0)
         self.assertEqual(res["x0a"], {"x": 2})
         self.assertEqual(res["x1a"], {"y": 3})
         self.assertEqual(res["x1ay"], 3)
-
+        opx.destroy()
 
     def test_as_js_json_ownkeys(self):
         o = {"c": 7, "x": 99, "z": 29}
