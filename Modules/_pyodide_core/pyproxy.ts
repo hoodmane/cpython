@@ -369,7 +369,7 @@ class PyProxy {
 
   /** @private */
   static [Symbol.hasInstance](obj: any): obj is PyProxy {
-    return [PyProxy].some((cls) =>
+    return [PyProxy, PyProxyFunction].some((cls) =>
       Function.prototype[Symbol.hasInstance].call(cls, obj),
     );
   }
@@ -1128,7 +1128,7 @@ function _adjustArgs(proxyobj: any, jsthis: any, jsargs: any[]): any[] {
 
 const PyProxyFunctionProto = Object.create(
   Function.prototype,
-  Object.getOwnPropertyDescriptors(PyProxyProto),
+  Object.getOwnPropertyDescriptors(PyProxyProto)
 );
 function PyProxyFunction() {}
 PyProxyFunction.prototype = PyProxyFunctionProto;

@@ -281,7 +281,7 @@ _PyJsvArray_SliceAssign,
         obj.splice(start + i * step, 1, jsvalues[i]);
       }
     } else {
-      for(let i = slicelength - 1; i >= 0; i --){
+      for (let i = slicelength - 1; i >= 0; i --) {
         obj.splice(start + i * step, 1);
       }
     }

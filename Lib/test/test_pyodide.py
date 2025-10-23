@@ -909,6 +909,21 @@ class PyProxyTest(TestCase):
             [("a", 7), ("z", 9), ("q", 32)],
         )
 
+    def test_hasinstance(self):
+        f = run_js(
+            """
+            (x, y) => {
+                return [x instanceof y.constructor, y instanceof x.constructor];
+            }
+            """
+        )
+
+        def g():
+            pass
+
+        result = f({}, g)
+        self.assertEqual(result.to_py(), [True, True])
+
     def test_pyproxy_call_simple(self):
         def f(x):
             return x * x + 7
