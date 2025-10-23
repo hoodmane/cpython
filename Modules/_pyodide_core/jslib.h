@@ -174,10 +174,10 @@ _PyJsvArray_ShallowCopy(JsVal obj);
 
 
 JsVal
-_PyJsvArray_slice(JsVal obj, int length, int start, int stop, int step);
+_PyJsvArray_Slice(JsVal obj, int length, int start, int stop, int step);
 
 int
-_PyJsvArray_slice_assign(JsVal idobj,
+_PyJsvArray_SliceAssign(JsVal idobj,
                       int slicelength,
                       int start,
                       int stop,

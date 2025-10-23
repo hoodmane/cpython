@@ -249,7 +249,7 @@ EM_JS_NUM(JsVal, _PyJsvArray_ShallowCopy, (JsVal arr), {
 })
 
 EM_JS_VAL(JsVal,
-_PyJsvArray_slice,
+_PyJsvArray_Slice,
 (JsVal obj, int length, int start, int stop, int step),
 {
   let result;
@@ -262,7 +262,7 @@ _PyJsvArray_slice,
 });
 
 EM_JS_NUM(int,
-_PyJsvArray_slice_assign,
+_PyJsvArray_SliceAssign,
 (JsVal obj, int slicelength, int start, int stop, int step, int values_length, PyObject **values),
 {
   let jsvalues = [];
