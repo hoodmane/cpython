@@ -949,7 +949,7 @@ finally:
   return result;
 }
 
-EM_JS_VAL(JsVal, JsMap_GetIter_js, (JsVal obj), {
+EM_JS_VAL(JsVal, _PyJsMap_GetIter_js, (JsVal obj), {
   let result;
   // clang-format off
   if(typeof obj.keys === 'function') {
@@ -969,7 +969,7 @@ EM_JS_VAL(JsVal, JsMap_GetIter_js, (JsVal obj), {
 static PyObject*
 JsMap_GetIter(PyObject* self)
 {
-  JsVal iter = JsMap_GetIter_js(JsProxy_VAL(self));
+  JsVal iter = _PyJsMap_GetIter_js(JsProxy_VAL(self));
   FAIL_IF_JS_ERROR(iter);
   return _Py_js2python(iter);
 finally:
@@ -1301,7 +1301,7 @@ JsArray_subscript(PyObject* self, PyObject* item)
       jsresult = _PyJsvArray_New();
     } else {
       jsresult =
-        _PyJsvArray_slice(JsProxy_VAL(self), slicelength, start, stop, step);
+        _PyJsvArray_Slice(JsProxy_VAL(self), slicelength, start, stop, step);
     }
     FAIL_IF_JS_ERROR(jsresult);
     pyresult = js2python_pyjson(jsresult, JsProxy_is_py_json(self));
@@ -1358,7 +1358,7 @@ JsArray_ass_subscript(PyObject* self, PyObject* item, PyObject* pyvalue)
         start = stop + step * (slicelength - 1) - 1;
         step = -step;
       }
-      FAIL_IF_MINUS_ONE(_PyJsvArray_slice_assign(
+      FAIL_IF_MINUS_ONE(_PyJsvArray_SliceAssign(
         JsProxy_VAL(self), slicelength, start, stop, step, 0, NULL));
     } else {
       if (step != 1 && !slicelength) {
@@ -1367,7 +1367,7 @@ JsArray_ass_subscript(PyObject* self, PyObject* item, PyObject* pyvalue)
         success = true;
         goto finally;
       }
-      FAIL_IF_MINUS_ONE(_PyJsvArray_slice_assign(JsProxy_VAL(self),
+      FAIL_IF_MINUS_ONE(_PyJsvArray_SliceAssign(JsProxy_VAL(self),
                                               slicelength,
                                               start,
                                               stop,
@@ -2496,10 +2496,6 @@ JsProxy_create_subtype(int flags, bool is_py_json)
 
   // Iterator methods
   if (flags & IS_ITERATOR) {
-    // We're not sure whether it is an async iterator or a sync iterator. So add
-    // both methods and raise at runtime if someone uses the wrong one.
-    // JsProxy_GetIter would work just as well as PyObject_SelfIter
-    // but PyObject_SelfIter avoids an unnecessary allocation.
     slots[cur_slot++] =
       (PyType_Slot){ .slot = Py_tp_iter, .pfunc = (void*)PyObject_SelfIter };
     slots[cur_slot++] =
