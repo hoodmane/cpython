@@ -179,6 +179,67 @@ _pyodide_core_JsGenerator_close(PyObject *self, PyObject *Py_UNUSED(ignored))
     return _pyodide_core_JsGenerator_close_impl(self);
 }
 
+PyDoc_STRVAR(_pyodide_core_JsProxy___enter____doc__,
+"__enter__($self, /)\n"
+"--\n"
+"\n"
+"If [Symbol.dispose] is present, implement context manager protocol.");
+
+#define _PYODIDE_CORE_JSPROXY___ENTER___METHODDEF    \
+    {"__enter__", (PyCFunction)_pyodide_core_JsProxy___enter__, METH_NOARGS, _pyodide_core_JsProxy___enter____doc__},
+
+static PyObject *
+_pyodide_core_JsProxy___enter___impl(PyObject *self);
+
+static PyObject *
+_pyodide_core_JsProxy___enter__(PyObject *self, PyObject *Py_UNUSED(ignored))
+{
+    return _pyodide_core_JsProxy___enter___impl(self);
+}
+
+PyDoc_STRVAR(_pyodide_core_JsProxy___exit____doc__,
+"__exit__($self, exc_type=None, exc_value=None, exc_tb=None, /)\n"
+"--\n"
+"\n"
+"If [Symbol.dispose] is present, implement context manager protocol.");
+
+#define _PYODIDE_CORE_JSPROXY___EXIT___METHODDEF    \
+    {"__exit__", _PyCFunction_CAST(_pyodide_core_JsProxy___exit__), METH_FASTCALL, _pyodide_core_JsProxy___exit____doc__},
+
+static PyObject *
+_pyodide_core_JsProxy___exit___impl(PyObject *self, PyObject *exc_type,
+                                    PyObject *exc_value, PyObject *exc_tb);
+
+static PyObject *
+_pyodide_core_JsProxy___exit__(PyObject *self, PyObject *const *args, Py_ssize_t nargs)
+{
+    PyObject *return_value = NULL;
+    PyObject *exc_type = Py_None;
+    PyObject *exc_value = Py_None;
+    PyObject *exc_tb = Py_None;
+
+    if (!_PyArg_CheckPositional("__exit__", nargs, 0, 3)) {
+        goto exit;
+    }
+    if (nargs < 1) {
+        goto skip_optional;
+    }
+    exc_type = args[0];
+    if (nargs < 2) {
+        goto skip_optional;
+    }
+    exc_value = args[1];
+    if (nargs < 3) {
+        goto skip_optional;
+    }
+    exc_tb = args[2];
+skip_optional:
+    return_value = _pyodide_core_JsProxy___exit___impl(self, exc_type, exc_value, exc_tb);
+
+exit:
+    return return_value;
+}
+
 PyDoc_STRVAR(_pyodide_core_JsMap_keys__doc__,
 "keys($self, /)\n"
 "--\n"
@@ -793,4 +854,4 @@ _pyodide_core_JsProxy_as_py_json(PyObject *self, PyObject *Py_UNUSED(ignored))
 {
     return _pyodide_core_JsProxy_as_py_json_impl(self);
 }
-/*[clinic end generated code: output=a472925e265f0bec input=a9049054013a1b77]*/
+/*[clinic end generated code: output=8f381bf158f8949d input=a9049054013a1b77]*/

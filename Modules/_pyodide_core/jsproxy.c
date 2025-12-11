@@ -23,15 +23,16 @@
 #define HAS_INCLUDES        (1 << 2)
 #define HAS_LENGTH          (1 << 3)
 #define HAS_SET             (1 << 4)
-#define IS_ARRAY            (1 << 5)
-#define IS_CALLABLE         (1 << 6)
-#define IS_ERROR            (1 << 7)
-#define IS_GENERATOR        (1 << 8)
-#define IS_ITERABLE         (1 << 9)
-#define IS_ITERATOR         (1 << 10)
-#define IS_DOUBLE_PROXY     (1 << 11)
-#define IS_PY_JSON_DICT     (1 << 12)
-#define IS_PY_JSON_SEQUENCE (1 << 13)
+#define HAS_DISPOSE         (1 << 5)
+#define IS_ARRAY            (1 << 6)
+#define IS_CALLABLE         (1 << 7)
+#define IS_ERROR            (1 << 8)
+#define IS_GENERATOR        (1 << 9)
+#define IS_ITERABLE         (1 << 10)
+#define IS_ITERATOR         (1 << 11)
+#define IS_DOUBLE_PROXY     (1 << 12)
+#define IS_PY_JSON_DICT     (1 << 13)
+#define IS_PY_JSON_SEQUENCE (1 << 14)
 
 Js_IDENTIFIER(next);
 
@@ -948,6 +949,47 @@ JsProxy_includes(JsProxy* self, PyObject* obj)
 finally:
   return result;
 }
+
+
+/*[clinic input]
+_pyodide_core.JsProxy.__enter__
+
+If [Symbol.dispose] is present, implement context manager protocol.
+[clinic start generated code]*/
+
+static PyObject *
+_pyodide_core_JsProxy___enter___impl(PyObject *self)
+/*[clinic end generated code: output=7d0abcbd81673f6b input=3ab21922f5faedaf]*/
+{
+  return Py_NewRef(self);
+}
+
+EM_JS_NUM(int, JsProxy_exit_js, (JsVal obj), {
+  obj[Symbol.dispose]();
+});
+
+/*[clinic input]
+_pyodide_core.JsProxy.__exit__
+
+    exc_type: object = None
+    exc_value: object = None
+    exc_tb: object = None
+    /
+
+If [Symbol.dispose] is present, implement context manager protocol.
+[clinic start generated code]*/
+
+static PyObject *
+_pyodide_core_JsProxy___exit___impl(PyObject *self, PyObject *exc_type,
+                                    PyObject *exc_value, PyObject *exc_tb)
+/*[clinic end generated code: output=e52ec221b82c0b6f input=40df97659f01cc5a]*/
+{
+  if (JsProxy_exit_js(JsProxy_VAL(self)) == -1) {
+    return NULL;
+  }
+  Py_RETURN_NONE;
+}
+
 
 EM_JS_VAL(JsVal, _PyJsMap_GetIter_js, (JsVal obj), {
   let result;
@@ -2425,6 +2467,12 @@ JsProxy_create_subtype(int flags, bool is_py_json)
     slots[cur_slot++] =
       (PyType_Slot){ .slot = Py_mp_length, .pfunc = (void*)JsProxy_length };
   }
+  if (flags & HAS_DISPOSE) {
+    AddMethods(
+      _PYODIDE_CORE_JSPROXY___ENTER___METHODDEF
+      _PYODIDE_CORE_JSPROXY___EXIT___METHODDEF
+    );
+  }
 
   if (flags & IS_ARRAY) {
     // If the object is an array (or a HTMLCollection or NodeList), then we want
@@ -2691,6 +2739,9 @@ EM_JS_NUM(int, JsProxy_compute_typeflags, (JsVal obj, bool is_py_json), {
   SET_FLAG_IF(HAS_LENGTH,
     (hasProperty(obj, "size")) ||
     (hasProperty(obj, "length") && typeof obj !== "function"));
+  if (Symbol.asyncDispose) {
+    SET_FLAG_IF_HAS_METHOD(HAS_DISPOSE, Symbol.dispose);
+  }
   SET_FLAG_IF(IS_CALLABLE, typeof obj === "function");
   SET_FLAG_IF(IS_ARRAY, safeCall(() => Array.isArray(obj)));
   SET_FLAG_IF(IS_DOUBLE_PROXY, API.isPyProxy(obj));
