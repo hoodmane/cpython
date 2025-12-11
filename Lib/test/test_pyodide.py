@@ -794,50 +794,51 @@ class JsProxyTest(TestCase):
 
     def test_instance_checks(self):
         jsarray = run_js("[]")
-        assert isinstance(jsarray, JsArray)
-        assert isinstance(jsarray, MutableSequence)
+
+        self.assertIsInstance(jsarray, JsArray)
+        self.assertIsInstance(jsarray, MutableSequence)
         assert issubclass(JsArray, MutableSequence)
         assert issubclass(type(jsarray), MutableSequence)
 
         jsmap = run_js("new Map()")
-        assert isinstance(jsmap, JsMutableMap)
-        assert isinstance(jsmap, MutableMapping)
+        self.assertIsInstance(jsmap, JsMutableMap)
+        self.assertIsInstance(jsmap, MutableMapping)
         assert issubclass(JsMutableMap, MutableMapping)
         assert issubclass(type(jsmap), MutableMapping)
 
         jserror = run_js("new Error()")
-        assert isinstance(jserror, JsException)
-        assert isinstance(jserror, Exception)
+        self.assertIsInstance(jserror, JsException)
+        self.assertIsInstance(jserror, Exception)
         assert issubclass(JsException, Exception)
 
-        assert isinstance(run_js("(() => {})"), JsCallable)
-        assert isinstance(run_js("(() => {})"), Callable)
-        assert isinstance(JsCallable, Callable)
+        self.assertIsInstance(run_js("(() => {})"), JsCallable)
+        self.assertIsInstance(run_js("(() => {})"), Callable)
+        self.assertIsInstance(JsCallable, Callable)
 
-        assert isinstance(run_js("(function*(){})()"), JsGenerator)
-        assert isinstance(run_js("(function*(){})()"), Generator)
+        self.assertIsInstance(run_js("(function*(){})()"), JsGenerator)
+        self.assertIsInstance(run_js("(function*(){})()"), Generator)
         assert issubclass(JsGenerator, Generator)
         assert issubclass(JsGenerator, JsIterator)
 
-        assert isinstance(run_js("({next(){}})"), JsIterator)
-        assert isinstance(run_js("({next(){}})"), Iterator)
+        self.assertIsInstance(run_js("({next(){}})"), JsIterator)
+        self.assertIsInstance(run_js("({next(){}})"), Iterator)
         assert issubclass(JsIterator, Iterator)
 
-        assert isinstance(run_js("({[Symbol.iterator](){}})"), JsIterable)
-        assert isinstance(run_js("({[Symbol.iterator](){}})"), Iterable)
+        self.assertIsInstance(run_js("({[Symbol.iterator](){}})"), JsIterable)
+        self.assertIsInstance(run_js("({[Symbol.iterator](){}})"), Iterable)
         assert issubclass(JsIterable, Iterable)
 
         jsmap = run_js("({get(){}, size: 5, [Symbol.iterator](){}})")
-        assert isinstance(jsmap, JsMap)
-        assert not isinstance(jsmap, JsMutableMap)
-        assert isinstance(jsmap, Mapping)
-        assert not isinstance(jsmap, MutableMapping)
+        self.assertIsInstance(jsmap, JsMap)
+        self.assertNotIsInstance(jsmap, JsMutableMap)
+        self.assertIsInstance(jsmap, Mapping)
+        self.assertNotIsInstance(jsmap, MutableMapping)
         assert issubclass(JsMap, Mapping)
         assert issubclass(JsMap, JsIterable)
         assert issubclass(JsMutableMap, JsMap)
 
         p = create_proxy({})
-        assert isinstance(p, JsDoubleProxy)
+        self.assertIsInstance(p, JsDoubleProxy)
         p.destroy()
 
 
