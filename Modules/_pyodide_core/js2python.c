@@ -41,6 +41,12 @@ _Py_js2python_false(void)
   Py_RETURN_FALSE;
 }
 
+EMSCRIPTEN_KEEPALIVE PyObject*
+_Py_js2python_bigint(PyObject* val)
+{
+  return PyObject_CallOneArg(py_JsBigInt, val);
+}
+
 EM_JS_REF(PyObject*, _Py_js2python_js, (JsVal value), {
   let result = Module.js2python_convertImmutable(value);
   // clang-format off

@@ -43,9 +43,6 @@ _python2js_float(PyObject* x)
 #endif
 
 EM_JS(JsVal, _Py_python2js_long_js_small, (int64_t x), {
-  if (-Number.MAX_SAFE_INTEGER < x && x < Number.MAX_SAFE_INTEGER) {
-    return Number(x);
-  }
   return x;
 })
 
@@ -68,15 +65,11 @@ _Py_python2js_long_js_big, (const unsigned int *digits, size_t ndigits, uint8_t 
   if (negative) {
     result *= -1n;
   }
-  if (-Number.MAX_SAFE_INTEGER < result &&
-    result < Number.MAX_SAFE_INTEGER) {
-    result = Number(result);
-  }
   return result;
 });
 
 static JsVal
-_python2js_long(PyObject* x)
+_python2js_bigint(PyObject* x)
 {
   PyLongExport export_long;
   if (PyLong_Export(x, &export_long) == -1) {
@@ -95,6 +88,17 @@ _python2js_long(PyObject* x)
   PyLong_FreeExport(&export_long);
   return result;
 }
+
+static JsVal
+_python2js_long(PyObject* x)
+{
+  JsVal res = _python2js_bigint(x);
+  FAIL_IF_JS_ERROR(res);
+  return _PyJsv_BigIntToNum(res);
+finally:
+  return JS_ERROR;
+}
+
 
 // python2js string conversion
 //
@@ -177,6 +181,8 @@ _python2js_immutable(PyObject* x)
     return Jsv_false;
   } else if (x == py_jsnull) {
     return Jsv_null;
+  } else if (PyObject_IsInstance(x, py_JsBigInt)) {
+    return _python2js_bigint(x);
   } else if (PyLong_Check(x)) {
     return _python2js_long(x);
   } else if (PyFloat_Check(x)) {
@@ -964,6 +970,7 @@ static PyMethodDef methods[] = {
 };
 
 PyObject* py_jsnull = NULL;
+PyObject* py_JsBigInt = NULL;
 
 int
 _Py_python2js_init(PyObject* core)
@@ -976,6 +983,8 @@ _Py_python2js_init(PyObject* core)
   FAIL_IF_NULL(_pyodide);
   py_jsnull = PyObject_GetAttrString(_pyodide, "jsnull");
   FAIL_IF_NULL(py_jsnull);
+  py_JsBigInt = PyObject_GetAttrString(_pyodide, "JsBigInt");
+  FAIL_IF_NULL(py_JsBigInt);
 
 
   success = true;
