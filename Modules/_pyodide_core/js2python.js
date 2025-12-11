@@ -65,7 +65,8 @@ JSFILE(() => {
             ASSIGN_U32(digitsPtr, i, Number(value & 0x3fffffffn));
             value >>= 30n;
         }
-        return _PyLongWriter_Finish(longWriter);
+        const res = _PyLongWriter_Finish(longWriter);
+        return __Py_js2python_bigint(res);
     });
   }
 

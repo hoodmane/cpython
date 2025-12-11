@@ -72,6 +72,9 @@ _PyJsvNum_fromInt(int x);
 JsVal
 _PyJsvNum_fromDouble(double x);
 
+JsVal
+_PyJsv_BigIntToNum(JsVal x);
+
 bool
 _PyJsv_equal(JsVal a, JsVal b);
 

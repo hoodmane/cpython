@@ -56,6 +56,14 @@ EM_JS(JsVal, _PyJsvNum_fromDouble, (double val), {
   return val;
 });
 
+EM_JS(JsVal, _PyJsv_BigIntToNum, (JsVal x), {
+  if (-Number.MAX_SAFE_INTEGER < x &&
+      x < Number.MAX_SAFE_INTEGER) {
+    return Number(x);
+  }
+  return x;
+});
+
 EM_JS_BOOL(bool, _PyJsv_equal, (JsVal a, JsVal b), { return !!(a === b); });
 EM_JS_BOOL(bool, _PyJsv_not_equal, (JsVal a, JsVal b), { return !!(a !== b); });
 

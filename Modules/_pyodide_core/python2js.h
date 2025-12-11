@@ -50,5 +50,6 @@ int
 _Py_python2js_init(PyObject* core);
 
 extern PyObject* py_jsnull;
+extern PyObject* py_JsBigInt;
 
 #endif /* PYTHON2JS_H */

@@ -1,11 +1,20 @@
+from collections.abc import (
+    Callable,
+    Generator,
+    Iterable,
+    Iterator,
+    Mapping,
+    MutableMapping,
+    MutableSequence,
+)
 from unittest import TestCase
+
+from _pyodide import js_flags
+from js import Array, BigInt64Array
+from pyodide.code import run_js
 from pyodide.ffi import (
-    jsnull,
-    to_js,
-    destroy_proxies,
-    create_proxy,
-    JsException,
     JsArray,
+    JsBigInt,
     JsCallable,
     JsDoubleProxy,
     JsException,
@@ -14,12 +23,11 @@ from pyodide.ffi import (
     JsIterator,
     JsMap,
     JsMutableMap,
+    create_proxy,
+    destroy_proxies,
+    jsnull,
+    to_js,
 )
-from collections.abc import Iterable, Iterator, Mapping, MutableMapping, MutableSequence, Generator, Callable
-from pyodide.code import run_js
-from _pyodide import js_flags
-from js import Array
-
 
 
 class ConversionTest(TestCase):
@@ -41,7 +49,9 @@ class ConversionTest(TestCase):
 
     def test_jsproxy_call_generator_destroyed(self):
         d = {}
-        gen = run_js("(function*(x) { globalThis.y = x; yield x.toString(); yield x.toString(); })")(d)
+        gen = run_js(
+            "(function*(x) { globalThis.y = x; yield x.toString(); yield x.toString(); })"
+        )(d)
         self.assertEqual(next(gen), "{}")
         self.assertEqual(next(gen), "{}")
         with self.assertRaises(StopIteration):
@@ -104,6 +114,8 @@ class ConversionTest(TestCase):
             self.assertEqual(js_typeof(x), "number")
             self.assertEqual(js_typeof(-x), "number")
             x >>= 1
+        y = JsBigInt(1)
+        self.assertEqual(js_typeof(y), "bigint")
 
     def test_js2python(self):
         self.assertEqual(run_js('"pyodidé"'), "pyodidé")
@@ -123,6 +135,8 @@ class ConversionTest(TestCase):
         while x != 0:
             self.assertEqual(run_js(f"{x}n"), x)
             self.assertEqual(run_js(f"-{x}n"), -x)
+            self.assertIsInstance(run_js(f"{x}n"), JsBigInt)
+            self.assertIsInstance(run_js(f"-{x}n"), JsBigInt)
             x >>= 1
 
     def test_raise_through_js(self):
@@ -182,7 +196,9 @@ class ConversionTest(TestCase):
             new Temp();
             """
         )
-        self.assertEqual(repr(type(a.to_py())), "<class 'pyodide.ffi.JsProxy'>")
+        self.assertEqual(
+            repr(type(a.to_py())), "<class 'pyodide.ffi.JsProxy'>"
+        )
 
     def test_to_py4(self):
         for obj, msg in [
@@ -239,6 +255,7 @@ class ConversionTest(TestCase):
 
     def test_to_js_default_converter(self):
         import json
+
         from js import JSON
 
         class Pair:
@@ -375,6 +392,7 @@ class ConversionTest(TestCase):
         self.assertIs(o.f, f)
         run_js("(o) => { o.f.destroy(); }")(o)
 
+
 class JsProxyTest(TestCase):
     def test_jsproxy(self):
         o = run_js("[7, 11, -1]")
@@ -440,6 +458,7 @@ class JsProxyTest(TestCase):
 
     def test_jsproxy_construct(self):
         from js import URL
+
         with self.assertRaises(JsException):
             URL("http://example.com")
         r = URL.new("http://example.com/a/b?c=2")
@@ -755,7 +774,9 @@ class JsProxyTest(TestCase):
         m.update({6: 7, 8: 9})
         self.assertEqual(dict(m), {1: 8, 3: 4, 4: None, 6: 7, 8: 9})
 
-        self.assertIn(m.popitem(), set({1: 8, 3: 4, 4: None, 6: 7, 8: 9}.items()))
+        self.assertIn(
+            m.popitem(), set({1: 8, 3: 4, 4: None, 6: 7, 8: 9}.items())
+        )
         self.assertEqual(len(m), 4)
         m.clear()
         self.assertEqual(dict(m), {})
@@ -780,7 +801,9 @@ class JsProxyTest(TestCase):
         self.assertEqual(o["a"][-1]["b"], 7)
 
         self.assertEqual(list(o.keys()), ["a"])
-        self.assertEqual([(k, v.to_py()) for (k, v) in o.items()], [("a", [1, 2, {"b": 7}])])
+        self.assertEqual(
+            [(k, v.to_py()) for (k, v) in o.items()], [("a", [1, 2, {"b": 7}])]
+        )
 
         o2 = run_js("([[1, 2], ()=>{}])").as_py_json()
         self.assertNotEqual(o2._js_type_flags & seq_flag, 0)
@@ -1648,7 +1671,6 @@ class PyProxyTest(TestCase):
         self.assertEqual(f(o, [2, "b", "d", 0]), 1)
         self.assertEqual(f(o, [2, "b", "d", 1, "c"]), 2)
 
-
     def test_as_js_json_heritability2(self):
         class T1:
             a = {"x": 2}
@@ -1706,8 +1728,9 @@ class PyProxyTest(TestCase):
             "$$dollar": 9,
             (1, 2, 3): 12,
         }
-        self.assertEqual(set(f(d)), {"$$dollar", "$dollar", "1", "2", "3", "items"})
-
+        self.assertEqual(
+            set(f(d)), {"$$dollar", "$dollar", "1", "2", "3", "items"}
+        )
 
     def test_as_js_json_get(self):
         o = {0: "a", "1": "b", "3c": 4}
@@ -1725,7 +1748,6 @@ class PyProxyTest(TestCase):
         self.assertEqual(run_js("(o) => o.asJsJson().get('1')")(o), "b")
 
         self.assertEqual(run_js("(o) => o.asJsJson()['3c']")(o), 4)
-
 
     def test_as_js_json_set(self):
         o = {}
@@ -1747,7 +1769,6 @@ class PyProxyTest(TestCase):
         self.assertNotIn("2", o)
         self.assertNotIn("4", o)
 
-
     def test_as_js_json_stringify(self):
         self.skipTest("TODO: Fix me")
         from json import loads
@@ -1767,9 +1788,15 @@ class PyProxyTest(TestCase):
             self.assertEqual(loads(f(o)), o)
 
     def test_js_import(self):
-        run_js("globalThis.a = { b : { c : { d : 2 } } }");
+        run_js("globalThis.a = { b : { c : { d : 2 } } }")
         from js.a.b import c
+
         self.assertEqual(c.d, 2)
         # Make sure we haven't added __loader__, __name__, __package__, __path__, __spec__
         # to the JS object
         self.assertEqual(run_js("Reflect.ownKeys(a)").to_py(), ["b"])
+
+    def test_js_bigint_construct_typed_array(self):
+        # Without JsBigInt we can't construct a BigInt64Array
+        a = BigInt64Array.new([JsBigInt(x) for x in range(1, 10, 2)])
+        self.assertEqual(list(a), list(range(1, 10, 2)))

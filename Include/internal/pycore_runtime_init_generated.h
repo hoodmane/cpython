@@ -1698,6 +1698,7 @@ extern "C" {
     INIT_ID(coro), \
     INIT_ID(count), \
     INIT_ID(covariant), \
+    INIT_ID(create_pyproxies), \
     INIT_ID(ctx), \
     INIT_ID(cwd), \
     INIT_ID(d_parameter_type), \
@@ -1720,6 +1721,7 @@ extern "C" {
     INIT_ID(deterministic), \
     INIT_ID(device), \
     INIT_ID(dict), \
+    INIT_ID(dict_converter), \
     INIT_ID(difference_update), \
     INIT_ID(digest), \
     INIT_ID(digest_size), \
@@ -1735,6 +1737,7 @@ extern "C" {
     INIT_ID(dst), \
     INIT_ID(dst_dir_fd), \
     INIT_ID(duration_sec), \
+    INIT_ID(eager_converter), \
     INIT_ID(eager_start), \
     INIT_ID(effective_ids), \
     INIT_ID(element_factory), \
@@ -2035,6 +2038,7 @@ extern "C" {
     INIT_ID(protocol), \
     INIT_ID(ps1), \
     INIT_ID(ps2), \
+    INIT_ID(pyproxies), \
     INIT_ID(qid), \
     INIT_ID(qualname), \
     INIT_ID(query), \
