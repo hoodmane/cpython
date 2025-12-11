@@ -442,6 +442,10 @@ class PyProxy {
     const { message: m, destroyRoundtrip: d } = options;
     Module.pyproxy_destroy(this, m, d);
   }
+
+  [Symbol.dispose]() {
+    Module.pyproxy_destroy(this, "", true);
+  }
 }
 const PyProxyProto = PyProxy.prototype;
 
