@@ -10,7 +10,7 @@
     "strict": true,
     "noUnusedLocals": false,
     "experimentalDecorators": true,
-    "lib": ["ES2022", "DOM"],
+    "lib": ["ES2022", "DOM", "ESNext.Disposable"],
   },
   "include": ["*.ts", "*.json"],
 }

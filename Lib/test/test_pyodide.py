@@ -841,6 +841,34 @@ class JsProxyTest(TestCase):
         self.assertIsInstance(p, JsDoubleProxy)
         p.destroy()
 
+    def test_jsproxy_context_manager(self):
+        f = run_js(
+            """
+            (function f() {
+                return {
+                    x: 9,
+                    closed: false,
+                    [Symbol.dispose] () {
+                        this.closed = true;
+                    }
+                };
+            })
+            """
+        )
+        with f() as o:
+            self.assertEqual(o.x, 9)
+            self.assertFalse(o.closed)
+        self.assertTrue(o.closed)
+
+        try:
+            with f() as o:
+                self.assertEqual(o.x, 9)
+                self.assertFalse(o.closed)
+                raise Exception("oops")
+        except Exception:
+            pass
+        self.assertTrue(o.closed)
+
 
 class PyProxyTest(TestCase):
     def test_pyproxy(self):
