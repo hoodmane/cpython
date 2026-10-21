@@ -361,12 +361,30 @@ PyAPI_FUNC(PyUnstable_ExecStack *) PyUnstable_ExecStack_New(PyObject *context);
 PyAPI_FUNC(PyUnstable_ExecStack *) PyUnstable_ThreadState_GetExecStack(
     PyThreadState *tstate);
 
-// Suspend the stack currently running on tstate and resume `target`.
-// `target` must be NEW, or SUSPENDED and previously run on tstate. Returns
-// the stack that was running (borrowed), or NULL with an exception set and
-// the thread state unchanged. Switching to the running stack is a no-op.
-// Must be called while attached to tstate, after the C stack of the target
-// has been made valid. Does not run Python code.
+// Move the per-stack state out of tstate into the running stack and mark it
+// SUSPENDED. Returns that stack (borrowed), or NULL with an exception set and
+// the thread state unchanged. Must be called while attached to tstate and
+// while the C stack of the running stack is still intact: the interpreter
+// reads the frames it keeps on the C stack. Afterwards, until
+// PyUnstable_ExecStack_Resume() is called, no stack is running on tstate; no
+// Python code may run and nothing but the low-level C stack switch itself
+// may happen in between. Does not run Python code.
+PyAPI_FUNC(PyUnstable_ExecStack *) PyUnstable_ExecStack_Suspend(
+    PyThreadState *tstate);
+
+// Install `target` as the running stack of tstate after a Suspend().
+// `target` must be NEW, or SUSPENDED and previously run on tstate. Must be
+// called once the C stack of `target` is in place. Returns -1 with
+// SystemError on misuse; cannot fail otherwise. Does not run Python code.
+PyAPI_FUNC(int) PyUnstable_ExecStack_Resume(
+    PyThreadState *tstate,
+    PyUnstable_ExecStack *target);
+
+// Suspend() followed by Resume(target), for implementations whose outgoing
+// and incoming C stacks are both intact at the same time (e.g. separately
+// allocated stacks). Returns the stack that was running (borrowed), or NULL
+// with an exception set and the thread state unchanged. Switching to the
+// running stack is a no-op.
 PyAPI_FUNC(PyUnstable_ExecStack *) PyUnstable_ExecStack_Switch(
     PyThreadState *tstate,
     PyUnstable_ExecStack *target);

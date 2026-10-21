@@ -5,6 +5,11 @@
  * on its own C stack and its own execution stack. This mirrors what greenlet
  * and Pyodide do, including the entry frames that the eval loop keeps on the
  * C stack between Python frames.
+ *
+ * The fibers use the split Suspend()/Resume() protocol that a library which
+ * copies C stacks around (greenlet) needs: the side that is about to go away
+ * calls Suspend() while its C stack is still intact, the C stacks are
+ * swapped, and the side that wakes up calls Resume() for its own stack.
  */
 
 #include "parts.h"
@@ -64,9 +69,9 @@ fiber_entry(void)
     starting_fiber = NULL;
     PyThreadState *tstate = PyThreadState_Get();
 
-    self->parent_stack = PyUnstable_ExecStack_Switch(tstate, self->stack);
-    if (self->parent_stack == NULL) {
-        Py_FatalError("PyUnstable_ExecStack_Switch failed in fiber_entry");
+    // The parent suspended its stack before switching to us.
+    if (PyUnstable_ExecStack_Resume(tstate, self->stack) < 0) {
+        Py_FatalError("PyUnstable_ExecStack_Resume failed in fiber_entry");
     }
     apply_stack_protection(tstate, self);
 
@@ -86,11 +91,12 @@ fiber_entry(void)
     self->transfer = result;
     self->finished = 1;
 
-    if (PyUnstable_ExecStack_Switch(tstate, self->parent_stack) == NULL) {
-        Py_FatalError("PyUnstable_ExecStack_Switch failed leaving fiber");
+    if (PyUnstable_ExecStack_Suspend(tstate) == NULL) {
+        Py_FatalError("PyUnstable_ExecStack_Suspend failed leaving fiber");
     }
     apply_stack_protection(tstate, self->parent_fiber);
-    // Returning jumps to ctx.uc_link == &self->parent_ctx.
+    // Returning jumps to ctx.uc_link == &self->parent_ctx; the parent
+    // resumes its own stack there.
 }
 
 static PyObject *
@@ -109,7 +115,14 @@ fiber_switch_impl(FiberObject *self, PyObject *value)
         return NULL;
     }
     assert(self->transfer == NULL);
+    PyThreadState *tstate = PyThreadState_Get();
+    PyUnstable_ExecStack *parent_stack = PyUnstable_ExecStack_Suspend(tstate);
+    if (parent_stack == NULL) {
+        Py_XDECREF(value);
+        return NULL;
+    }
     self->transfer = value;
+    self->parent_stack = parent_stack;
     self->parent_fiber = current_fiber;
     current_fiber = self;
     if (!self->started) {
@@ -122,7 +135,12 @@ fiber_switch_impl(FiberObject *self, PyObject *value)
         starting_fiber = self;
     }
     swapcontext(&self->parent_ctx, &self->ctx);
-    // Back from the fiber. It already switched the exec stack back to ours.
+    // Back from the fiber, which suspended its own stack before switching.
+    // (Can't use `parent_stack`: locals aren't trustworthy across a stack
+    // switch in general, so follow the greenlet discipline and reload.)
+    if (PyUnstable_ExecStack_Resume(tstate, self->parent_stack) < 0) {
+        Py_FatalError("PyUnstable_ExecStack_Resume failed in fiber_switch");
+    }
     current_fiber = self->parent_fiber;
     PyObject *result = self->transfer;
     self->transfer = NULL;
@@ -164,18 +182,18 @@ fiber_switch_back(PyObject *op, PyObject *args)
     }
     PyThreadState *tstate = PyThreadState_Get();
     assert(self->transfer == NULL);
-    self->transfer = Py_NewRef(value);
 
-    if (PyUnstable_ExecStack_Switch(tstate, self->parent_stack) == NULL) {
-        Py_FatalError("PyUnstable_ExecStack_Switch failed in switch_back");
+    if (PyUnstable_ExecStack_Suspend(tstate) == NULL) {
+        return NULL;
     }
+    self->transfer = Py_NewRef(value);
     apply_stack_protection(tstate, self->parent_fiber);
     swapcontext(&self->ctx, &self->parent_ctx);
 
-    // Resumed by fiber_switch_impl().
-    self->parent_stack = PyUnstable_ExecStack_Switch(tstate, self->stack);
-    if (self->parent_stack == NULL) {
-        Py_FatalError("PyUnstable_ExecStack_Switch failed resuming fiber");
+    // Resumed by fiber_switch_impl(), which suspended the parent's stack and
+    // recorded it in self->parent_stack.
+    if (PyUnstable_ExecStack_Resume(tstate, self->stack) < 0) {
+        Py_FatalError("PyUnstable_ExecStack_Resume failed resuming fiber");
     }
     apply_stack_protection(tstate, self);
     PyObject *result = self->transfer;
@@ -394,6 +412,29 @@ execstack_root_misuse(PyObject *self, PyObject *Py_UNUSED(args))
     PyErr_Clear();
     if (PyUnstable_ExecStack_Switch(tstate, root) != root) {
         PyErr_SetString(PyExc_AssertionError, "Switch(root) is not a no-op");
+        return NULL;
+    }
+    if (PyUnstable_ExecStack_Resume(tstate, root) == 0) {
+        PyErr_SetString(PyExc_AssertionError, "Resume without Suspend succeeded");
+        return NULL;
+    }
+    if (!PyErr_ExceptionMatches(PyExc_SystemError)) {
+        return NULL;
+    }
+    PyErr_Clear();
+    // Suspend/Resume round trip on the same stack.
+    if (PyUnstable_ExecStack_Suspend(tstate) != root) {
+        return NULL;
+    }
+    if (PyUnstable_ThreadState_GetExecStack(tstate) != NULL) {
+        PyErr_SetString(PyExc_AssertionError, "GetExecStack succeeded while suspended");
+        return NULL;
+    }
+    if (!PyErr_ExceptionMatches(PyExc_SystemError)) {
+        return NULL;
+    }
+    PyErr_Clear();
+    if (PyUnstable_ExecStack_Resume(tstate, root) < 0) {
         return NULL;
     }
     Py_RETURN_NONE;
