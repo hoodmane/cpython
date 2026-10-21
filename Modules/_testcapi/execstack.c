@@ -341,7 +341,9 @@ execstack_root_state(PyObject *self, PyObject *Py_UNUSED(args))
     if (root == NULL) {
         return NULL;
     }
-    return PyLong_FromLong(PyUnstable_ExecStack_GetState(root));
+    int state = PyUnstable_ExecStack_GetState(root);
+    PyUnstable_ExecStack_Free(root);
+    return PyLong_FromLong(state);
 }
 
 static PyObject *
@@ -353,6 +355,7 @@ execstack_root_frame(PyObject *self, PyObject *Py_UNUSED(args))
         return NULL;
     }
     PyFrameObject *frame = PyUnstable_ExecStack_GetFrame(root);
+    PyUnstable_ExecStack_Free(root);
     if (frame == NULL) {
         Py_RETURN_NONE;
     }
@@ -362,12 +365,17 @@ execstack_root_frame(PyObject *self, PyObject *Py_UNUSED(args))
 static PyObject *
 execstack_root_misuse(PyObject *self, PyObject *Py_UNUSED(args))
 {
-    // Freeing or clearing the running root stack must fail cleanly.
+    // Deallocating or clearing the running root stack must fail cleanly.
     PyThreadState *tstate = PyThreadState_Get();
     PyUnstable_ExecStack *root = PyUnstable_ThreadState_GetExecStack(tstate);
     if (root == NULL) {
         return NULL;
     }
+    // Releasing the reference we just took is fine...
+    if (PyUnstable_ExecStack_Free(root) < 0) {
+        return NULL;
+    }
+    // ...but releasing the thread state's own reference is not.
     if (PyUnstable_ExecStack_Free(root) == 0) {
         PyErr_SetString(PyExc_AssertionError, "Free(root) succeeded");
         return NULL;
@@ -391,6 +399,48 @@ execstack_root_misuse(PyObject *self, PyObject *Py_UNUSED(args))
     Py_RETURN_NONE;
 }
 
+static void
+execstack_capsule_destructor(PyObject *capsule)
+{
+    PyUnstable_ExecStack *stack = PyCapsule_GetPointer(capsule, "execstack");
+    if (stack != NULL && PyUnstable_ExecStack_Free(stack) < 0) {
+        PyErr_FormatUnraisable("Exception ignored freeing exec stack");
+    }
+}
+
+// Take a reference to the current thread's running stack and wrap it in a
+// capsule, so a test can keep the thread's root stack alive after the
+// thread exits.
+static PyObject *
+execstack_hold_current(PyObject *self, PyObject *Py_UNUSED(args))
+{
+    PyThreadState *tstate = PyThreadState_Get();
+    PyUnstable_ExecStack *stack = PyUnstable_ThreadState_GetExecStack(tstate);
+    if (stack == NULL) {
+        return NULL;
+    }
+    PyObject *capsule = PyCapsule_New(stack, "execstack",
+                                      execstack_capsule_destructor);
+    if (capsule == NULL) {
+        PyUnstable_ExecStack_Free(stack);
+    }
+    return capsule;
+}
+
+static PyObject *
+execstack_held_state(PyObject *self, PyObject *capsule)
+{
+    PyUnstable_ExecStack *stack = PyCapsule_GetPointer(capsule, "execstack");
+    if (stack == NULL) {
+        return NULL;
+    }
+    PyFrameObject *frame = PyUnstable_ExecStack_GetFrame(stack);
+    PyObject *result = Py_BuildValue("(iN)",
+                                     PyUnstable_ExecStack_GetState(stack),
+                                     frame ? (PyObject *)frame : Py_NewRef(Py_None));
+    return result;
+}
+
 static PyObject *
 execstack_new_bad_context(PyObject *self, PyObject *arg)
 {
@@ -407,6 +457,8 @@ static PyMethodDef test_methods[] = {
     {"execstack_root_frame", execstack_root_frame, METH_NOARGS, NULL},
     {"execstack_root_misuse", execstack_root_misuse, METH_NOARGS, NULL},
     {"execstack_new_bad_context", execstack_new_bad_context, METH_O, NULL},
+    {"execstack_hold_current", execstack_hold_current, METH_NOARGS, NULL},
+    {"execstack_held_state", execstack_held_state, METH_O, NULL},
     {NULL},
 };
 

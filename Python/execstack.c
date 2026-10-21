@@ -37,8 +37,9 @@ typedef struct {
 
 struct _PyExecStack {
     PyThreadState *tstate;   // thread this stack runs/ran on, NULL if NEW
+    Py_ssize_t refs;         // owners: New()/GetExecStack() callers, tstate
     int state;               // PyUnstable_ExecStack_State
-    int is_root;             // owned by the thread state
+    int is_root;             // created for a thread's original stack
     int cleared;             // Clear() was called; cannot be switched to
 
     /* Saved per-stack fields, valid only while SUSPENDED (context is also
@@ -88,6 +89,7 @@ execstack_alloc(void)
         return NULL;
     }
     stack->state = PyUnstable_ExecStack_NEW;
+    stack->refs = 1;
     return stack;
 }
 
@@ -101,7 +103,8 @@ execstack_dealloc(PyUnstable_ExecStack *stack)
     PyMem_RawFree(stack);
 }
 
-// Return the stack running on tstate, creating the root stack if needed.
+// Return the stack running on tstate (borrowed), creating the root stack
+// if needed. The thread state holds the root's initial reference.
 static PyUnstable_ExecStack *
 get_running(PyThreadState *tstate)
 {
@@ -471,7 +474,11 @@ PyUnstable_ExecStack *
 PyUnstable_ThreadState_GetExecStack(PyThreadState *tstate)
 {
     assert(tstate != NULL);
-    return get_running(tstate);
+    PyUnstable_ExecStack *stack = get_running(tstate);
+    if (stack != NULL) {
+        stack->refs++;
+    }
+    return stack;
 }
 
 PyUnstable_ExecStack_State
@@ -649,15 +656,16 @@ PyUnstable_ExecStack_Clear(PyUnstable_ExecStack *stack)
 int
 PyUnstable_ExecStack_Free(PyUnstable_ExecStack *stack)
 {
-    if (stack->state == PyUnstable_ExecStack_RUNNING) {
+    assert(stack->refs > 0);
+    if (stack->refs == 1 && stack->state == PyUnstable_ExecStack_RUNNING) {
+        // Only the thread state itself may drop the last reference to a
+        // running stack (see _PyExecStack_ClearThreadState).
         PyErr_SetString(PyExc_SystemError,
                         "cannot free a running execution stack");
         return -1;
     }
-    if (stack->is_root) {
-        PyErr_SetString(PyExc_SystemError,
-                        "cannot free a thread's root execution stack");
-        return -1;
+    if (--stack->refs > 0) {
+        return 0;
     }
     clear_state(stack);
     execstack_dealloc(stack);
@@ -680,22 +688,26 @@ _PyExecStack_ClearThreadState(PyThreadState *tstate)
     impl->exec_stack = NULL;
     impl->root_exec_stack = NULL;
 
-    if (running != root) {
-        // The thread is exiting while a user stack is running. Its live
-        // state is in tstate and will be released by PyThreadState_Clear.
-        // Leave the object empty and unowned so the library can still free
-        // it.
-        running->state = PyUnstable_ExecStack_SUSPENDED;
-        running->tstate = NULL;
-        running->cleared = 1;
-        running->current_frame = NULL;
-        running->top_frame = NULL;
-        running->n_links = 0;
-        memset(&running->exc_state, 0, sizeof(running->exc_state));
+    // The running stack's live state is in tstate and will be released by
+    // PyThreadState_Clear. Leave the object empty and detached so that
+    // any remaining owner can still inspect and free it.
+    running->state = PyUnstable_ExecStack_SUSPENDED;
+    running->tstate = NULL;
+    running->cleared = 1;
+    running->current_frame = NULL;
+    running->top_frame = NULL;
+    running->n_links = 0;
+    memset(&running->exc_state, 0, sizeof(running->exc_state));
 
-        // The root stack is suspended and owns the thread's original frames.
+    if (running != root) {
+        // The thread is exiting while a user stack is running. The root
+        // stack is suspended and owns the thread's original frames.
         clear_state(root);
+        root->tstate = NULL;
     }
-    // Otherwise the root is running: its fields live in tstate.
-    execstack_dealloc(root);
+    // Drop the thread state's reference to the root.
+    assert(root->refs > 0);
+    if (--root->refs == 0) {
+        execstack_dealloc(root);
+    }
 }

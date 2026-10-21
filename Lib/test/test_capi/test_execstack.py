@@ -32,6 +32,31 @@ class RootStackTests(unittest.TestCase):
     def test_root_misuse(self):
         _testcapi.execstack_root_misuse()
 
+    def test_hold_root_in_same_thread(self):
+        cap = _testcapi.execstack_hold_current()
+        state, frame = _testcapi.execstack_held_state(cap)
+        self.assertEqual(state, RUNNING)
+        self.assertIs(frame, sys._getframe())
+        del cap   # drops our extra reference; the thread keeps its own
+        self.assertEqual(_testcapi.execstack_root_state(), RUNNING)
+
+    @threading_helper.requires_working_threading()
+    def test_root_outlives_thread(self):
+        holder = []
+
+        def body():
+            holder.append(_testcapi.execstack_hold_current())
+
+        t = threading.Thread(target=body)
+        t.start()
+        t.join()
+        cap = holder.pop()
+        # The thread is gone: its root stack is detached and empty.
+        state, frame = _testcapi.execstack_held_state(cap)
+        self.assertEqual(state, SUSPENDED)
+        self.assertIsNone(frame)
+        del cap   # last reference: deallocates
+
     def test_new_rejects_non_context(self):
         with self.assertRaises(TypeError):
             _testcapi.execstack_new_bad_context(42)

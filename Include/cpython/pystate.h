@@ -326,9 +326,9 @@ PyAPI_FUNC(void) PyUnstable_ThreadState_ResetStackProtection(
    touching its fields directly.
 
    Each PyThreadState has exactly one RUNNING execution stack at any time.
-   The thread's original stack (the "root" stack) is created lazily and owned
-   by the thread state. Every other stack is created with
-   PyUnstable_ExecStack_New() and owned by the caller.
+   The thread's original stack (the "root" stack) is created lazily and
+   referenced by the thread state. Every other stack is created with
+   PyUnstable_ExecStack_New().
 
    The error indicator (tstate->current_exception) is *not* part of an
    execution stack: it travels with control across a switch, which is how a
@@ -346,8 +346,15 @@ typedef enum {
 // (may be NULL). Returns NULL with an exception set on failure.
 PyAPI_FUNC(PyUnstable_ExecStack *) PyUnstable_ExecStack_New(PyObject *context);
 
-// Return the stack currently running on tstate (borrowed), creating the
-// thread's root stack if necessary. Returns NULL with MemoryError on failure.
+// Return a new reference to the stack currently running on tstate, creating
+// the thread's root stack if necessary. Release it with
+// PyUnstable_ExecStack_Free(). Returns NULL with MemoryError on failure.
+//
+// Stacks are reference counted: PyUnstable_ExecStack_New() and this function
+// each hand out one reference, and the thread state holds one reference to
+// its root stack. A root stack whose thread has exited becomes SUSPENDED,
+// empty and detached; it can still be inspected and freed by its remaining
+// owners but can no longer be switched to.
 PyAPI_FUNC(PyUnstable_ExecStack *) PyUnstable_ThreadState_GetExecStack(
     PyThreadState *tstate);
 
@@ -392,8 +399,9 @@ PyAPI_FUNC(int) PyUnstable_ExecStack_Traverse(
 // to. Returns -1 with SystemError if the stack is RUNNING.
 PyAPI_FUNC(int) PyUnstable_ExecStack_Clear(PyUnstable_ExecStack *stack);
 
-// Clear and deallocate. Returns -1 with SystemError if the stack is RUNNING
-// or is a thread's root stack.
+// Release a reference. When the last reference is dropped the stack is
+// cleared and deallocated. Returns -1 with SystemError if that would
+// deallocate a RUNNING stack.
 PyAPI_FUNC(int) PyUnstable_ExecStack_Free(PyUnstable_ExecStack *stack);
 
 /* Routines for advanced debuggers, requested by David Beazley.
