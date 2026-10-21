@@ -3817,6 +3817,9 @@ _testcapi_exec(PyObject *m)
     if (_PyTestCapi_Init_Frame(m) < 0) {
         return -1;
     }
+    if (_PyTestCapi_Init_ExecStack(m) < 0) {
+        return NULL;
+    }
     if (_PyTestCapi_Init_Type(m) < 0) {
         return -1;
     }

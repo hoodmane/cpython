@@ -641,6 +641,7 @@
     <ClCompile Include="..\Python\errors.c" />
     <ClCompile Include="..\Python\fileutils.c" />
     <ClCompile Include="..\Python\flowgraph.c" />
+    <ClCompile Include="..\Python\execstack.c" />
     <ClCompile Include="..\Python\frame.c" />
     <ClCompile Include="..\Python\frozen.c">
       <AdditionalIncludeDirectories>$(GeneratedFrozenModulesDir)Python;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>

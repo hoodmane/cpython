@@ -454,6 +454,7 @@ PYTHON_OBJS=	\
 		Python/crossinterp.o \
 		Python/dynamic_annotations.o \
 		Python/errors.o \
+		Python/execstack.o \
 		Python/flowgraph.o \
 		Python/frame.o \
 		Python/frozenmain.o \

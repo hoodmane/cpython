@@ -315,6 +315,87 @@ PyAPI_FUNC(int) PyUnstable_ThreadState_SetStackProtection(
 PyAPI_FUNC(void) PyUnstable_ThreadState_ResetStackProtection(
     PyThreadState *tstate);
 
+/* Execution stacks (unstable API).
+
+   An execution stack is the part of a thread state that belongs to one
+   stackful coroutine: the chain of interpreter frames and the memory they
+   live in, the exception-handling stack, the contextvars context, recursion
+   and tracing depth, and a few related bookkeeping fields. Libraries that
+   implement stackful coroutines by switching C stacks (greenlet, Pyodide)
+   use this API to swap that state in and out of a PyThreadState without
+   touching its fields directly.
+
+   Each PyThreadState has exactly one RUNNING execution stack at any time.
+   The thread's original stack (the "root" stack) is created lazily and owned
+   by the thread state. Every other stack is created with
+   PyUnstable_ExecStack_New() and owned by the caller.
+
+   The error indicator (tstate->current_exception) is *not* part of an
+   execution stack: it travels with control across a switch, which is how a
+   library throws an exception into a stack. */
+
+typedef struct _PyExecStack PyUnstable_ExecStack;
+
+typedef enum {
+    PyUnstable_ExecStack_NEW = 0,
+    PyUnstable_ExecStack_RUNNING = 1,
+    PyUnstable_ExecStack_SUSPENDED = 2,
+} PyUnstable_ExecStack_State;
+
+// Create a NEW stack with no frames and the given contextvars context
+// (may be NULL). Returns NULL with an exception set on failure.
+PyAPI_FUNC(PyUnstable_ExecStack *) PyUnstable_ExecStack_New(PyObject *context);
+
+// Return the stack currently running on tstate (borrowed), creating the
+// thread's root stack if necessary. Returns NULL with MemoryError on failure.
+PyAPI_FUNC(PyUnstable_ExecStack *) PyUnstable_ThreadState_GetExecStack(
+    PyThreadState *tstate);
+
+// Suspend the stack currently running on tstate and resume `target`.
+// `target` must be NEW, or SUSPENDED and previously run on tstate. Returns
+// the stack that was running (borrowed), or NULL with an exception set and
+// the thread state unchanged. Switching to the running stack is a no-op.
+// Must be called while attached to tstate, after the C stack of the target
+// has been made valid. Does not run Python code.
+PyAPI_FUNC(PyUnstable_ExecStack *) PyUnstable_ExecStack_Switch(
+    PyThreadState *tstate,
+    PyUnstable_ExecStack *target);
+
+PyAPI_FUNC(PyUnstable_ExecStack_State) PyUnstable_ExecStack_GetState(
+    PyUnstable_ExecStack *stack);
+
+// Return a new reference to the topmost complete frame of the stack, or NULL
+// (with the error indicator cleared) if there is none. Same contract as
+// PyThreadState_GetFrame(). Safe to call on a SUSPENDED stack; f_back on the
+// result is also safe.
+PyAPI_FUNC(PyFrameObject *) PyUnstable_ExecStack_GetFrame(
+    PyUnstable_ExecStack *stack);
+
+// Contextvars context of the stack. GetContext returns a new reference or
+// NULL. SetContext accepts NULL or a PyContext. For the RUNNING stack of the
+// current thread these operate on the thread state.
+PyAPI_FUNC(PyObject *) PyUnstable_ExecStack_GetContext(
+    PyUnstable_ExecStack *stack);
+PyAPI_FUNC(int) PyUnstable_ExecStack_SetContext(
+    PyUnstable_ExecStack *stack,
+    PyObject *context);
+
+// For the owner's tp_traverse. Visits the objects owned by a SUSPENDED (or
+// NEW) stack, including the contents of its frames.
+PyAPI_FUNC(int) PyUnstable_ExecStack_Traverse(
+    PyUnstable_ExecStack *stack,
+    visitproc visit,
+    void *arg);
+
+// For the owner's tp_clear. Release everything the stack owns, clearing any
+// suspended frames. The stack remains allocated but can no longer be switched
+// to. Returns -1 with SystemError if the stack is RUNNING.
+PyAPI_FUNC(int) PyUnstable_ExecStack_Clear(PyUnstable_ExecStack *stack);
+
+// Clear and deallocate. Returns -1 with SystemError if the stack is RUNNING
+// or is a thread's root stack.
+PyAPI_FUNC(int) PyUnstable_ExecStack_Free(PyUnstable_ExecStack *stack);
+
 /* Routines for advanced debuggers, requested by David Beazley.
    Don't use unless you know what you are doing! */
 PyAPI_FUNC(PyInterpreterState *) PyInterpreterState_Main(void);
