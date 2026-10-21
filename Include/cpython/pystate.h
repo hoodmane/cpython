@@ -334,6 +334,9 @@ PyAPI_FUNC(void) PyUnstable_ThreadState_ResetStackProtection(
    execution stack: it travels with control across a switch, which is how a
    library throws an exception into a stack. */
 
+// Feature test macro for extensions that support older Pythons too.
+#define Py_HAVE_EXECSTACK 1
+
 typedef struct _PyExecStack PyUnstable_ExecStack;
 
 typedef enum {
