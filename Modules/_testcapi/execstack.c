@@ -299,13 +299,18 @@ fiber_switch_impl(FiberObject *self, PyObject *value)
     return result;
 }
 
+// switch() and switch_back() are METH_FASTCALL so that the specializing
+// interpreter and the JIT tracer treat them like any other C method: a
+// fiber can then be suspended from inside JIT code, which is what exercises
+// the JIT fields of the thread state.
 static PyObject *
-fiber_switch(PyObject *op, PyObject *args)
+fiber_switch(PyObject *op, PyObject *const *args, Py_ssize_t nargs)
 {
-    PyObject *value = Py_None;
-    if (!PyArg_ParseTuple(args, "|O", &value)) {
+    if (nargs > 1) {
+        PyErr_SetString(PyExc_TypeError, "switch() takes at most 1 argument");
         return NULL;
     }
+    PyObject *value = nargs ? args[0] : Py_None;
     return fiber_switch_impl((FiberObject *)op, Py_NewRef(value));
 }
 
@@ -320,13 +325,14 @@ fiber_throw(PyObject *op, PyObject *exc)
 // Called from inside the fiber: suspend and give `value` to whoever
 // switched into us.
 static PyObject *
-fiber_switch_back(PyObject *op, PyObject *args)
+fiber_switch_back(PyObject *op, PyObject *const *args, Py_ssize_t nargs)
 {
     FiberObject *self = (FiberObject *)op;
-    PyObject *value = Py_None;
-    if (!PyArg_ParseTuple(args, "|O", &value)) {
+    if (nargs > 1) {
+        PyErr_SetString(PyExc_TypeError, "switch_back() takes at most 1 argument");
         return NULL;
     }
+    PyObject *value = nargs ? args[0] : Py_None;
     if (self != current) {
         PyErr_SetString(PyExc_ValueError, "fiber is not running");
         return NULL;
@@ -460,9 +466,9 @@ fiber_dealloc(PyObject *op)
 }
 
 static PyMethodDef fiber_methods[] = {
-    {"switch", fiber_switch, METH_VARARGS, NULL},
+    {"switch", _PyCFunction_CAST(fiber_switch), METH_FASTCALL, NULL},
     {"throw", fiber_throw, METH_O, NULL},
-    {"switch_back", fiber_switch_back, METH_VARARGS, NULL},
+    {"switch_back", _PyCFunction_CAST(fiber_switch_back), METH_FASTCALL, NULL},
     {NULL},
 };
 

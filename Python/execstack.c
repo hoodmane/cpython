@@ -8,6 +8,18 @@
  * thread state into the running stack (making it SUSPENDED) and then loads
  * the target.
  *
+ * Which PyThreadState fields are per-stack is decided here and nowhere else.
+ * When adding a field to PyThreadState or _PyThreadStateImpl, classify it:
+ *
+ *  - Per execution stack (belongs to the chain of Python frames and travels
+ *    with it): saved by save_state(), loaded by load_state(), reset by
+ *    init_fresh_state(), released by clear_state().
+ *  - Travels with control (the error indicator): deliberately left alone.
+ *  - Per thread (GIL/attach state, dict, trace and profile functions,
+ *    asyncio loop, lazy_imports, generator_return_kind, pystats, ensure,
+ *    datastack_cached_chunk which is just a free-chunk cache, ...): left
+ *    alone.
+ *
  * The frame chain of a suspended stack needs special care. The eval loop keeps
  * an "entry frame" (_PyEntryFrame in ceval.c) as a C local every time it is
  * entered, and links it into the chain via ->previous. Stack switching
@@ -24,6 +36,7 @@
 #include "pycore_frame.h"             // PyFrameObject internals
 #include "pycore_interpframe.h"       // _PyFrame_GetFirstComplete()
 #include "pycore_obmalloc.h"          // _PyObject_VirtualFree()
+#include "pycore_optimizer.h"         // _PyJit_FinalizeTracing()
 #include "pycore_pystate.h"           // _PyThreadState_GET()
 #include "pycore_stackref.h"          // _PyCStackRef
 #include "pycore_tstate.h"            // _PyThreadStateImpl
@@ -36,7 +49,10 @@ typedef struct {
 } execstack_link;
 
 struct _PyExecStack {
-    PyThreadState *tstate;   // thread this stack runs/ran on, NULL if NEW
+    PyThreadState *tstate;   // thread this stack runs/ran on, NULL if NEW.
+                             // Only dereferenced while RUNNING: a suspended
+                             // stack may outlive its thread.
+    uint64_t tstate_id;      // tstate->id, for the ownership check
     Py_ssize_t refs;         // owners: New()/GetExecStack() callers, tstate
     int state;               // PyUnstable_ExecStack_State
     int is_root;             // created for a thread's original stack
@@ -57,6 +73,11 @@ struct _PyExecStack {
     PyObject **datastack_top;
     PyObject **datastack_limit;
     PyObject *current_executor;            // borrowed
+    struct _PyExitData *jit_exit;          // paired with current_executor
+    _PyInterpreterFrame *last_profiled_frame;  // remote profiler anchor
+#if _Py_TIER2
+    struct _PyJitTracerState *jit_tracer_state;  // in-progress trace, if any
+#endif
     PyObject *asyncio_running_task;        // strong
     uintptr_t critical_section;
 #ifdef Py_GIL_DISABLED
@@ -74,8 +95,15 @@ struct _PyExecStack {
 };
 
 
+// Frames we must not leave in a suspended chain: the entry frames that
+// _PyEval_EvalFrameDefault keeps on the C stack, and the thread's base_frame
+// sentinel. The sentinel lives in _PyThreadStateImpl, which a suspended stack
+// can outlive (greenlet keeps suspended greenlets of exited threads around
+// until they are collected), so it is unlinked too and put back on resume.
+// The "every chain ends at base_frame" invariant therefore holds for the
+// running stack, which is the only one the remote profiler can observe.
 static inline int
-is_cstack_frame(_PyInterpreterFrame *frame)
+is_entry_frame(_PyInterpreterFrame *frame)
 {
     return frame->owner >= FRAME_OWNED_BY_INTERPRETER;
 }
@@ -123,6 +151,7 @@ get_running(PyThreadState *tstate)
         return NULL;
     }
     root->tstate = tstate;
+    root->tstate_id = tstate->id;
     root->is_root = 1;
     root->state = PyUnstable_ExecStack_RUNNING;
     impl->exec_stack = root;
@@ -140,14 +169,14 @@ count_entry_links(_PyInterpreterFrame *frame)
 {
     Py_ssize_t n = 0;
     // Skip leading entry frames (current_frame can transiently be one).
-    while (frame != NULL && is_cstack_frame(frame)) {
+    while (frame != NULL && is_entry_frame(frame)) {
         frame = frame->previous;
     }
     while (frame != NULL) {
         _PyInterpreterFrame *prev = frame->previous;
-        if (prev != NULL && is_cstack_frame(prev)) {
+        if (prev != NULL && is_entry_frame(prev)) {
             n++;
-            while (prev != NULL && is_cstack_frame(prev)) {
+            while (prev != NULL && is_entry_frame(prev)) {
                 prev = prev->previous;
             }
         }
@@ -180,19 +209,19 @@ static void
 unlink_entry_frames(PyUnstable_ExecStack *stack)
 {
     _PyInterpreterFrame *frame = stack->current_frame;
-    while (frame != NULL && is_cstack_frame(frame)) {
+    while (frame != NULL && is_entry_frame(frame)) {
         frame = frame->previous;
     }
     stack->top_frame = frame;
     stack->n_links = 0;
     while (frame != NULL) {
         _PyInterpreterFrame *prev = frame->previous;
-        if (prev != NULL && is_cstack_frame(prev)) {
+        if (prev != NULL && is_entry_frame(prev)) {
             assert(stack->n_links < stack->links_capacity);
             execstack_link *link = &stack->links[stack->n_links++];
             link->frame = frame;
             link->previous = prev;
-            while (prev != NULL && is_cstack_frame(prev)) {
+            while (prev != NULL && is_entry_frame(prev)) {
                 prev = prev->previous;
             }
             frame->previous = prev;
@@ -289,6 +318,20 @@ save_state(PyUnstable_ExecStack *stack, PyThreadState *tstate)
     stack->datastack_top = tstate->datastack_top;
     stack->datastack_limit = tstate->datastack_limit;
     stack->current_executor = tstate->current_executor;
+    stack->jit_exit = tstate->jit_exit;
+    // The remote profiler's cache anchor names a frame in our chain. It must
+    // not stay behind: a frame of the next stack could reuse the address
+    // without going through _PyThreadState_PopFrame's sequence bump.
+    stack->last_profiled_frame = tstate->last_profiled_frame;
+#if _Py_TIER2
+    // A trace in progress belongs to the eval loop invocation that is
+    // recording it, which is suspended with us. Leaving it on the thread
+    // would block the next stack from tracing, and abandoning it here is
+    // not possible: that eval loop is still in tracing dispatch and will
+    // continue recording when we resume.
+    stack->jit_tracer_state = impl->jit_tracer_state;
+    impl->jit_tracer_state = NULL;
+#endif
 
     stack->asyncio_running_task = impl->asyncio_running_task;
     impl->asyncio_running_task = NULL;
@@ -341,6 +384,15 @@ load_state(PyThreadState *tstate, PyUnstable_ExecStack *stack)
     stack->datastack_limit = NULL;
     tstate->current_executor = stack->current_executor;
     stack->current_executor = NULL;
+    tstate->jit_exit = stack->jit_exit;
+    stack->jit_exit = NULL;
+    tstate->last_profiled_frame = stack->last_profiled_frame;
+    stack->last_profiled_frame = NULL;
+#if _Py_TIER2
+    assert(impl->jit_tracer_state == NULL);
+    impl->jit_tracer_state = stack->jit_tracer_state;
+    stack->jit_tracer_state = NULL;
+#endif
 
     assert(impl->asyncio_running_task == NULL);
     impl->asyncio_running_task = stack->asyncio_running_task;
@@ -371,7 +423,9 @@ init_fresh_state(PyThreadState *tstate, PyUnstable_ExecStack *stack)
     stack->context = NULL;
     tstate->context_ver++;
 
-    tstate->current_frame = NULL;
+    // Every chain ends at the thread's base_frame sentinel.
+    tstate->current_frame = tstate->base_frame;
+    tstate->last_profiled_frame = NULL;
     memset(&tstate->exc_state, 0, sizeof(tstate->exc_state));
     tstate->exc_info = &tstate->exc_state;
     tstate->delete_later = NULL;
@@ -380,6 +434,11 @@ init_fresh_state(PyThreadState *tstate, PyUnstable_ExecStack *stack)
     tstate->datastack_top = NULL;
     tstate->datastack_limit = NULL;
     tstate->current_executor = NULL;
+    tstate->jit_exit = NULL;
+#if _Py_TIER2
+    // save_state() moved the parent's tracer into the parent's stack.
+    assert(impl->jit_tracer_state == NULL);
+#endif
     assert(impl->asyncio_running_task == NULL);
     tstate->critical_section = 0;
 #ifdef Py_GIL_DISABLED
@@ -419,7 +478,7 @@ clear_frames(PyUnstable_ExecStack *stack)
     stack->n_links = 0;
     while (frame != NULL) {
         _PyInterpreterFrame *prev = frame->previous;
-        assert(!is_cstack_frame(frame));
+        assert(!is_entry_frame(frame));
         if (frame->owner == FRAME_OWNED_BY_THREAD) {
             _PyFrame_ClearExceptCode(frame);
             PyStackRef_CLEAR(frame->f_executable);
@@ -447,7 +506,26 @@ clear_state(PyUnstable_ExecStack *stack)
         // unreachable: a switch would have to happen inside tp_dealloc.
         stack->delete_later = NULL;
         stack->current_executor = NULL;
+        stack->jit_exit = NULL;
+        stack->last_profiled_frame = NULL;
         stack->critical_section = 0;
+#if _Py_TIER2
+        if (stack->jit_tracer_state != NULL) {
+            // Abandon the trace that was being recorded when the stack was
+            // suspended. _PyJit_FinalizeTracing() works on the thread's
+            // tracer, so lend it ours.
+            _PyThreadStateImpl *impl =
+                (_PyThreadStateImpl *)_PyThreadState_GET();
+            struct _PyJitTracerState *saved = impl->jit_tracer_state;
+            impl->jit_tracer_state = stack->jit_tracer_state;
+            if (impl->jit_tracer_state->is_tracing) {
+                _PyJit_FinalizeTracing((PyThreadState *)impl, 0);
+            }
+            _PyJit_TracerFree(impl);
+            impl->jit_tracer_state = saved;
+            stack->jit_tracer_state = NULL;
+        }
+#endif
         free_datastack(stack);
 #ifdef Py_GIL_DISABLED
         stack->c_stack_refs = NULL;
@@ -505,7 +583,9 @@ check_resume_target(PyThreadState *tstate, PyUnstable_ExecStack *target)
                         "execution stack has been cleared");
         return -1;
     }
-    if (target->tstate != NULL && target->tstate != tstate) {
+    if (target->tstate != NULL && target->tstate_id != tstate->id) {
+        // Compare ids, not pointers: a suspended stack can outlive its
+        // thread and a new thread state may reuse the address.
         PyErr_SetString(PyExc_SystemError,
                         "execution stack belongs to a different thread");
         return -1;
@@ -565,6 +645,7 @@ PyUnstable_ExecStack_Resume(PyThreadState *tstate, PyUnstable_ExecStack *target)
 
     if (target->state == PyUnstable_ExecStack_NEW) {
         target->tstate = tstate;
+        target->tstate_id = tstate->id;
         init_fresh_state(tstate, target);
     }
     else {
@@ -671,7 +752,7 @@ PyUnstable_ExecStack_Traverse(PyUnstable_ExecStack *stack, visitproc visit,
     Py_VISIT(stack->exc_state.exc_value);
     Py_VISIT(stack->asyncio_running_task);
     for (_PyInterpreterFrame *f = stack->top_frame; f != NULL; f = f->previous) {
-        assert(!is_cstack_frame(f));
+        assert(!is_entry_frame(f));
         // Generator frames are traversed by their generator.
         if (f->owner != FRAME_OWNED_BY_THREAD) {
             continue;

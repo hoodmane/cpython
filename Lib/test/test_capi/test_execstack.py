@@ -10,13 +10,15 @@ stack are garbage until it resumes. Anything that followed them would crash.
 import contextvars
 import gc
 import sys
+import textwrap
 import threading
 import unittest
 import weakref
 
-from test.support import import_helper, threading_helper
+from test.support import import_helper, threading_helper, requires_jit_enabled
 
 _testcapi = import_helper.import_module('_testcapi')
+_testinternalcapi = import_helper.import_module('_testinternalcapi')
 
 NEW = _testcapi.EXECSTACK_NEW
 RUNNING = _testcapi.EXECSTACK_RUNNING
@@ -519,12 +521,164 @@ class FiberTests(unittest.TestCase):
         t.join()
         f = holder.pop()
         self.assertEqual(f.state, SUSPENDED)
+        # The thread state, and the base_frame sentinel embedded in it, are
+        # gone. Walking the suspended chain must not touch them.
+        self.assertEqual(self.frame_names(f.frame), ['run'])
+        gc.collect()
         with self.assertRaises(ValueError):
             # Not running in this thread; our fiber impl refuses. The stack
             # itself belongs to a dead thread and must be freeable below.
             f.switch_back()
         del f
         gc.collect()
+
+
+@unittest.skipUnless(hasattr(_testcapi, 'Fiber'), 'needs fibers')
+@requires_jit_enabled
+class FiberJITTests(unittest.TestCase):
+    """The JIT keeps per-thread state that is really per execution stack:
+    the executor currently running (current_executor / jit_exit) and the
+    trace being recorded (jit_tracer_state).
+
+    sys._jit.is_active() reads tstate->current_executor, so a leak across a
+    switch is observable. Like test_sys.test_jit_is_active, each scenario
+    runs in a fresh subprocess: executor creation depends on warmup counters
+    and invalidations that other tests in the same process (and refleak
+    repetitions) disturb. Within the scripts, loop bodies are kept small
+    enough to be traced and nothing writes to module globals, since the
+    globals watcher would invalidate every executor of the module.
+    """
+
+    PRELUDE = textwrap.dedent("""
+        import gc, sys, _testcapi, _testinternalcapi
+        THRESHOLD = _testinternalcapi.TIER2_THRESHOLD
+        # The loop is traced at iteration THRESHOLD and runs as JIT code from
+        # THRESHOLD + 1 on (see test_sys.test_jit_is_active).
+        ITERATIONS = THRESHOLD + 200
+
+        def run_fiber(fib, arg):
+            log = []
+            for i in range(ITERATIONS):
+                log.append(sys._jit.is_active())
+                fib.switch_back(None)
+                log.append(sys._jit.is_active())
+            return log
+
+        # Same thing with a code object of its own, so two fibers can run
+        # JIT code without sharing an executor (see check_log).
+        def run_fiber2(fib, arg):
+            log = []
+            for i in range(ITERATIONS):
+                log.append(sys._jit.is_active())
+                fib.switch_back(None)
+                log.append(sys._jit.is_active())
+            return log
+
+        def drive(fibers):
+            # Switch into each fiber in turn until all have returned their
+            # log, recording our own view before and after each switch.
+            logs = {}
+            root_log = []
+            while len(logs) < len(fibers):
+                for f in fibers:
+                    if f in logs:
+                        continue
+                    root_log.append(sys._jit.is_active())
+                    r = f.switch()
+                    root_log.append(sys._jit.is_active())
+                    if r is not None:
+                        logs[f] = r
+            return logs, root_log
+
+        def check_log(name, log, expect_active, strict=True):
+            pairs = list(zip(log[::2], log[1::2]))
+            # Being in JIT code after a switch without having been in JIT
+            # code before it means the other side's executor leaked across.
+            leaked = [(b, a) for b, a in pairs if a and not b]
+            assert not leaked, (name, leaked[:5])
+            if strict:
+                # The converse can legitimately happen if our executor was
+                # invalidated while we were suspended (we then deopt on
+                # resume). With distinct code objects and nothing else
+                # creating executors that does not occur, so require the
+                # view to be exactly unchanged.
+                bad = [(b, a) for b, a in pairs if b != a]
+                assert not bad, (name, bad[:5])
+            active = sum(b for b, a in pairs)
+            if expect_active:
+                assert active > 100, (name, active)
+    """)
+
+    def run_script(self, body):
+        from test.support.script_helper import assert_python_ok
+        assert_python_ok("-c", self.PRELUDE + textwrap.dedent(body))
+
+    def test_current_executor_is_per_stack(self):
+        self.run_script("""
+            f = _testcapi.Fiber(run_fiber)
+            logs, root_log = drive([f])
+            check_log('fiber', logs[f], expect_active=True)
+            check_log('root', root_log, expect_active=False)
+        """)
+
+    def test_switching_between_fibers_in_jit_code(self):
+        self.run_script("""
+            a, b = _testcapi.Fiber(run_fiber), _testcapi.Fiber(run_fiber2)
+            logs, root_log = drive([a, b])
+            check_log('a', logs[a], expect_active=True)
+            check_log('b', logs[b], expect_active=True)
+            check_log('root', root_log, expect_active=False)
+        """)
+
+    def test_concurrent_traces_of_the_same_loop(self):
+        # Two fibers running the same code object both get hot at the same
+        # time. With per-stack tracers each records its own trace of the
+        # loop; the second executor to be installed replaces the first, so
+        # one fiber deopts once on resume. That is fine, but no executor may
+        # leak across a switch and both fibers must end up in JIT code.
+        self.run_script("""
+            a, b = _testcapi.Fiber(run_fiber), _testcapi.Fiber(run_fiber)
+            logs, root_log = drive([a, b])
+            check_log('a', logs[a], expect_active=True, strict=False)
+            check_log('b', logs[b], expect_active=True, strict=False)
+            check_log('root', root_log, expect_active=False)
+        """)
+
+    def test_trace_in_progress_travels_with_stack(self):
+        # Suspending a fiber while the tracer is recording must not stop the
+        # rest of the thread from tracing, even if that fiber is never
+        # resumed and is garbage collected with the half-recorded trace.
+        self.run_script("""
+            import types
+
+            def run(fib, arg):
+                for i in range(THRESHOLD * 3):
+                    fib.switch_back(i)
+
+            # Leave fibers suspended at every iteration around the point
+            # where the trace is recorded, so one is suspended mid-trace.
+            # Each gets a copy of the code object: the warmup counter lives
+            # in the code object, so with a shared one only the first fiber
+            # to get hot would record a trace.
+            leftovers = []
+            for n in range(THRESHOLD - 2, THRESHOLD + 4):
+                fresh = types.FunctionType(run.__code__.replace(),
+                                           run.__globals__)
+                f = _testcapi.Fiber(fresh)
+                for _ in range(n):
+                    f.switch()
+                leftovers.append(f)
+            del leftovers
+            gc.collect()
+
+            # A fresh loop on this thread must still get JIT compiled.
+            def hot():
+                for i in range(ITERATIONS):
+                    if sys._jit.is_active():
+                        return i
+                return None
+            assert hot() is not None
+        """)
 
 
 if __name__ == '__main__':
