@@ -1,8 +1,10 @@
 """Tests for the PyUnstable_ExecStack API.
 
-The C side (Modules/_testcapi/execstack.c) implements a minimal stackful
-coroutine, ``Fiber``, on top of ucontext. Each fiber runs on its own C stack
-and its own execution stack, which is the situation the API is designed for.
+The C side (Modules/_testcapi/execstack.c) implements a minimal greenlet-like
+stackful coroutine, ``Fiber``. All fibers of a thread share one C stack
+region; a suspended fiber's slice of it is copied to the heap and the region
+is poisoned, so the entry frames the eval loop left on a suspended fiber's C
+stack are garbage until it resumes. Anything that followed them would crash.
 """
 
 import contextvars
@@ -442,6 +444,62 @@ class FiberTests(unittest.TestCase):
         f = self.Fiber(run)
         f.switch()
         self.assertEqual(f.switch(), 'ok')
+
+    def test_c_stack_is_spilled_while_suspended(self):
+        def run(fib, arg):
+            fib.switch_back()
+
+        f = self.Fiber(run)
+        self.assertEqual(f.saved_stack_size, 0)
+        f.switch()
+        # Suspended inside the eval loop: a few C frames at least.
+        suspended = f.saved_stack_size
+        self.assertGreater(suspended, 1000)
+        f.switch()
+        # Finished: only the tail of fiber_entry() is left spilled.
+        self.assertLess(f.saved_stack_size, suspended)
+
+    def test_frames_survive_many_switches(self):
+        """Every switch overwrites the region; walking suspended frames after
+        each one checks that nothing points at the C stack."""
+        def run(fib, n):
+            def deeper(k):
+                if k == 0:
+                    return fib.switch_back(n)
+                return deeper(k - 1)
+            return deeper(n)
+
+        fibers = [self.Fiber(run) for _ in range(8)]
+        for i, f in enumerate(fibers):
+            self.assertEqual(f.switch(i), i)
+        for _ in range(3):
+            for i, f in enumerate(fibers):
+                names = self.frame_names(f.frame)
+                self.assertEqual(names, ['deeper'] * (i + 1) + ['run'])
+                gc.collect()
+        for f in fibers:
+            f.switch()
+
+    @threading_helper.requires_working_threading()
+    def test_switch_from_another_thread_rejected(self):
+        def run(fib, arg):
+            fib.switch_back()
+
+        f = self.Fiber(run)
+        f.switch()
+        errors = []
+
+        def body():
+            try:
+                f.switch()
+            except ValueError as e:
+                errors.append(str(e))
+
+        t = threading.Thread(target=body)
+        t.start()
+        t.join()
+        self.assertEqual(errors, ['cannot switch to a fiber of another thread'])
+        f.switch()
 
     @threading_helper.requires_working_threading()
     def test_thread_exits_with_suspended_fiber(self):
