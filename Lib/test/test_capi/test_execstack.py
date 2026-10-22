@@ -153,6 +153,123 @@ class FiberTests(unittest.TestCase):
         self.assertEqual(names, ['key', '<lambda>', '<lambda>', 'run'])
         self.assertEqual(f.switch(), [1])
 
+    # The eval loop keeps an "entry frame" as a C local every time it is
+    # entered, linked into the frame chain via ->previous. For a suspended
+    # fiber that C stack is gone (poisoned, in this test fiber). The next
+    # few tests check every way the interpreter can reach such a chain:
+    # frame objects and tracebacks that escaped the fiber, GC traversal,
+    # and clearing a dead fiber -- each with Python frames *below* a nested
+    # eval loop entry, so the walk has to get past the entry frame.
+
+    def nested_suspend(self, fib, payload):
+        """Suspend from Python code called from C called from Python, and
+        hand `payload(frame)` to the root."""
+        def key(v):
+            if v == 2:
+                fib.switch_back(payload(sys._getframe()))
+            return v
+        return sorted([3, 2, 1], key=key)
+
+    def nested_suspend_leakfree(self, fib):
+        """Suspend from Python called from C called from Python, where the
+        C frame owns no references. The API cannot unwind C stacks, so a
+        fiber cleared while suspended inside e.g. sorted() leaks whatever
+        sorted() holds (greenlet throws GreenletExit into live greenlets
+        instead for exactly that reason), and a C frame holding a reference
+        into a cycle keeps the cycle alive. _testcapi.pyobject_vectorcall
+        borrows everything it passes on."""
+        def inner():
+            fib.switch_back(None)
+            return 'got'
+        return _testcapi.pyobject_vectorcall(inner, None, None)
+
+    def test_escaped_frame_object_f_back_while_suspended(self):
+        def run(fib, arg):
+            self.nested_suspend(fib, lambda frame: frame)
+            return 'done'
+
+        f = self.Fiber(run)
+        frame = f.switch()
+        # `frame` is key's frame object. Its f_back is lazily computed by
+        # following ->previous, which goes through sorted()'s entry frame
+        # on the fiber's (now dead) C stack.
+        self.assertEqual(self.frame_names(frame),
+                         ['key', 'nested_suspend', 'run'])
+        self.assertEqual(f.switch(), 'done')
+        # After the fiber finished, the frame object owns its data.
+        self.assertEqual(frame.f_code.co_name, 'key')
+
+    def test_escaped_traceback_while_suspended(self):
+        def run(fib, arg):
+            def boom():
+                raise ValueError('inside')
+            try:
+                boom()
+            except ValueError as e:
+                tb = e.__traceback__
+            # Suspend from a nested eval loop while holding the traceback.
+            self.nested_suspend(fib, lambda frame: tb)
+            return 'done'
+
+        f = self.Fiber(run)
+        tb = f.switch()
+        names = []
+        while tb is not None:
+            names.append(tb.tb_frame.f_code.co_name)
+            # boom's frame is finished and owns its data; run's is live but
+            # suspended, and its f_back goes through the entry frame of the
+            # fiber's bottom-most eval loop, on the dead C stack.
+            self.assertEqual(self.frame_names(tb.tb_frame)[-1], 'run')
+            tb = tb.tb_next
+        self.assertEqual(names, ['run', 'boom'])
+        self.assertEqual(f.switch(), 'done')
+
+    def test_gc_crosses_entry_frame_in_suspended_stack(self):
+        """A cycle held only by a frame *below* a nested eval loop entry
+        must still be found and broken."""
+        class Marker:
+            pass
+
+        refs = []
+
+        def run(fib, arg):
+            marker = Marker()          # lives in run's frame
+            refs.append(weakref.ref(marker))
+            me = fib                   # cycle: run's frame -> fiber -> stack
+            self.nested_suspend_leakfree(fib)
+            return marker, me
+
+        f = self.Fiber(run)
+        f.switch()
+        wr = refs[0]
+        gc.collect()
+        self.assertIsNotNone(wr())
+        # The only GC-visible referrer is the fiber: its traversal reaches
+        # run's frame, two entry frames down the suspended chain.
+        referrers = gc.get_referrers(wr())
+        self.assertIn(f, referrers)
+        del f, referrers
+        gc.collect()
+        self.assertIsNone(wr())
+
+    def test_dealloc_while_suspended_clears_frames_below_entry_frame(self):
+        events = []
+
+        class Local:
+            def __del__(self):
+                events.append('local deleted')
+
+        def run(fib, arg):
+            local = Local()            # in run's frame, below an entry frame
+            self.nested_suspend_leakfree(fib)
+            events.append('resumed')
+
+        f = self.Fiber(run)
+        f.switch()
+        del f
+        gc.collect()
+        self.assertEqual(events, ['local deleted'])
+
     def test_switch_from_finalizer_during_frame_pop(self):
         """tstate->current_frame is transiently an entry frame while the eval
         loop clears a returning frame; a finalizer running then may switch."""
