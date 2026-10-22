@@ -40,6 +40,9 @@ declare function __PyProxyGen_Return(ptr: number, arg: any): IteratorResult<any>
 declare function __PyProxyGen_Throw(ptr: number, arg: any): IteratorResult<any>;
 declare function __PyProxy_pop(ptr: number, pop_start: boolean): number;
 declare function __PyProxy_slice_assign(ptr: number, start: number, stop: number, value: any): any;
+declare function __PyProxy_get_buffer(ptr: number): any;
+declare function __PyProxy_release_buffer(view_ptr: number): void;
+declare var HEAPU32: Uint32Array;
 
 // pyodide-skip
 
@@ -66,6 +69,7 @@ declare var IS_SEQUENCE: number;
 declare var IS_MUTABLE_SEQUENCE: number;
 declare var IS_JS_JSON_DICT: number;
 declare var IS_JS_JSON_SEQUENCE: number;
+declare var IS_BUFFER: number;
 
 declare function DEREF_U32(ptr: number, offset: number): number;
 declare function Py_ENTER(): void;
@@ -329,6 +333,7 @@ function getPyProxyClass(flags: number) {
     [IS_GENERATOR, PyGeneratorMethods],
     [IS_ITERABLE, PyIterableMethods],
     [IS_ITERATOR, PyIteratorMethods],
+    [IS_BUFFER, PyBufferMethods],
     [IS_SEQUENCE, PySequenceMethods],
     [IS_MUTABLE_SEQUENCE, PyMutableSequenceMethods],
   ];
@@ -1584,7 +1589,368 @@ class PyIteratorMethods {
   }
 }
 
+/**
+ * A :js:class:`~pyodide.ffi.PyProxy` whose proxied Python object supports the
+ * Python :external:doc:`c-api/buffer`.
+ *
+ * Examples of buffers include {py:class}`bytes` objects and numpy
+ * {external+numpy:ref}`arrays`.
+ */
+export class PyBuffer extends PyProxy {
+  /** @private */
+  static [Symbol.hasInstance](obj: any): obj is PyBuffer {
+    return API.isPyProxy(obj) && !!(_getFlags(obj) & IS_BUFFER);
+  }
+}
 
+export interface PyBuffer extends PyBufferMethods {}
+
+let type_to_array_map: Map<string, any> = new Map<string, any>([
+  ["i8", Int8Array],
+  ["u8", Uint8Array],
+  ["u8clamped", Uint8ClampedArray],
+  ["i16", Int16Array],
+  ["u16", Uint16Array],
+  ["i32", Int32Array],
+  ["u32", Uint32Array],
+  ["i64", globalThis.BigInt64Array],
+  ["u64", globalThis.BigUint64Array],
+  ["f32", Float32Array],
+  ["f64", Float64Array],
+  ["dataview", DataView],
+]);
+
+// Controlled by IS_BUFFER, appears for any object that supports the buffer
+// protocol.
+export class PyBufferMethods {
+  /**
+   * Get a view of the buffer data which is usable from JavaScript. No copy is
+   * ever performed.
+   *
+   * We do not support suboffsets, if the buffer requires suboffsets we will
+   * throw an error. JavaScript nd array libraries can't handle suboffsets
+   * anyways. In this case, you should use the :js:meth:`~PyProxy.toJs` api or
+   * copy the buffer to one that doesn't use suboffsets (using e.g.,
+   * :py:func:`numpy.ascontiguousarray`).
+   *
+   * If the buffer stores big endian data or half floats, this function will
+   * fail without an explicit type argument. For big endian data you can use
+   * :js:meth:`~PyProxy.toJs`. :js:class:`DataView` has support for big endian
+   * data, so you might want to pass ``'dataview'`` as the type argument in that
+   * case.
+   *
+   * @param type The type of the :js:attr:`~pyodide.ffi.PyBufferView.data` field
+   * in the output. Should be one of: ``"i8"``, ``"u8"``, ``"u8clamped"``,
+   * ``"i16"``, ``"u16"``, ``"i32"``, ``"u32"``, ``"i32"``, ``"u32"``,
+   * ``"i64"``, ``"u64"``, ``"f32"``, ``"f64``, or ``"dataview"``. This argument
+   * is optional, if absent :js:meth:`~pyodide.ffi.PyBuffer.getBuffer` will try
+   * to determine the appropriate output type based on the buffer format string
+   * (see :std:ref:`struct-format-strings`).
+   */
+  getBuffer(type?: string): PyBufferView {
+    let ArrayType: any = undefined;
+    if (type) {
+      ArrayType = type_to_array_map.get(type);
+      if (ArrayType === undefined) {
+        throw new Error(`Unknown type ${type}`);
+      }
+    }
+    let this_ptr = _getPtr(this);
+    let result;
+    try {
+      Py_ENTER();
+      result = __PyProxy_get_buffer(this_ptr);
+      Py_EXIT();
+    } catch (e) {
+      API.fatal_error(e);
+    }
+    if (result === Module.error) {
+      throw __Py_pythonexc2js();
+    }
+
+    const {
+      start_ptr,
+      smallest_ptr,
+      largest_ptr,
+      readonly,
+      format,
+      itemsize,
+      shape,
+      strides,
+      view,
+      c_contiguous,
+      f_contiguous,
+    } = result;
+
+    let success = false;
+    try {
+      let bigEndian = false;
+      if (ArrayType === undefined) {
+        [ArrayType, bigEndian] = Module.processBufferFormatString(
+          format,
+          " In this case, you can pass an explicit type argument.",
+        );
+      }
+      let alignment =
+        parseInt(ArrayType.name.replace(/[^0-9]/g, "")) / 8 || 1;
+      if (bigEndian && alignment > 1) {
+        throw new Error(
+          "JavaScript has no native support for big endian buffers. " +
+            "In this case, you can pass an explicit type argument. " +
+            "For instance, `getBuffer('dataview')` will return a `DataView`" +
+            "which has native support for reading big endian data. " +
+            "Alternatively, toJs will automatically convert the buffer " +
+            "to little endian.",
+        );
+      }
+      let numBytes = largest_ptr - smallest_ptr;
+      if (
+        numBytes !== 0 &&
+        (start_ptr % alignment !== 0 ||
+          smallest_ptr % alignment !== 0 ||
+          largest_ptr % alignment !== 0)
+      ) {
+        throw new Error(
+          `Buffer does not have valid alignment for a ${ArrayType.name}`,
+        );
+      }
+      let numEntries = numBytes / alignment;
+      let offset = (start_ptr - smallest_ptr) / alignment;
+      let data;
+      if (numBytes === 0) {
+        data = new ArrayType();
+      } else {
+        data = new ArrayType(HEAPU32.buffer, smallest_ptr, numEntries);
+      }
+      for (let i of strides.keys()) {
+        strides[i] /= alignment;
+      }
+
+      success = true;
+      let result = Object.create(
+        PyBufferView.prototype,
+        Object.getOwnPropertyDescriptors({
+          offset,
+          readonly,
+          format,
+          itemsize,
+          ndim: shape.length,
+          nbytes: numBytes,
+          shape,
+          strides,
+          data,
+          c_contiguous,
+          f_contiguous,
+          _view_ptr: view,
+          _released: false,
+        }),
+      );
+      return result;
+    } finally {
+      if (!success) {
+        try {
+          Py_ENTER();
+          __PyProxy_release_buffer(view);
+          Py_EXIT();
+        } catch (e) {
+          API.fatal_error(e);
+        }
+      }
+    }
+  }
+}
+
+/**
+ * A class to allow access to Python data buffers from JavaScript. These are
+ * produced by :js:meth:`~pyodide.ffi.PyBuffer.getBuffer` and cannot be
+ * constructed directly. When you are done, release it with the
+ * :js:func:`~PyBufferView.release` method. See the Python
+ * :external:doc:`c-api/buffer` documentation for more information.
+ *
+ * To find the element ``x[a_1, ..., a_n]``, you could use the following code:
+ *
+ * .. code-block:: js
+ *
+ *    function multiIndexToIndex(pybuff, multiIndex) {
+ *      if (multindex.length !== pybuff.ndim) {
+ *        throw new Error("Wrong length index");
+ *      }
+ *      let idx = pybuff.offset;
+ *      for (let i = 0; i < pybuff.ndim; i++) {
+ *        if (multiIndex[i] < 0) {
+ *          multiIndex[i] = pybuff.shape[i] - multiIndex[i];
+ *        }
+ *        if (multiIndex[i] < 0 || multiIndex[i] >= pybuff.shape[i]) {
+ *          throw new Error("Index out of range");
+ *        }
+ *        idx += multiIndex[i] * pybuff.stride[i];
+ *      }
+ *      return idx;
+ *    }
+ *    console.log("entry is", pybuff.data[multiIndexToIndex(pybuff, [2, 0, -1])]);
+ *
+ * .. admonition:: Converting between TypedArray types
+ *    :class: warning
+ *
+ *    The following naive code to change the type of a typed array does not
+ *    work:
+ *
+ *    .. code-block:: js
+ *
+ *        // Incorrectly convert a TypedArray.
+ *        // Produces a Uint16Array that points to the entire WASM memory!
+ *        let myarray = new Uint16Array(buffer.data.buffer);
+ *
+ *    Instead, if you want to convert the output TypedArray, you need to say:
+ *
+ *    .. code-block:: js
+ *
+ *        // Correctly convert a TypedArray.
+ *        let myarray = new Uint16Array(
+ *            buffer.data.buffer,
+ *            buffer.data.byteOffset,
+ *            buffer.data.byteLength
+ *        );
+ */
+export class PyBufferView {
+  /**
+   * The offset of the first entry of the array. For instance if our array
+   * is 3d, then you will find ``array[0,0,0]`` at
+   * ``pybuf.data[pybuf.offset]``
+   */
+  offset: number;
+
+  /**
+   * If the data is read only, you should not modify it. There is no way for us
+   * to enforce this, but it may cause very weird behavior. See
+   * :py:attr:`memoryview.readonly`.
+   */
+  readonly: boolean;
+
+  /**
+   * The format string for the buffer. See :ref:`struct-format-strings`
+   * and :py:attr:`memoryview.format`.
+   */
+  format: string;
+
+  /**
+   * How large is each entry in bytes? See :py:attr:`memoryview.itemsize`.
+   */
+  itemsize: number;
+
+  /**
+   * The number of dimensions of the buffer. If ``ndim`` is 0, the buffer
+   * represents a single scalar or struct. Otherwise, it represents an
+   * array. See :py:attr:`memoryview.ndim`.
+   */
+  ndim: number;
+
+  /**
+   * The total number of bytes the buffer takes up. This is equal to
+   * :js:attr:`buff.data.byteLength <TypedArray.byteLength>`. See
+   * :py:attr:`memoryview.nbytes`.
+   */
+  nbytes: number;
+
+  /**
+   * The shape of the buffer, that is how long it is in each dimension.
+   * The length will be equal to ``ndim``. For instance, a 2x3x4 array
+   * would have shape ``[2, 3, 4]``. See :py:attr:`memoryview.shape`.
+   */
+  shape: number[];
+
+  /**
+   * An array of of length ``ndim`` giving the number of elements to skip
+   * to get to a new element in each dimension. See the example definition
+   * of a ``multiIndexToIndex`` function above. See :py:attr:`memoryview.strides`.
+   */
+  strides: number[];
+
+  /**
+   * The actual data. A typed array of an appropriate size backed by a segment
+   * of the WASM memory.
+   *
+   * The ``type`` argument of :js:meth:`~pyodide.ffi.PyBuffer.getBuffer` determines
+   * which sort of :js:class:`TypedArray` or :js:class:`DataView` to return. By
+   * default :js:meth:`~pyodide.ffi.PyBuffer.getBuffer` will look at the format string
+   * to determine the most appropriate option. Most often the result is a
+   * :js:class:`Uint8Array`.
+   *
+   * .. admonition:: Contiguity
+   *    :class: warning
+   *
+   *    If the buffer is not contiguous, the :js:attr:`~PyBufferView.readonly`
+   *    TypedArray will contain data that is not part of the buffer. Modifying
+   *    this data leads to undefined behavior.
+   *
+   * .. admonition:: Read only buffers
+   *    :class: warning
+   *
+   *    If :js:attr:`buffer.readonly <PyBufferView.readonly>` is ``true``, you
+   *    should not modify the buffer. Modifying a read only buffer leads to
+   *    undefined behavior.
+   *
+   */
+  data: TypedArray;
+
+  /**
+   * Is it C contiguous? See :py:attr:`memoryview.c_contiguous`.
+   */
+  c_contiguous: boolean;
+
+  /**
+   * Is it Fortran contiguous? See :py:attr:`memoryview.f_contiguous`.
+   */
+  f_contiguous: boolean;
+
+  /** @private */
+  _released: boolean;
+
+  /** @private */
+  _view_ptr: number;
+
+  /** @private */
+  constructor() {
+    throw new TypeError("PyBufferView is not a constructor");
+  }
+
+  /**
+   * Release the buffer. This allows the memory to be reclaimed.
+   */
+  release() {
+    if (this._released) {
+      return;
+    }
+    try {
+      Py_ENTER();
+      __PyProxy_release_buffer(this._view_ptr);
+      Py_EXIT();
+    } catch (e) {
+      API.fatal_error(e);
+    }
+    this._released = true;
+    // @ts-ignore
+    this.data = Module.error;
+  }
+
+  [Symbol.dispose]() {
+    this.release();
+  }
+}
+
+type TypedArray =
+  | Int8Array
+  | Uint8Array
+  | Int16Array
+  | Uint16Array
+  | Int32Array
+  | Uint32Array
+  | Uint8ClampedArray
+  | Float32Array
+  | Float64Array
+  | BigInt64Array
+  | BigUint64Array
+  | DataView;
 
 /**
  * A :js:class:`~pyodide.ffi.PyProxy` whose proxied Python object is an

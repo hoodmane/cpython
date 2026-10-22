@@ -190,6 +190,82 @@ EM_JS_BOOL(bool, _PyJsvGenerator_Check, (JsVal obj), {
   return getTypeTag(obj) === "[object Generator]";
 });
 
+// ==================== JsvBuffer API  ====================
+
+// clang-format off
+EM_JS_MACROS(void, _Py_jslib_init_buffers_js, (void), {
+  // Each format character is followed by a null byte so that each one is a
+  // valid nul-terminated C string. The memory is intentionally never freed:
+  // these format strings have static lifetime and are stored in JsBuffer
+  // proxies.
+  const dtypes_str = Array.from("bBhHiIqQfd").join(String.fromCharCode(0));
+  const dtypes_ptr = stringToNewUTF8(dtypes_str);
+  const dtypes_map = Object.fromEntries(
+    Object.entries(dtypes_str).map(([idx, val]) => [val, dtypes_ptr + +idx])
+  );
+
+  const buffer_datatype_map = new Map([
+    ["Int8Array", [dtypes_map["b"], 1, true]],
+    ["Uint8Array", [dtypes_map["B"], 1, true]],
+    ["Uint8ClampedArray", [dtypes_map["B"], 1, true]],
+    ["Int16Array", [dtypes_map["h"], 2, true]],
+    ["Uint16Array", [dtypes_map["H"], 2, true]],
+    ["Int32Array", [dtypes_map["i"], 4, true]],
+    ["Uint32Array", [dtypes_map["I"], 4, true]],
+    ["Float32Array", [dtypes_map["f"], 4, true]],
+    ["Float64Array", [dtypes_map["d"], 8, true]],
+    ["BigInt64Array", [dtypes_map["q"], 8, true]],
+    ["BigUint64Array", [dtypes_map["Q"], 8, true]],
+    // These last two default to Uint8. They have checked : false to allow use
+    // with other types.
+    ["DataView", [dtypes_map["B"], 1, false]],
+    ["ArrayBuffer", [dtypes_map["B"], 1, false]],
+  ]);
+
+  /**
+   * This gets the dtype of a ArrayBuffer or ArrayBuffer view. We return a
+   * triple: [char* format_ptr, int itemsize, bool checked] where checked
+   * indicates whether assignments should check the format for compatibility.
+   */
+  Module.get_buffer_datatype = function (jsobj) {
+    return buffer_datatype_map.get(jsobj.constructor.name) || [0, 0, false];
+  };
+});
+// clang-format on
+
+__attribute__((constructor)) void
+_Py_jslib_init_buffers(void)
+{
+  _Py_jslib_init_buffers_js();
+}
+
+EM_JS_NUM(int, _PyJsvBuffer_assignToPtr, (JsVal buf, void* ptr), {
+  HEAPU8.set(bufferAsUint8Array(buf), ptr);
+});
+
+EM_JS_NUM(int, _PyJsvBuffer_assignFromPtr, (JsVal buf, void* ptr), {
+  bufferAsUint8Array(buf).set(HEAPU8.subarray(ptr, ptr + buf.byteLength));
+});
+
+EM_JS_NUM(int, _PyJsvBuffer_readFromFile, (JsVal buf, int fd), {
+  let uint8_buf = bufferAsUint8Array(buf);
+  let stream = FS.streams[fd];
+  FS.read(stream, uint8_buf, 0, uint8_buf.byteLength);
+});
+
+EM_JS_NUM(int, _PyJsvBuffer_writeToFile, (JsVal buf, int fd), {
+  let uint8_buf = bufferAsUint8Array(buf);
+  let stream = FS.streams[fd];
+  FS.write(stream, uint8_buf, 0, uint8_buf.byteLength);
+});
+
+EM_JS_NUM(int, _PyJsvBuffer_intoFile, (JsVal buf, int fd), {
+  let uint8_buf = bufferAsUint8Array(buf);
+  let stream = FS.streams[fd];
+  // set canOwn param to true, leave position undefined.
+  FS.write(stream, uint8_buf, 0, uint8_buf.byteLength, undefined, true);
+});
+
 // ==================== JsvArray API  ====================
 
 EM_JS(JsVal, _PyJsvArray_New, (void), {

@@ -46,6 +46,13 @@ _Py_python2js_deep(PyObject* x,
                    JsVal eager_converter);
 
 
+/**
+ * Deep convert a Python object supporting the buffer protocol to a (possibly
+ * nested) JavaScript array of TypedArrays. Defined in python2js_buffer.c.
+ */
+JsVal
+_Py_python2js_buffer(PyObject* x);
+
 int
 _Py_python2js_init(PyObject* core);
 

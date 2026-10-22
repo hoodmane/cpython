@@ -8,6 +8,7 @@ from collections.abc import (
     Mapping,
     MutableMapping,
     MutableSequence,
+    Sequence,
 )
 
 def _binor_reduce(l) -> int:
@@ -101,6 +102,16 @@ class JsArray(JsIterable, MutableSequence, metaclass=_ABCMeta):
     """A JsProxy of an Array"""
 
     _js_type_flags = ["IS_ARRAY"]
+
+class JsBuffer(JsProxy):
+    """A JsProxy of an array buffer or array buffer view"""
+
+    _js_type_flags = ["IS_BUFFER"]
+
+class JsTypedArray(JsBuffer, JsIterable, Sequence, metaclass=_ABCMeta):
+    """A JsProxy of a TypedArray"""
+
+    _js_type_flags = ["IS_TYPEDARRAY"]
 
 class JsMap(JsIterable, Mapping, metaclass=_ABCMeta):
     """A JavaScript Map

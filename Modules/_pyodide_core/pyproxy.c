@@ -35,6 +35,7 @@ module _pyodide_core
 #define IS_SEQUENCE            (1 << 10)
 #define IS_JS_JSON_DICT        (1 << 11)
 #define IS_JS_JSON_SEQUENCE    (1 << 12)
+#define IS_BUFFER              (1 << 13)
 
 
 PyAPI_FUNC(int) _PyGen_FetchStopIterationValue(PyObject **);
@@ -138,6 +139,10 @@ type_getflags(PyTypeObject* obj_type)
   PyMappingMethods* map_proto =
     obj_type->tp_as_mapping ? obj_type->tp_as_mapping : &null_map_proto;
 
+  PyBufferProcs null_buffer_proto = { 0 };
+  PyBufferProcs* buffer_proto =
+    obj_type->tp_as_buffer ? obj_type->tp_as_buffer : &null_buffer_proto;
+
 #define SET_FLAG_IF(flag, cond)                                                \
   if (cond) {                                                                  \
     result |= flag;                                                            \
@@ -163,6 +168,7 @@ type_getflags(PyTypeObject* obj_type)
     result &= ~IS_ITERABLE;
     result |= IS_ITERATOR;
   }
+  SET_FLAG_IF(IS_BUFFER, buffer_proto->bf_getbuffer);
   // A sequence has __len__, __getitem__, __contains__, and __iter__ so if any
   // of these settings is missing, can skip the IsInstance check.
   if (((~result) & (HAS_LENGTH | HAS_GET | HAS_CONTAINS | IS_ITERABLE)) == 0) {
@@ -214,6 +220,9 @@ _PyProxy_getflags(PyObject* pyobj, bool is_js_json)
   }
   PyTypeObject* obj_type = Py_TYPE(pyobj);
   int result = type_getflags(obj_type);
+  if (result == -1) {
+    return -1;
+  }
   if (is_js_json) {
     if (result & IS_SEQUENCE) {
       result |= IS_JS_JSON_SEQUENCE;
@@ -710,6 +719,128 @@ finally:
     return JS_ERROR;
   }
   return _PyProxyGen_make_result(status == PYGEN_RETURN, result);
+}
+
+///////////////////////////////////////////////////////////////////////////////
+//
+// Buffers
+
+EM_JS(JsVal, _Py_array_to_js, (Py_ssize_t * array, int len), {
+  return Array.from(HEAP32.subarray(array / 4, array / 4 + len));
+})
+
+// clang-format off
+EM_JS_VAL(JsVal,
+_PyProxy_get_buffer_result,
+(void* start_ptr,
+ void* smallest_ptr,
+ void* largest_ptr,
+ int readonly,
+ char* format,
+ int itemsize,
+ JsVal shape,
+ JsVal strides,
+ Py_buffer* view,
+ int c_contiguous,
+ int f_contiguous),
+{
+  format = UTF8ToString(format);
+  return {
+    start_ptr,
+    smallest_ptr,
+    largest_ptr,
+    readonly : !!readonly,
+    format,
+    itemsize,
+    shape,
+    strides,
+    view,
+    c_contiguous : !!c_contiguous,
+    f_contiguous : !!f_contiguous,
+  };
+})
+// clang-format on
+
+/**
+ * Get a buffer from the Python object and return a JavaScript object
+ * describing it. The Py_buffer is heap allocated and must be released and
+ * freed by the caller (PyBufferView.release() does this).
+ */
+EMSCRIPTEN_KEEPALIVE JsVal
+_PyProxy_get_buffer(PyObject* ptrobj)
+{
+  Py_buffer v;
+  // PyBUF_RECORDS_RO requires that suboffsets be NULL but otherwise is the most
+  // permissive possible request.
+  if (PyObject_GetBuffer(ptrobj, &v, PyBUF_RECORDS_RO) == -1) {
+    return JS_ERROR;
+  }
+
+  char* start_ptr = v.buf;
+  char* smallest_ptr = v.buf;
+  char* largest_ptr = v.buf;
+  JsVal shape;
+  JsVal strides;
+  bool c_contiguous;
+  bool f_contiguous;
+
+  Py_buffer* view = (Py_buffer*)PyMem_Malloc(sizeof(Py_buffer));
+  if (view == NULL) {
+    PyBuffer_Release(&v);
+    PyErr_NoMemory();
+    return JS_ERROR;
+  }
+  *view = v;
+
+  if (v.ndim == 0) {
+    largest_ptr += v.itemsize;
+    shape = _PyJsvArray_New();
+    strides = _PyJsvArray_New();
+    c_contiguous = true;
+    f_contiguous = true;
+  } else if (v.strides == NULL) {
+    // In this case we are a C contiguous buffer
+    largest_ptr += v.len;
+    Py_ssize_t cstrides[v.ndim];
+    PyBuffer_FillContiguousStrides(v.ndim, v.shape, cstrides, v.itemsize, 'C');
+    c_contiguous = true;
+    f_contiguous = (v.ndim == 1);
+    shape = _Py_array_to_js(v.shape, v.ndim);
+    strides = _Py_array_to_js(cstrides, v.ndim);
+  } else {
+    if (v.len != 0) {
+      for (int i = 0; i < v.ndim; i++) {
+        if (v.strides[i] > 0) {
+          largest_ptr += v.strides[i] * (v.shape[i] - 1);
+        } else {
+          smallest_ptr += v.strides[i] * (v.shape[i] - 1);
+        }
+      }
+      largest_ptr += v.itemsize;
+    }
+    shape = _Py_array_to_js(v.shape, v.ndim);
+    strides = _Py_array_to_js(v.strides, v.ndim);
+    c_contiguous = PyBuffer_IsContiguous(&v, 'C');
+    f_contiguous = PyBuffer_IsContiguous(&v, 'F');
+  }
+  return _PyProxy_get_buffer_result(start_ptr,
+                                    smallest_ptr,
+                                    largest_ptr,
+                                    v.readonly,
+                                    v.format,
+                                    v.itemsize,
+                                    shape,
+                                    strides,
+                                    view,
+                                    c_contiguous,
+                                    f_contiguous);
+}
+
+EMSCRIPTEN_KEEPALIVE void
+_PyProxy_release_buffer(Py_buffer* view)
+{
+  PyBuffer_Release(view);
+  PyMem_Free(view);
 }
 
 EMSCRIPTEN_KEEPALIVE JsVal

@@ -38,6 +38,18 @@ const hasProperty = (obj, prop) => {
   return false;
 };
 
+/**
+ * View an ArrayBuffer or ArrayBuffer view as a Uint8Array covering the same
+ * bytes (no copy).
+ */
+function bufferAsUint8Array(arg) {
+  if (ArrayBuffer.isView(arg)) {
+    return new Uint8Array(arg.buffer, arg.byteOffset, arg.byteLength);
+  } else {
+    return new Uint8Array(arg);
+  }
+}
+
 function hexStringToUTF8Array(hex) {
   const bytes = [];
   for (let i = 0; i < hex.length; i += 2) {

@@ -250,8 +250,8 @@ JSFILE(() => {
     let typeTag = getTypeTag(value);
     if (
       Array.isArray(value) ||
-      value === "[object HTMLCollection]" ||
-      value === "[object NodeList]"
+      typeTag === "[object HTMLCollection]" ||
+      typeTag === "[object NodeList]"
     ) {
       return js2python_convertList(value, context);
     }
@@ -269,7 +269,19 @@ JSFILE(() => {
     ) {
       return js2python_convertMap(value, Object.entries(value), context);
     }
-    // TODO: Handle buffers and buffer views here
+    if (typeTag === "[object ArrayBuffer]" || ArrayBuffer.isView(value)) {
+      let [format_utf8, itemsize] = Module.get_buffer_datatype(value);
+      const result = __PyJsBuffer_CopyIntoMemoryView(
+        value,
+        value.byteLength,
+        format_utf8,
+        itemsize,
+      );
+      if (result === 0) {
+        throw new PropagateError();
+      }
+      return result;
+    }
     return undefined;
   }
 

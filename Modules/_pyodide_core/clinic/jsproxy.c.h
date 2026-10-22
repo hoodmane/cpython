@@ -8,6 +8,7 @@ preserve
 #endif
 #include "pycore_abstract.h"      // _PyNumber_Index()
 #include "pycore_modsupport.h"    // _PyArg_UnpackKeywords()
+#include "pycore_unicodeobject.h" // _PyUnicode_AsUTF8NoNUL()
 
 PyDoc_STRVAR(_pyodide_core_JsProxy___dir____doc__,
 "__dir__($self, /)\n"
@@ -799,6 +800,191 @@ PyDoc_STRVAR(_pyodide_core_JsArray_remove__doc__,
 #define _PYODIDE_CORE_JSARRAY_REMOVE_METHODDEF    \
     {"remove", (PyCFunction)_pyodide_core_JsArray_remove, METH_O, _pyodide_core_JsArray_remove__doc__},
 
+PyDoc_STRVAR(_pyodide_core_JsBuffer_assign_to__doc__,
+"assign_to($self, target, /)\n"
+"--\n"
+"\n"
+"Copy the data from the TypedArray into the Python buffer target.\n"
+"\n"
+"target must support the buffer protocol, be writable, and have the same\n"
+"length as the TypedArray. Does not change the length of the buffer.");
+
+#define _PYODIDE_CORE_JSBUFFER_ASSIGN_TO_METHODDEF    \
+    {"assign_to", (PyCFunction)_pyodide_core_JsBuffer_assign_to, METH_O, _pyodide_core_JsBuffer_assign_to__doc__},
+
+PyDoc_STRVAR(_pyodide_core_JsBuffer_assign__doc__,
+"assign($self, source, /)\n"
+"--\n"
+"\n"
+"Copy the data from the Python buffer source into the TypedArray.\n"
+"\n"
+"source must support the buffer protocol and have the same length as the\n"
+"TypedArray. Does not change the length of the TypedArray.");
+
+#define _PYODIDE_CORE_JSBUFFER_ASSIGN_METHODDEF    \
+    {"assign", (PyCFunction)_pyodide_core_JsBuffer_assign, METH_O, _pyodide_core_JsBuffer_assign__doc__},
+
+PyDoc_STRVAR(_pyodide_core_JsBuffer_to_memoryview__doc__,
+"to_memoryview($self, /)\n"
+"--\n"
+"\n"
+"Convert a buffer to a memoryview.\n"
+"\n"
+"Copies the data once. This currently has the same effect as to_py.");
+
+#define _PYODIDE_CORE_JSBUFFER_TO_MEMORYVIEW_METHODDEF    \
+    {"to_memoryview", (PyCFunction)_pyodide_core_JsBuffer_to_memoryview, METH_NOARGS, _pyodide_core_JsBuffer_to_memoryview__doc__},
+
+static PyObject *
+_pyodide_core_JsBuffer_to_memoryview_impl(PyObject *self);
+
+static PyObject *
+_pyodide_core_JsBuffer_to_memoryview(PyObject *self, PyObject *Py_UNUSED(ignored))
+{
+    return _pyodide_core_JsBuffer_to_memoryview_impl(self);
+}
+
+PyDoc_STRVAR(_pyodide_core_JsBuffer_to_bytes__doc__,
+"to_bytes($self, /)\n"
+"--\n"
+"\n"
+"Convert a buffer to a bytes object.\n"
+"\n"
+"Copies the data once.");
+
+#define _PYODIDE_CORE_JSBUFFER_TO_BYTES_METHODDEF    \
+    {"to_bytes", (PyCFunction)_pyodide_core_JsBuffer_to_bytes, METH_NOARGS, _pyodide_core_JsBuffer_to_bytes__doc__},
+
+static PyObject *
+_pyodide_core_JsBuffer_to_bytes_impl(PyObject *self);
+
+static PyObject *
+_pyodide_core_JsBuffer_to_bytes(PyObject *self, PyObject *Py_UNUSED(ignored))
+{
+    return _pyodide_core_JsBuffer_to_bytes_impl(self);
+}
+
+PyDoc_STRVAR(_pyodide_core_JsBuffer_to_string__doc__,
+"to_string($self, /, encoding=None)\n"
+"--\n"
+"\n"
+"Convert a buffer to a string object.\n"
+"\n"
+"  encoding\n"
+"    The encoding to use. Default is utf8. The encoding is passed to the\n"
+"    JavaScript TextDecoder so any encoding supported by TextDecoder may be\n"
+"    used.\n"
+"\n"
+"Copies the data twice.");
+
+#define _PYODIDE_CORE_JSBUFFER_TO_STRING_METHODDEF    \
+    {"to_string", _PyCFunction_CAST(_pyodide_core_JsBuffer_to_string), METH_FASTCALL|METH_KEYWORDS, _pyodide_core_JsBuffer_to_string__doc__},
+
+static PyObject *
+_pyodide_core_JsBuffer_to_string_impl(PyObject *self, const char *encoding);
+
+static PyObject *
+_pyodide_core_JsBuffer_to_string(PyObject *self, PyObject *const *args, Py_ssize_t nargs, PyObject *kwnames)
+{
+    PyObject *return_value = NULL;
+    #if defined(Py_BUILD_CORE) && !defined(Py_BUILD_CORE_MODULE)
+
+    #define NUM_KEYWORDS 1
+    static struct {
+        PyGC_Head _this_is_not_used;
+        PyObject_VAR_HEAD
+        Py_hash_t ob_hash;
+        PyObject *ob_item[NUM_KEYWORDS];
+    } _kwtuple = {
+        .ob_base = PyVarObject_HEAD_INIT(&PyTuple_Type, NUM_KEYWORDS)
+        .ob_hash = -1,
+        .ob_item = { &_Py_ID(encoding), },
+    };
+    #undef NUM_KEYWORDS
+    #define KWTUPLE (&_kwtuple.ob_base.ob_base)
+
+    #else  // !Py_BUILD_CORE
+    #  define KWTUPLE NULL
+    #endif  // !Py_BUILD_CORE
+
+    static const char * const _keywords[] = {"encoding", NULL};
+    static _PyArg_Parser _parser = {
+        .keywords = _keywords,
+        .fname = "to_string",
+        .kwtuple = KWTUPLE,
+    };
+    #undef KWTUPLE
+    PyObject *argsbuf[1];
+    Py_ssize_t noptargs = nargs + (kwnames ? PyTuple_GET_SIZE(kwnames) : 0) - 0;
+    const char *encoding = NULL;
+
+    args = _PyArg_UnpackKeywords(args, nargs, NULL, kwnames, &_parser,
+            /*minpos*/ 0, /*maxpos*/ 1, /*minkw*/ 0, /*varpos*/ 0, argsbuf);
+    if (!args) {
+        goto exit;
+    }
+    if (!noptargs) {
+        goto skip_optional_pos;
+    }
+    if (args[0] == Py_None) {
+        encoding = NULL;
+    }
+    else if (PyUnicode_Check(args[0])) {
+        encoding = _PyUnicode_AsUTF8NoNUL(args[0]);
+        if (encoding == NULL) {
+            goto exit;
+        }
+    }
+    else {
+        _PyArg_BadArgument("to_string", "argument 'encoding'", "str or None", args[0]);
+        goto exit;
+    }
+skip_optional_pos:
+    return_value = _pyodide_core_JsBuffer_to_string_impl(self, encoding);
+
+exit:
+    return return_value;
+}
+
+PyDoc_STRVAR(_pyodide_core_JsBuffer_to_file__doc__,
+"to_file($self, file, /)\n"
+"--\n"
+"\n"
+"Writes a buffer to a file.\n"
+"\n"
+"Will write the entire contents of the buffer to the current position of\n"
+"the file. file must be a file object with a fileno() method.");
+
+#define _PYODIDE_CORE_JSBUFFER_TO_FILE_METHODDEF    \
+    {"to_file", (PyCFunction)_pyodide_core_JsBuffer_to_file, METH_O, _pyodide_core_JsBuffer_to_file__doc__},
+
+PyDoc_STRVAR(_pyodide_core_JsBuffer_from_file__doc__,
+"from_file($self, file, /)\n"
+"--\n"
+"\n"
+"Reads from a file into a buffer.\n"
+"\n"
+"Will try to read a chunk of data the same size as the buffer from the\n"
+"current position of the file. file must be a file object with a fileno()\n"
+"method.");
+
+#define _PYODIDE_CORE_JSBUFFER_FROM_FILE_METHODDEF    \
+    {"from_file", (PyCFunction)_pyodide_core_JsBuffer_from_file, METH_O, _pyodide_core_JsBuffer_from_file__doc__},
+
+PyDoc_STRVAR(_pyodide_core_JsBuffer__into_file__doc__,
+"_into_file($self, file, /)\n"
+"--\n"
+"\n"
+"Will write the entire contents of a buffer into a file.\n"
+"\n"
+"The buffer must be empty afterwards, i.e., the file must be opened as a\n"
+"fresh empty file in the Emscripten MEMFS file system. The purpose is to\n"
+"avoid a copy of the data: the backing ArrayBuffer is handed over to the\n"
+"file system.");
+
+#define _PYODIDE_CORE_JSBUFFER__INTO_FILE_METHODDEF    \
+    {"_into_file", (PyCFunction)_pyodide_core_JsBuffer__into_file, METH_O, _pyodide_core_JsBuffer__into_file__doc__},
+
 PyDoc_STRVAR(_pyodide_core_JsException___reduce____doc__,
 "__reduce__($self, /)\n"
 "--\n"
@@ -838,7 +1024,7 @@ PyDoc_STRVAR(_pyodide_core_JsProxy_as_py_json__doc__,
 "as_py_json($self, /)\n"
 "--\n"
 "\n"
-"Returns a new JsProxy that treats a JavaScript object as Python json.\n"
+"Return a new JsProxy that treats a JavaScript object as Python json.\n"
 "\n"
 "It allows one to treat a JavaScript object that is a mixture of\n"
 "JavaScript arrays and objects as a mixture of Python lists and dicts.");
@@ -854,4 +1040,4 @@ _pyodide_core_JsProxy_as_py_json(PyObject *self, PyObject *Py_UNUSED(ignored))
 {
     return _pyodide_core_JsProxy_as_py_json_impl(self);
 }
-/*[clinic end generated code: output=8f381bf158f8949d input=a9049054013a1b77]*/
+/*[clinic end generated code: output=d33ead98dc03edc6 input=a9049054013a1b77]*/

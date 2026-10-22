@@ -142,6 +142,30 @@ _PyJsvGenerator_Check(JsVal obj);
 JsVal
 _PyJsvFunction_CallBound(JsVal func, JsVal this, JsVal args);
 
+// ==================== JsvBuffer API  ====================
+
+/**
+ * Copy the contents of a TypedArray or ArrayBuffer into the wasm heap at ptr.
+ */
+int
+_PyJsvBuffer_assignToPtr(JsVal buf, void* ptr);
+
+/**
+ * Copy buf.byteLength bytes from the wasm heap at ptr into the TypedArray or
+ * ArrayBuffer buf.
+ */
+int
+_PyJsvBuffer_assignFromPtr(JsVal buf, void* ptr);
+
+int
+_PyJsvBuffer_readFromFile(JsVal buf, int fd);
+
+int
+_PyJsvBuffer_writeToFile(JsVal buf, int fd);
+
+int
+_PyJsvBuffer_intoFile(JsVal buf, int fd);
+
 JsVal
 _PyJsvFunction_Construct(JsVal func, JsVal args);
 

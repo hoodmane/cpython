@@ -478,7 +478,9 @@ _python2js_deep(ConversionContext* context, PyObject* x)
   if (PySet_Check(x)) {
     return _python2js_set(context, x);
   }
-  // TODO: Convert buffers here
+  if (PyObject_CheckBuffer(x)) {
+    return _Py_python2js_buffer(x);
+  }
   if (context->default_converter) {
     return python2js__default_converter(hiwire_get(context->jscontext), x);
   }

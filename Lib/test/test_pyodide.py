@@ -1,3 +1,6 @@
+import sys
+import unittest
+from array import array
 from collections.abc import (
     Callable,
     Generator,
@@ -6,15 +9,21 @@ from collections.abc import (
     Mapping,
     MutableMapping,
     MutableSequence,
+    Sequence,
 )
+from tempfile import TemporaryFile
 from unittest import TestCase
 
+if sys.platform != "emscripten":
+    raise unittest.SkipTest("Emscripten only")
+
 from _pyodide import js_flags
-from js import Array, BigInt64Array
+from js import Array, BigInt64Array, Uint8Array
 from pyodide.code import run_js
 from pyodide.ffi import (
     JsArray,
     JsBigInt,
+    JsBuffer,
     JsCallable,
     JsDoubleProxy,
     JsException,
@@ -23,6 +32,7 @@ from pyodide.ffi import (
     JsIterator,
     JsMap,
     JsMutableMap,
+    JsTypedArray,
     create_proxy,
     destroy_proxies,
     jsnull,
@@ -864,6 +874,19 @@ class JsProxyTest(TestCase):
         self.assertIsInstance(p, JsDoubleProxy)
         p.destroy()
 
+        buf = run_js("new Uint8Array(4)")
+        self.assertIsInstance(buf, JsBuffer)
+        self.assertIsInstance(buf, JsTypedArray)
+        self.assertIsInstance(buf, Sequence)
+        self.assertNotIsInstance(buf, JsArray)
+        assert issubclass(JsTypedArray, JsBuffer)
+        assert issubclass(JsTypedArray, Sequence)
+        self.assertIsInstance(run_js("new ArrayBuffer(4)"), JsBuffer)
+        self.assertNotIsInstance(run_js("new ArrayBuffer(4)"), JsTypedArray)
+        self.assertIsInstance(run_js("new DataView(new ArrayBuffer(4))"), JsBuffer)
+        self.assertNotIsInstance(run_js("new DataView(new ArrayBuffer(4))"), JsTypedArray)
+        self.assertNotIsInstance(run_js("[]"), JsBuffer)
+
     def test_jsproxy_context_manager(self):
         f = run_js(
             """
@@ -891,6 +914,167 @@ class JsProxyTest(TestCase):
         except Exception:
             pass
         self.assertTrue(o.closed)
+
+
+    def test_buffer(self):
+        a = run_js("new Uint32Array(Array.from({length : 10}, (_,idx) => idx))")
+        b = a.to_py()
+        self.assertIsInstance(b, memoryview)
+        self.assertEqual(b.format, "I")
+        self.assertEqual(b.tolist(), list(range(10)))
+        b[4] = 7
+        self.assertEqual(b[8], 8)
+        a.assign_to(b)
+        self.assertEqual(b[4], 4)
+        b[4] = 7
+        a.assign(b)
+        self.assertEqual(a[4], 7)
+        self.assertEqual(run_js("(a) => a[4]")(a), 7)
+
+        a = run_js("new Uint32Array(Array.from({length : 10}, (_,idx) => idx))")
+        c = array("b", range(30))
+        d = array("b", range(40))
+        with self.assertRaisesRegex(ValueError, "cannot assign to TypedArray"):
+            a.assign(c)
+        with self.assertRaisesRegex(ValueError, "cannot assign from TypedArray"):
+            a.assign_to(c)
+        with self.assertRaisesRegex(ValueError, "incompatible formats"):
+            a.assign(d)
+        with self.assertRaisesRegex(ValueError, "incompatible formats"):
+            a.assign_to(d)
+        e = array("I", range(10, 20))
+        a.assign(e)
+        self.assertEqual(list(a), list(range(10, 20)))
+
+    def test_buffer_assign_back(self):
+        jsarray = run_js("new Uint8Array([1, 2, 3, 4, 5, 6])")
+        arr = jsarray.to_py()
+        arr[1::2] = bytes([20, 77, 9])
+        jsarray.assign(arr)
+        self.assertEqual(list(jsarray), [1, 20, 3, 77, 5, 9])
+
+    def test_buffer_conversions(self):
+        s, jsbytes = run_js(
+            """
+            const s = "abcဴ";
+            const jsbytes = new TextEncoder().encode(s);
+            [s, jsbytes]
+            """
+        )
+        memoryview_conversion = jsbytes.to_memoryview()
+        bytes_conversion = jsbytes.to_bytes()
+        self.assertEqual(bytes_conversion.decode(), s)
+        self.assertEqual(bytes(memoryview_conversion), bytes_conversion)
+        self.assertEqual(jsbytes.to_string(), s)
+
+    def test_buffer_to_string_encoding(self):
+        # windows-1251 encoded "Привет, мир!" which is Russian for "Hello, world!"
+        jsbytes = run_js(
+            "new Uint8Array([207, 240, 232, 226, 229, 242, 44, 32, 236, 232, 240, 33])"
+        )
+        self.assertEqual(jsbytes.to_string("windows-1251"), "Привет, мир!")
+        with self.assertRaisesRegex(ValueError, "Failed to decode"):
+            jsbytes.to_string()
+
+    def test_buffer_to_py_types(self):
+        for jstype, fmt, pytype in [
+            ("Int8Array", "b", int),
+            ("Uint8Array", "B", int),
+            ("Uint8ClampedArray", "B", int),
+            ("Int16Array", "h", int),
+            ("Uint16Array", "H", int),
+            ("Int32Array", "i", int),
+            ("Uint32Array", "I", int),
+            ("Float32Array", "f", float),
+            ("Float64Array", "d", float),
+            ("BigInt64Array", "q", int),
+            ("BigUint64Array", "Q", int),
+        ]:
+            with self.subTest(jstype=jstype):
+                mv = run_js(f"new {jstype}(3)").to_py()
+                self.assertIsInstance(mv, memoryview)
+                self.assertEqual(mv.format, fmt)
+                self.assertEqual(len(mv), 3)
+                self.assertIs(type(mv[0]), pytype)
+        mv = run_js("new ArrayBuffer(5)").to_py()
+        self.assertEqual(mv.format, "B")
+        self.assertEqual(len(mv), 5)
+        mv = run_js("new DataView(new ArrayBuffer(5))").to_py()
+        self.assertEqual(mv.format, "B")
+        self.assertEqual(len(mv), 5)
+        # to_py with depth 0 leaves it as a JsProxy
+        self.assertIsInstance(run_js("new Uint8Array(3)").to_py(depth=0), JsBuffer)
+        # Nested
+        res = run_js("[new Uint8Array([1, 2]), {a: new Float64Array([1.5])}]").to_py()
+        self.assertEqual(res[0].tolist(), [1, 2])
+        self.assertEqual(res[1]["a"].tolist(), [1.5])
+
+    def test_buffer_to_file(self):
+        a = Uint8Array.new(range(10))
+        with TemporaryFile() as f:
+            a.to_file(f)
+            f.seek(0)
+            self.assertEqual(f.read(), a.to_bytes())
+
+            b = b"abcdef"
+            f.write(b)
+            f.seek(-len(b), 1)
+            a.from_file(f)
+            self.assertEqual(list(a.subarray(0, len(b)).to_bytes()), list(b))
+
+    def test_buffer_into_file(self):
+        a = Uint8Array.new(range(10))
+        with TemporaryFile() as f:
+            b = a.to_bytes()
+            a._into_file(f)
+            f.seek(0)
+            self.assertEqual(f.read(), b)
+
+    def test_buffer_method_presence(self):
+        jsbytes = run_js("new Uint8Array(3)")
+        other = run_js("({})")
+        buffer_methods = {
+            "assign",
+            "assign_to",
+            "to_string",
+            "to_memoryview",
+            "to_bytes",
+            "to_file",
+            "from_file",
+        }
+        self.assertLess(buffer_methods, set(dir(jsbytes)))
+        self.assertFalse(set(dir(other)).intersection(buffer_methods))
+        self.assertFalse(hasattr(jsbytes, "as_py_json"))
+
+    def test_typed_array(self):
+        a = run_js("globalThis.a = new Uint8Array([1,2,3,4]); a")
+        self.assertEqual(a[0], 1)
+        self.assertEqual(a[-1], 4)
+        self.assertEqual(len(a), 4)
+        self.assertEqual(list(a), [1, 2, 3, 4])
+        self.assertEqual(list(reversed(a)), [4, 3, 2, 1])
+        self.assertEqual(a.index(3), 2)
+        self.assertEqual(a.count(3), 1)
+        self.assertIn(3, a)
+        a[-2] = 7
+        self.assertEqual(run_js("a[2]"), 7)
+
+        with self.assertRaisesRegex(TypeError, "doesn't support item deletion"):
+            del a[0]
+        msg = "Slice subscripting isn't implemented for typed arrays"
+        with self.assertRaisesRegex(NotImplementedError, msg):
+            a[:]
+        msg = "Slice assignment isn't implemented for typed arrays"
+        with self.assertRaisesRegex(NotImplementedError, msg):
+            a[:] = [-1, -2, -3, -4]
+        self.assertFalse(hasattr(a, "extend"))
+        self.assertFalse(hasattr(a, "append"))
+        with self.assertRaises(TypeError):
+            a += [1, 2, 3]
+        # Empty buffers are falsey
+        self.assertFalse(run_js("new Uint8Array(0)"))
+        self.assertTrue(a)
+
 
 
 class PyProxyTest(TestCase):
@@ -1800,3 +1984,147 @@ class PyProxyTest(TestCase):
         # Without JsBigInt we can't construct a BigInt64Array
         a = BigInt64Array.new([JsBigInt(x) for x in range(1, 10, 2)])
         self.assertEqual(list(a), list(range(1, 10, 2)))
+
+    def test_pyproxy_get_buffer(self):
+        f = run_js(
+            """
+            (x) => {
+                const buf = x.getBuffer();
+                try {
+                    return [buf.format, buf.itemsize, buf.ndim, buf.nbytes, buf.readonly,
+                            buf.c_contiguous, buf.f_contiguous, buf.offset,
+                            Array.from(buf.shape), Array.from(buf.strides),
+                            buf.data.constructor.name, Array.from(buf.data)];
+                } finally {
+                    buf.release();
+                }
+            }
+            """
+        )
+        self.assertEqual(
+            f(array("i", [1, 2, 3])).to_py(),
+            ["i", 4, 1, 12, False, True, True, 0, [3], [1], "Int32Array", [1, 2, 3]],
+        )
+        self.assertEqual(
+            f(b"abc").to_py(),
+            ["B", 1, 1, 3, True, True, True, 0, [3], [1], "Uint8Array", [97, 98, 99]],
+        )
+        self.assertEqual(
+            f(array("d", [1.5]))[10:].to_py(), ["Float64Array", [1.5]]
+        )
+        # Non-contiguous memoryview: strides are reported in units of items
+        mv = memoryview(array("I", range(8)))[::2]
+        self.assertEqual(
+            f(mv).to_py(),
+            ["I", 4, 1, 28, False, False, False, 0, [4], [2], "Uint32Array", list(range(7))],
+        )
+
+    def test_pyproxy_get_buffer_type_argument(self):
+        f = run_js(
+            """
+            (x, type) => {
+                const buf = x.getBuffer(type);
+                try {
+                    return buf.data.constructor.name;
+                } finally {
+                    buf.release();
+                }
+            }
+            """
+        )
+        b = bytes(8)
+        for ty, name in [
+            ("i8", "Int8Array"),
+            ("u8", "Uint8Array"),
+            ("u8clamped", "Uint8ClampedArray"),
+            ("i16", "Int16Array"),
+            ("u16", "Uint16Array"),
+            ("i32", "Int32Array"),
+            ("u32", "Uint32Array"),
+            ("i64", "BigInt64Array"),
+            ("u64", "BigUint64Array"),
+            ("f32", "Float32Array"),
+            ("f64", "Float64Array"),
+            ("dataview", "DataView"),
+        ]:
+            with self.subTest(ty=ty):
+                self.assertEqual(f(b, ty), name)
+        with self.assertRaisesRegex(JsException, "Unknown type"):
+            f(b, "u7")
+
+    def test_pyproxy_get_buffer_release(self):
+        f = run_js(
+            """
+            (x) => {
+                const buf = x.getBuffer();
+                buf.release();
+                // release is idempotent
+                buf.release();
+            }
+            """
+        )
+        b = bytearray(b"abc")
+        f(b)
+        # Buffer was released so the bytearray can be resized
+        b.append(1)
+
+        # Symbol.dispose releases too
+        b = bytearray(b"abc")
+        run_js("(x) => { using buf = x.getBuffer(); return buf.data.length; }")(b)
+        b.append(1)
+
+        # Not released: the bytearray can't be resized
+        b = bytearray(b"abc")
+        self.assertEqual(run_js("(x) => x.getBuffer().data.length")(b), 3)
+        with self.assertRaisesRegex(BufferError, "Existing exports"):
+            b.append(1)
+
+    def test_pyproxy_get_empty_buffer(self):
+        f = run_js(
+            """
+            (x) => {
+                const buf = x.getBuffer();
+                try {
+                    return [buf.data.length, buf.nbytes];
+                } finally {
+                    buf.release();
+                }
+            }
+            """
+        )
+        self.assertEqual(f(b"").to_py(), [0, 0])
+
+    def test_to_js_buffers(self):
+        f = run_js("(x) => [x.constructor.name, Array.from(x)]")
+        self.assertEqual(f(to_js(b"abc")).to_py(), ["Uint8Array", [97, 98, 99]])
+        self.assertEqual(f(to_js(bytearray(b"abc"))).to_py(), ["Uint8Array", [97, 98, 99]])
+        self.assertEqual(f(to_js(array("b", [-1, 2]))).to_py(), ["Int8Array", [-1, 2]])
+        self.assertEqual(f(to_js(array("h", [-1, 2]))).to_py(), ["Int16Array", [-1, 2]])
+        self.assertEqual(f(to_js(array("H", [1, 2]))).to_py(), ["Uint16Array", [1, 2]])
+        self.assertEqual(f(to_js(array("i", [-1, 2]))).to_py(), ["Int32Array", [-1, 2]])
+        self.assertEqual(f(to_js(array("I", [1, 2]))).to_py(), ["Uint32Array", [1, 2]])
+        self.assertEqual(f(to_js(array("f", [1.5]))).to_py(), ["Float32Array", [1.5]])
+        self.assertEqual(f(to_js(array("d", [1.5]))).to_py(), ["Float64Array", [1.5]])
+        self.assertEqual(f(to_js(array("q", [-1]))).to_py(), ["BigInt64Array", [-1]])
+        self.assertEqual(f(to_js(array("Q", [1]))).to_py(), ["BigUint64Array", [1]])
+        self.assertEqual(
+            f(to_js(memoryview(b"abcdef")[::2])).to_py(), ["Uint8Array", [97, 99, 101]]
+        )
+        # Buffers nested in containers are converted too
+        res = run_js("(x) => [x[0].constructor.name, x[1].get('a').constructor.name]")(
+            to_js([b"abc", {"a": array("d", [1.0])}])
+        )
+        self.assertEqual(res.to_py(), ["Uint8Array", "Float64Array"])
+        # Format characters with special conversions
+        self.assertEqual(
+            run_js("(x) => typeof x")(to_js(memoryview(b"abc").cast("c"))), "object"
+        )
+        self.assertEqual(
+            run_js("(x) => Array.from(x)")(to_js(memoryview(b"\x00\x01").cast("?"))).to_py(),
+            [False, True],
+        )
+        # Multidimensional buffers become nested arrays
+        res = run_js("(x) => x.map((row) => Array.from(row))")(
+            to_js(memoryview(array("i", range(6))).cast("B").cast("i", (2, 3)))
+        )
+        self.assertEqual(res.to_py(), [[0, 1, 2], [3, 4, 5]])

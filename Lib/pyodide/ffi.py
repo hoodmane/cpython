@@ -1,6 +1,7 @@
 from _pyodide import (
     JsArray,
     JsBigInt,
+    JsBuffer,
     JsCallable,
     JsDoubleProxy,
     JsGenerator,
@@ -9,9 +10,15 @@ from _pyodide import (
     JsMap,
     JsMutableMap,
     JsProxy,
+    JsTypedArray,
     jsnull,
 )
-from _pyodide_core import JsException, create_proxy, destroy_proxies, to_js
+from _pyodide_core import (
+    JsException,
+    create_proxy,
+    destroy_proxies,
+    to_js,
+)
 
 __all__ = [
     "create_proxy",
@@ -19,6 +26,8 @@ __all__ = [
     "jsnull",
     "to_js",
     "JsArray",
+    "JsBigInt",
+    "JsBuffer",
     "JsCallable",
     "JsDoubleProxy",
     "JsException",
@@ -26,6 +35,7 @@ __all__ = [
     "JsIterable",
     "JsIterator",
     "JsMap",
-    "JsMutableMapJsProxy",
-    "JsBigInt",
+    "JsMutableMap",
+    "JsProxy",
+    "JsTypedArray",
 ]

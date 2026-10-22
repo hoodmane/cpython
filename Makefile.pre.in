@@ -3533,11 +3533,12 @@ MODULE__PYODIDE_CORE_DEPS=\
 	$(srcdir)/Modules/_pyodide_core/python2js.h      \
 	$(srcdir)/Modules/_pyodide_core/jsproxy.h        \
 	$(srcdir)/Modules/_pyodide_core/jsproxy_call.h   \
-	Modules/_pyodide_core/inject_js.o                \
+	$(srcdir)/Modules/_pyodide_core/pyproxy.h        \
 	Modules/_pyodide_core/inject_js.o                \
 	Modules/_pyodide_core/jserror_wasm.o             \
-	Modules/_pyodide_core/js2python.js               \
-	Modules/_pyodide_core/jslib.js
+	$(srcdir)/Modules/_pyodide_core/js2python.js     \
+	$(srcdir)/Modules/_pyodide_core/python2js_buffer.js \
+	$(srcdir)/Modules/_pyodide_core/jslib.js
 
 
 # IF YOU PUT ANYTHING HERE IT WILL GO AWAY

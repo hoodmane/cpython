@@ -33,6 +33,8 @@
 #define IS_DOUBLE_PROXY     (1 << 12)
 #define IS_PY_JSON_DICT     (1 << 13)
 #define IS_PY_JSON_SEQUENCE (1 << 14)
+#define IS_BUFFER           (1 << 15)
+#define IS_TYPEDARRAY       (1 << 16)
 
 Js_IDENTIFIER(next);
 
@@ -41,6 +43,15 @@ struct CallableFields
 {
   JsRef this_;
   vectorcallfunc vectorcall;
+};
+
+struct BufferFields
+{
+  Py_ssize_t byteLength;
+  // Format has static lifetime, it is borrowed from Module.get_buffer_datatype
+  char* format;
+  Py_ssize_t itemsize;
+  bool check_assignments;
 };
 
 struct ExceptionFields
@@ -61,6 +72,7 @@ typedef struct
   union {
     struct CallableFields mf;
     struct ExceptionFields ef;
+    struct BufferFields bf;
   } tf;
   JsRef js;
 } JsProxy;
@@ -71,12 +83,13 @@ module _pyodide_core
 class _pyodide_core.JsProxy "PyObject *" "JsProxyType"
 
 class _pyodide_core.JsArray "PyObject *" "JsProxyType"
+class _pyodide_core.JsBuffer "PyObject *" "JsProxyType"
 class _pyodide_core.JsDoubleProxy "PyObject *" "JsProxyType"
 class _pyodide_core.JsException "PyObject *" "JsProxyType"
 class _pyodide_core.JsGenerator "PyObject *" "JsProxyType"
 class _pyodide_core.JsMap "PyObject *" "JsProxyType"
 [clinic start generated code]*/
-/*[clinic end generated code: output=da39a3ee5e6b4b0d input=3c5b38b8249a30cb]*/
+/*[clinic end generated code: output=da39a3ee5e6b4b0d input=a2f8d2755462046d]*/
 #include "clinic/jsproxy.c.h"
 
 // Layout of dict and ExceptionFields needs to exactly match the layout of the
@@ -119,10 +132,14 @@ _Static_assert(sizeof(PyBaseExceptionObject) ==
 
 #define JsException_ARGS(x) (((JsProxy*)x)->tf.ef.args)
 
+#define JsBuffer_FORMAT(x) (((JsProxy*)x)->tf.bf.format)
+#define JsBuffer_BYTE_LENGTH(x) (((JsProxy*)x)->tf.bf.byteLength)
+#define JsBuffer_ITEMSIZE(x) (((JsProxy*)x)->tf.bf.itemsize)
+#define JsBuffer_CHECK_ASSIGNMENTS(x) (((JsProxy*)x)->tf.bf.check_assignments)
+
 static PyObject* collections_abc;
 static PyObject* MutableMapping;
 static PyObject* JsProxy_metaclass;
-
 
 static PyObject*
 JsProxy_create_pyjson(JsVal object, bool pyjson);
@@ -167,7 +184,8 @@ js2python_pyjson(JsVal jsval, bool pyjson)
 }
 
 #define INCLUDE_PYJSON_METHODS(flags)                                          \
-  !((flags) & (IS_DOUBLE_PROXY | IS_ITERATOR | IS_CALLABLE | IS_ERROR))
+  !((flags) & (IS_DOUBLE_PROXY | IS_ITERATOR | IS_CALLABLE | IS_ERROR |        \
+               IS_BUFFER | IS_TYPEDARRAY))
 
 
 static int
@@ -832,7 +850,6 @@ _pyodide_core_JsGenerator_close_impl(PyObject *self)
   return NULL;
 }
 
-
 // A helper method for jsproxy_subscript.
 EM_JS_VAL(JsVal, _PyJsProxy_subscript_js, (JsVal obj, JsVal key), {
   let result = obj.get(key);
@@ -989,7 +1006,6 @@ _pyodide_core_JsProxy___exit___impl(PyObject *self, PyObject *exc_type,
   }
   Py_RETURN_NONE;
 }
-
 
 EM_JS_VAL(JsVal, _PyJsMap_GetIter_js, (JsVal obj), {
   let result;
@@ -2011,6 +2027,489 @@ finally:
 }
 
 ////////////////////////////////////////////////////////////
+// JsTypedArray
+//
+// TypedArrays support the Array protocol except for deletion and slicing.
+
+static int
+JsTypedArray_sq_ass_item(PyObject* o, Py_ssize_t i, PyObject* pyval)
+{
+  if (pyval == NULL) {
+    PyErr_SetString(PyExc_TypeError,
+                    "'TypedArray' object doesn't support item deletion");
+    return -1;
+  }
+  return JsArray_sq_ass_item(o, i, pyval);
+}
+
+static PyObject*
+JsTypedArray_subscript(PyObject* self, PyObject* item)
+{
+  if (PySlice_Check(item)) {
+    PyErr_SetString(PyExc_NotImplementedError,
+                    "Slice subscripting isn't implemented for typed arrays");
+    return NULL;
+  }
+  return JsArray_subscript(self, item);
+}
+
+static int
+JsTypedArray_ass_subscript(PyObject* self, PyObject* item, PyObject* pyvalue)
+{
+  if (pyvalue == NULL) {
+    PyErr_SetString(PyExc_TypeError,
+                    "'TypedArray' object doesn't support item deletion");
+    return -1;
+  }
+  if (PySlice_Check(item)) {
+    PyErr_SetString(PyExc_NotImplementedError,
+                    "Slice assignment isn't implemented for typed arrays");
+    return -1;
+  }
+  return JsArray_ass_subscript(self, item, pyvalue);
+}
+
+////////////////////////////////////////////////////////////
+// JsBuffer
+//
+// A subclass of JsProxy for ArrayBuffers and ArrayBuffer views.
+
+/**
+ * A simple internal object that owns a chunk of memory and exposes it via the
+ * buffer protocol. Used as the backing object for the memoryview returned from
+ * JsBuffer.to_memoryview() and from to_py() on a buffer.
+ */
+typedef struct
+{
+  PyObject_HEAD
+  void* data;
+  Py_ssize_t byteLength; // invariant: byteLength == length * itemsize
+  Py_ssize_t length;
+  char* format;
+  Py_ssize_t itemsize;
+} Buffer;
+
+static int
+Buffer_cinit(Buffer* self,
+             Py_ssize_t byteLength,
+             char* format,
+             Py_ssize_t itemsize)
+{
+  self->data = PyMem_Malloc(byteLength);
+  if (self->data == NULL && byteLength != 0) {
+    PyErr_NoMemory();
+    return -1;
+  }
+  self->byteLength = byteLength;
+  self->format = format; // Format has static lifetime
+  self->itemsize = itemsize;
+  self->length = byteLength / itemsize;
+  return 0;
+}
+
+static void
+Buffer_dealloc(PyObject* self)
+{
+  PyMem_Free(((Buffer*)self)->data);
+  ((Buffer*)self)->data = NULL;
+  Py_TYPE(self)->tp_free(self);
+}
+
+static int
+Buffer_GetBuffer(PyObject* obj, Py_buffer* view, int flags)
+{
+  Buffer* self = (Buffer*)obj;
+  view->obj = NULL;
+  // This gets decremented automatically by PyBuffer_Release (even though
+  // bf_releasebuffer is NULL)
+  Py_INCREF(self);
+
+  view->buf = self->data;
+  view->obj = (PyObject*)self;
+  view->len = self->byteLength;
+  view->readonly = false;
+  view->itemsize = self->itemsize;
+  view->format = self->format;
+  view->ndim = 1;
+  // It's important to include the shape:
+  // "If shape is NULL as a result of a PyBUF_SIMPLE or a PyBUF_WRITABLE
+  // request, the consumer must disregard itemsize and assume itemsize == 1."
+  view->shape = &self->length;
+  view->strides = NULL;
+  view->suboffsets = NULL;
+  return 0;
+}
+
+static PyBufferProcs Buffer_BufferProcs = {
+  .bf_getbuffer = Buffer_GetBuffer,
+  .bf_releasebuffer = NULL,
+};
+
+static PyTypeObject BufferType = {
+  .tp_name = "pyodide.ffi._Buffer",
+  .tp_basicsize = sizeof(Buffer),
+  .tp_dealloc = Buffer_dealloc,
+  .tp_as_buffer = &Buffer_BufferProcs,
+  .tp_flags = Py_TPFLAGS_DEFAULT,
+  .tp_doc = PyDoc_STR("An internal helper buffer"),
+};
+
+/**
+ * Check that the Python buffer `view` has the same length as the JavaScript
+ * buffer and, if `safe`, that the formats are compatible. `dir` is true when
+ * copying from the TypedArray into the Python buffer (assign_to) and false in
+ * the other direction (assign); it only affects the error message.
+ */
+static int
+check_buffer_compatibility(PyObject* self, Py_buffer* view, bool safe, bool dir)
+{
+  Py_ssize_t byteLength = JsBuffer_BYTE_LENGTH(self);
+  char* format = JsBuffer_FORMAT(self);
+  Py_ssize_t itemsize = JsBuffer_ITEMSIZE(self);
+  if (view->len != byteLength) {
+    if (dir) {
+      PyErr_Format(
+        PyExc_ValueError,
+        "cannot assign from TypedArray of length %zd to buffer of length %zd",
+        byteLength,
+        view->len);
+    } else {
+      PyErr_Format(
+        PyExc_ValueError,
+        "cannot assign to TypedArray of length %zd from buffer of length %zd",
+        view->len,
+        byteLength);
+    }
+    return -1;
+  }
+  if (safe) {
+    bool compatible;
+    if (view->format && format) {
+      compatible = strcmp(view->format, format) == 0;
+    } else {
+      compatible = view->itemsize == itemsize;
+    }
+    if (!compatible) {
+      PyErr_SetString(PyExc_ValueError,
+                      "TypedArray and memorybuffer have incompatible formats");
+      return -1;
+    }
+  }
+  return 0;
+}
+
+/*[clinic input]
+_pyodide_core.JsBuffer.assign_to
+
+    target: object
+    /
+
+Copy the data from the TypedArray into the Python buffer target.
+
+target must support the buffer protocol, be writable, and have the same
+length as the TypedArray. Does not change the length of the buffer.
+[clinic start generated code]*/
+
+static PyObject *
+_pyodide_core_JsBuffer_assign_to(PyObject *self, PyObject *target)
+/*[clinic end generated code: output=af687dde6521b02a input=fb7b2e888767c953]*/
+{
+  bool success = false;
+  Py_buffer view = { 0 };
+
+  FAIL_IF_MINUS_ONE(
+    PyObject_GetBuffer(target, &view, PyBUF_ANY_CONTIGUOUS | PyBUF_WRITABLE));
+  bool safe = JsBuffer_CHECK_ASSIGNMENTS(self);
+  FAIL_IF_MINUS_ONE(check_buffer_compatibility(self, &view, safe, true));
+  FAIL_IF_MINUS_ONE(_PyJsvBuffer_assignToPtr(JsProxy_VAL(self), view.buf));
+
+  success = true;
+finally:
+  PyBuffer_Release(&view);
+  if (success) {
+    Py_RETURN_NONE;
+  }
+  return NULL;
+}
+
+/*[clinic input]
+_pyodide_core.JsBuffer.assign
+
+    source: object
+    /
+
+Copy the data from the Python buffer source into the TypedArray.
+
+source must support the buffer protocol and have the same length as the
+TypedArray. Does not change the length of the TypedArray.
+[clinic start generated code]*/
+
+static PyObject *
+_pyodide_core_JsBuffer_assign(PyObject *self, PyObject *source)
+/*[clinic end generated code: output=c179bcbe0fbc1ef3 input=2194778eb7fc999f]*/
+{
+  bool success = false;
+  Py_buffer view = { 0 };
+
+  FAIL_IF_MINUS_ONE(PyObject_GetBuffer(source, &view, PyBUF_ANY_CONTIGUOUS));
+  bool safe = JsBuffer_CHECK_ASSIGNMENTS(self);
+  FAIL_IF_MINUS_ONE(check_buffer_compatibility(self, &view, safe, false));
+  FAIL_IF_MINUS_ONE(_PyJsvBuffer_assignFromPtr(JsProxy_VAL(self), view.buf));
+
+  success = true;
+finally:
+  PyBuffer_Release(&view);
+  if (success) {
+    Py_RETURN_NONE;
+  }
+  return NULL;
+}
+
+/**
+ * Copy the JavaScript buffer into a new memoryview. Also used from
+ * js2python.js when doing deep conversions, hence EMSCRIPTEN_KEEPALIVE.
+ */
+EMSCRIPTEN_KEEPALIVE PyObject*
+_PyJsBuffer_CopyIntoMemoryView(JsVal jsbuffer,
+                               Py_ssize_t byteLength,
+                               char* format,
+                               Py_ssize_t itemsize)
+{
+  PyObject* result = NULL;
+  Buffer* buffer = NULL;
+
+  buffer = (Buffer*)BufferType.tp_alloc(&BufferType, 0);
+  FAIL_IF_NULL(buffer);
+  FAIL_IF_MINUS_ONE(Buffer_cinit(buffer, byteLength, format, itemsize));
+  FAIL_IF_MINUS_ONE(_PyJsvBuffer_assignToPtr(jsbuffer, buffer->data));
+  result = PyMemoryView_FromObject((PyObject*)buffer);
+
+finally:
+  Py_CLEAR(buffer);
+  return result;
+}
+
+/*[clinic input]
+_pyodide_core.JsBuffer.to_memoryview
+
+Convert a buffer to a memoryview.
+
+Copies the data once. This currently has the same effect as to_py.
+[clinic start generated code]*/
+
+static PyObject *
+_pyodide_core_JsBuffer_to_memoryview_impl(PyObject *self)
+/*[clinic end generated code: output=aa1a88934984a4f6 input=68f0aff7df8ea79f]*/
+{
+  return _PyJsBuffer_CopyIntoMemoryView(JsProxy_VAL(self),
+                                        JsBuffer_BYTE_LENGTH(self),
+                                        JsBuffer_FORMAT(self),
+                                        JsBuffer_ITEMSIZE(self));
+}
+
+/*[clinic input]
+_pyodide_core.JsBuffer.to_bytes
+
+Convert a buffer to a bytes object.
+
+Copies the data once.
+[clinic start generated code]*/
+
+static PyObject *
+_pyodide_core_JsBuffer_to_bytes_impl(PyObject *self)
+/*[clinic end generated code: output=b473b5f4ccf490a6 input=ca114724f2106c1a]*/
+{
+  Py_ssize_t byteLength = JsBuffer_BYTE_LENGTH(self);
+  PyObject* result = PyBytes_FromStringAndSize(NULL, byteLength);
+  FAIL_IF_NULL(result);
+  char* data = PyBytes_AS_STRING(result);
+  FAIL_IF_MINUS_ONE(_PyJsvBuffer_assignToPtr(JsProxy_VAL(self), data));
+  return result;
+finally:
+  Py_CLEAR(result);
+  return NULL;
+}
+
+// clang-format off
+EM_JS_VAL(JsVal,
+JsBuffer_DecodeString_js,
+(JsVal buffer, const char* encoding),
+{
+  let encoding_js;
+  if (encoding) {
+    encoding_js = UTF8ToString(encoding);
+  }
+  const decoder = new TextDecoder(encoding_js, { fatal : true, ignoreBOM : true });
+  let res;
+  try {
+    res = decoder.decode(buffer);
+  } catch (e) {
+    if (e instanceof TypeError) {
+      // Decoding error
+      return Module.error;
+    }
+    throw e;
+  }
+  return res;
+})
+// clang-format on
+
+/*[clinic input]
+_pyodide_core.JsBuffer.to_string
+
+    encoding: str(accept={str, NoneType}) = None
+        The encoding to use. Default is utf8. The encoding is passed to the
+        JavaScript TextDecoder so any encoding supported by TextDecoder may be
+        used.
+
+Convert a buffer to a string object.
+
+Copies the data twice.
+[clinic start generated code]*/
+
+static PyObject *
+_pyodide_core_JsBuffer_to_string_impl(PyObject *self, const char *encoding)
+/*[clinic end generated code: output=f7f89795ca8f98f2 input=7a97b745c8f74024]*/
+{
+  JsVal jsresult = JsBuffer_DecodeString_js(JsProxy_VAL(self), encoding);
+  if (_PyJsvError_Check(jsresult) && !PyErr_Occurred()) {
+    PyErr_Format(PyExc_ValueError,
+                 "Failed to decode Javascript TypedArray as %s",
+                 encoding ? encoding : "utf8");
+  }
+  FAIL_IF_JS_ERROR(jsresult);
+  return _Py_js2python(jsresult);
+finally:
+  return NULL;
+}
+
+static int
+get_fileno(PyObject* file)
+{
+  PyObject* pyfileno = PyObject_CallMethodNoArgs(file, &_Py_ID(fileno));
+  if (pyfileno == NULL) {
+    return -1;
+  }
+  int result = PyLong_AsInt(pyfileno);
+  Py_DECREF(pyfileno);
+  return result;
+}
+
+/*[clinic input]
+_pyodide_core.JsBuffer.to_file
+
+    file: object
+    /
+
+Writes a buffer to a file.
+
+Will write the entire contents of the buffer to the current position of
+the file. file must be a file object with a fileno() method.
+[clinic start generated code]*/
+
+static PyObject *
+_pyodide_core_JsBuffer_to_file(PyObject *self, PyObject *file)
+/*[clinic end generated code: output=77582e392ba8cb7b input=04e44bee2e5add1d]*/
+{
+  int fd = get_fileno(file);
+  FAIL_IF_MINUS_ONE(fd);
+  FAIL_IF_MINUS_ONE(_PyJsvBuffer_writeToFile(JsProxy_VAL(self), fd));
+  Py_RETURN_NONE;
+finally:
+  return NULL;
+}
+
+/*[clinic input]
+_pyodide_core.JsBuffer.from_file
+
+    file: object
+    /
+
+Reads from a file into a buffer.
+
+Will try to read a chunk of data the same size as the buffer from the
+current position of the file. file must be a file object with a fileno()
+method.
+[clinic start generated code]*/
+
+static PyObject *
+_pyodide_core_JsBuffer_from_file(PyObject *self, PyObject *file)
+/*[clinic end generated code: output=f5841fb7d013f593 input=d34d18bccf0ebc4b]*/
+{
+  int fd = get_fileno(file);
+  FAIL_IF_MINUS_ONE(fd);
+  FAIL_IF_MINUS_ONE(_PyJsvBuffer_readFromFile(JsProxy_VAL(self), fd));
+  Py_RETURN_NONE;
+finally:
+  return NULL;
+}
+
+/*[clinic input]
+_pyodide_core.JsBuffer._into_file
+
+    file: object
+    /
+
+Will write the entire contents of a buffer into a file.
+
+The buffer must be empty afterwards, i.e., the file must be opened as a
+fresh empty file in the Emscripten MEMFS file system. The purpose is to
+avoid a copy of the data: the backing ArrayBuffer is handed over to the
+file system.
+[clinic start generated code]*/
+
+static PyObject *
+_pyodide_core_JsBuffer__into_file(PyObject *self, PyObject *file)
+/*[clinic end generated code: output=71afa3fadf32ec3c input=fb7268f30d47aa5f]*/
+{
+  int fd = get_fileno(file);
+  FAIL_IF_MINUS_ONE(fd);
+  FAIL_IF_MINUS_ONE(_PyJsvBuffer_intoFile(JsProxy_VAL(self), fd));
+  Py_RETURN_NONE;
+finally:
+  return NULL;
+}
+
+// clang-format off
+EM_JS_MACROS(void,
+JsBuffer_get_info,
+(JsVal jsobj,
+ Py_ssize_t* byteLength_ptr,
+ char** format_ptr,
+ Py_ssize_t* itemsize_ptr,
+ bool* checked_ptr),
+{
+  const [format_utf8, itemsize, checked] = Module.get_buffer_datatype(jsobj);
+  ASSIGN_U32(byteLength_ptr, 0, jsobj.byteLength);
+  ASSIGN_U32(format_ptr, 0, format_utf8);
+  ASSIGN_U32(itemsize_ptr, 0, itemsize);
+  ASSIGN_U8(checked_ptr, 0, checked);
+});
+// clang-format on
+
+static int
+JsBuffer_cinit(PyObject* self)
+{
+  // format string is borrowed from get_buffer_datatype, DO NOT DEALLOCATE!
+  JsBuffer_get_info(JsProxy_VAL(self),
+                    &JsBuffer_BYTE_LENGTH(self),
+                    &JsBuffer_FORMAT(self),
+                    &JsBuffer_ITEMSIZE(self),
+                    &JsBuffer_CHECK_ASSIGNMENTS(self));
+  if (JsBuffer_FORMAT(self) == NULL) {
+    char typename[64];
+    if (_PyJsv_type(JsProxy_VAL(self), typename, sizeof(typename)) == -1) {
+      return -1;
+    }
+    PyErr_Format(PyExc_RuntimeError,
+                 "Unknown typed array type '%s'.",
+                 typename);
+    return -1;
+  }
+  return 0;
+}
+
+////////////////////////////////////////////////////////////
 // JsMethod
 //
 // A subclass of JsProxy for methods
@@ -2186,7 +2685,7 @@ _pyodide_core_JsDoubleProxy_unwrap_impl(PyObject *self)
 /*[clinic input]
 _pyodide_core.JsProxy.as_py_json
 
-Returns a new JsProxy that treats a JavaScript object as Python json.
+Return a new JsProxy that treats a JavaScript object as Python json.
 
 It allows one to treat a JavaScript object that is a mixture of
 JavaScript arrays and objects as a mixture of Python lists and dicts.
@@ -2194,7 +2693,7 @@ JavaScript arrays and objects as a mixture of Python lists and dicts.
 
 static PyObject *
 _pyodide_core_JsProxy_as_py_json_impl(PyObject *self)
-/*[clinic end generated code: output=f5714861b7b1656d input=a896600d4ec0052c]*/
+/*[clinic end generated code: output=f5714861b7b1656d input=f8cae5f51766ea4f]*/
 {
   int flags = JsProxy_getflags(self);
   if (flags & IS_ARRAY) {
@@ -2378,9 +2877,9 @@ static PyObject*
 JsProxy_create_subtype(int flags, bool is_py_json)
 {
   // Make sure these stack allocations are large enough to fit!
-  PyType_Slot slots[20];
+  PyType_Slot slots[40];
   int cur_slot = 0;
-  PyMethodDef methods[50];
+  PyMethodDef methods[80];
   int cur_method = 0;
   PyMemberDef members[5];
   int cur_member = 0;
@@ -2471,6 +2970,41 @@ JsProxy_create_subtype(int flags, bool is_py_json)
     AddMethods(
       _PYODIDE_CORE_JSPROXY___ENTER___METHODDEF
       _PYODIDE_CORE_JSPROXY___EXIT___METHODDEF
+    );
+  }
+
+  if (flags & IS_TYPEDARRAY) {
+    // TypedArrays support indexing and assignment but not deletion or slicing.
+    // They don't have the mutating Array methods (append, insert, etc).
+    slots[cur_slot++] = (PyType_Slot){ .slot = Py_mp_subscript,
+                                       .pfunc = (void*)JsTypedArray_subscript };
+    slots[cur_slot++] =
+      (PyType_Slot){ .slot = Py_mp_ass_subscript,
+                     .pfunc = (void*)JsTypedArray_ass_subscript };
+    slots[cur_slot++] =
+      (PyType_Slot){ .slot = Py_sq_length, .pfunc = (void*)JsProxy_length };
+    slots[cur_slot++] =
+      (PyType_Slot){ .slot = Py_sq_item, .pfunc = (void*)JsArray_sq_item };
+    slots[cur_slot++] = (PyType_Slot){ .slot = Py_sq_ass_item,
+                                       .pfunc = (void*)JsTypedArray_sq_ass_item };
+    AddMethods(
+      _PYODIDE_CORE_JSARRAY___REVERSED___METHODDEF
+      _PYODIDE_CORE_JSARRAY_COUNT_METHODDEF
+      _PYODIDE_CORE_JSARRAY_INDEX_METHODDEF
+      _PYODIDE_CORE_JSARRAY_REVERSE_METHODDEF
+    );
+  }
+
+  if (flags & IS_BUFFER) {
+    AddMethods(
+      _PYODIDE_CORE_JSBUFFER_ASSIGN_METHODDEF
+      _PYODIDE_CORE_JSBUFFER_ASSIGN_TO_METHODDEF
+      _PYODIDE_CORE_JSBUFFER_TO_MEMORYVIEW_METHODDEF
+      _PYODIDE_CORE_JSBUFFER_TO_BYTES_METHODDEF
+      _PYODIDE_CORE_JSBUFFER_TO_STRING_METHODDEF
+      _PYODIDE_CORE_JSBUFFER_TO_FILE_METHODDEF
+      _PYODIDE_CORE_JSBUFFER_FROM_FILE_METHODDEF
+      _PYODIDE_CORE_JSBUFFER__INTO_FILE_METHODDEF
     );
   }
 
@@ -2731,6 +3265,9 @@ EM_JS_NUM(int, JsProxy_compute_typeflags, (JsVal obj, bool is_py_json), {
     } catch(e) {}
   }
   const typeTag = getTypeTag(obj);
+  const isBufferView = safeCall(() => ArrayBuffer.isView(obj));
+  const isArray = safeCall(() => Array.isArray(obj));
+  const constructorName = safeCall(() => obj.constructor.name) || "";
 
   SET_FLAG_IF_HAS_METHOD(HAS_GET, "get")
   SET_FLAG_IF_HAS_METHOD(HAS_SET, "set");
@@ -2743,7 +3280,11 @@ EM_JS_NUM(int, JsProxy_compute_typeflags, (JsVal obj, bool is_py_json), {
     SET_FLAG_IF_HAS_METHOD(HAS_DISPOSE, Symbol.dispose);
   }
   SET_FLAG_IF(IS_CALLABLE, typeof obj === "function");
-  SET_FLAG_IF(IS_ARRAY, safeCall(() => Array.isArray(obj)));
+  SET_FLAG_IF(IS_BUFFER,
+    (isBufferView || typeTag === "[object ArrayBuffer]") &&
+    !(type_flags & IS_CALLABLE));
+  SET_FLAG_IF(IS_TYPEDARRAY, isBufferView && typeTag !== "[object DataView]");
+  SET_FLAG_IF(IS_ARRAY, isArray);
   SET_FLAG_IF(IS_DOUBLE_PROXY, API.isPyProxy(obj));
   SET_FLAG_IF(IS_GENERATOR, typeTag === "[object Generator]");
   SET_FLAG_IF_HAS_METHOD(IS_ITERABLE, Symbol.iterator);
@@ -2768,7 +3309,7 @@ EM_JS_NUM(int, JsProxy_compute_typeflags, (JsVal obj, bool is_py_json), {
         hasProperty(obj, "stack")
         || constructorName === "DOMException"
       )
-    ) && !(type_flags & (IS_CALLABLE)));
+    ) && !(type_flags & (IS_CALLABLE | IS_BUFFER)));
 
   if (is_py_json && (type_flags & (IS_ARRAY | IS_ITERATOR))) {
     // tagging IS_PY_JSON_SEQUENCE on IS_ITERATOR is a bit of a hack
@@ -2796,6 +3337,9 @@ JsProxy_create_with_type(int type_flags,
   FAIL_IF_NONZERO(JsProxy_cinit(result, object));
   if (type_flags & IS_CALLABLE) {
     FAIL_IF_NONZERO(JsMethod_cinit(result, this));
+  }
+  if (type_flags & IS_BUFFER) {
+    FAIL_IF_NONZERO(JsBuffer_cinit(result));
   }
   if (type_flags & IS_ERROR) {
     PyObject* arg =
@@ -2891,6 +3435,7 @@ _Py_jsproxy_init(PyObject* core_module)
   FAIL_IF_NULL(JsProxy_metaclass);
 
   FAIL_IF_MINUS_ONE(PyType_Ready(&JsProxyType));
+  FAIL_IF_MINUS_ONE(PyType_Ready(&BufferType));
   JsProxy_TypeDict = PyDict_New();
   FAIL_IF_NULL(JsProxy_TypeDict);
   FAIL_IF_MINUS_ONE(
@@ -2913,8 +3458,11 @@ _Py_jsproxy_init(PyObject* core_module)
   AddFlag(HAS_SET);
   AddFlag(HAS_HAS);
   AddFlag(HAS_INCLUDES);
+  AddFlag(HAS_DISPOSE);
+  AddFlag(IS_BUFFER);
   AddFlag(IS_CALLABLE);
   AddFlag(IS_ARRAY);
+  AddFlag(IS_TYPEDARRAY);
   AddFlag(IS_DOUBLE_PROXY);
   AddFlag(IS_GENERATOR);
   AddFlag(IS_ERROR);
