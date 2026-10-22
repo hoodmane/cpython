@@ -3,6 +3,7 @@
 #include "js2python.h"
 #include "error_handling.h"
 #include "pyproxy.h"
+#include "jsproxy.h"
 
 /**
  * Prepare arguments from a `METH_FASTCALL | METH_KEYWORDS` Python function to a
@@ -51,10 +52,10 @@ finally:
   return JS_ERROR;
 }
 
-Js_static_string(PYPROXY_DESTROYED_AT_END_OF_FUNCTION_CALL,
-                 "This borrowed proxy was automatically destroyed at the "
-                 "end of a function call. Try using "
-                 "create_proxy or create_once_callable.");
+Js_Identifier _Py_PYPROXY_DESTROYED_AT_END_OF_FUNCTION_CALL =
+  Js_static_string_init("This borrowed proxy was automatically destroyed at "
+                        "the end of a function call. Try using "
+                        "create_proxy or create_once_callable.");
 
 EM_JS(void, _Py_destroy_proxies, (JsVal proxies, Js_Identifier* msg_ptr), {
   let msg = undefined;
@@ -73,8 +74,31 @@ destroy_proxies(JsVal jsval, JsVal proxies)
     // TODO: don't destroy proxies with roundtrip = true?
     _PyJsvArray_Push(proxies, jsval);
   }
-  _Py_destroy_proxies(proxies, &PYPROXY_DESTROYED_AT_END_OF_FUNCTION_CALL);
+  _Py_destroy_proxies(proxies, &_Py_PYPROXY_DESTROYED_AT_END_OF_FUNCTION_CALL);
 }
+
+/**
+ * Returns a JavaScript function to be called when a promise returned from a
+ * JavaScript function settles. It destroys the argument proxies and, if the
+ * result is a PyProxy, the result too.
+ */
+EM_JS_VAL(JsVal, _Py_get_async_js_call_done_callback, (JsVal proxies), {
+  return function(result)
+  {
+    if (API.finalized) {
+      return;
+    }
+    let msg = "This borrowed proxy was automatically destroyed " +
+              "at the end of an asynchronous function call. Try " +
+              "using create_proxy or create_once_callable.";
+    for (let px of proxies) {
+      Module.pyproxy_destroy(px, msg, false);
+    }
+    if (API.isPyProxy(result)) {
+      Module.pyproxy_destroy(result, msg, false);
+    }
+  };
+});
 
 EM_JS_VAL(JsVal, _Py_wrap_generator, (JsVal gen, JsVal proxies), {
   proxies = new Set(proxies);
@@ -120,6 +144,54 @@ EM_JS_VAL(JsVal, _Py_wrap_generator, (JsVal gen, JsVal proxies), {
 });
 
 /**
+ * Like _Py_wrap_generator but for async generators: the proxies are destroyed
+ * when the promise returned by next/throw/return resolves with done = true or
+ * rejects.
+ */
+EM_JS_VAL(JsVal, _Py_wrap_async_generator, (JsVal gen, JsVal proxies), {
+  proxies = new Set(proxies);
+  const msg =
+    "This borrowed proxy was automatically destroyed " +
+    "when an async generator completed execution. Try " +
+    "using create_proxy or create_once_callable.";
+  function cleanup() {
+    proxies.forEach((px) => Module.pyproxy_destroy(px, msg));
+  }
+  function wrap(funcname) {
+    return async function (val) {
+      if (API.isPyProxy(val)) {
+        val = val.copy();
+        proxies.add(val);
+      }
+      let res;
+      try {
+        res = await gen[funcname](val);
+      } catch (e) {
+        cleanup();
+        throw e;
+      }
+      if (res.done) {
+        // Don't destroy the return value!
+        proxies.delete(res.value);
+        cleanup();
+      }
+      return res;
+    };
+  }
+  return {
+    get [Symbol.toStringTag]() {
+      return "AsyncGenerator";
+    },
+    [Symbol.asyncIterator]() {
+      return this;
+    },
+    next: wrap("next"),
+    throw: wrap("throw"),
+    return: wrap("return"),
+  };
+});
+
+/**
  * __call__ overload for methods. Controlled by IS_CALLABLE.
  */
 PyObject*
@@ -134,6 +206,7 @@ _PyJsMethod_Vectorcall_impl(JsVal func,
   PyObject* pyresult = NULL;
   JsVal pyproxies = _PyJsvArray_New();
   bool destroy_args = true;
+  bool is_promise = false;
 
   // Recursion error?
   FAIL_IF_NONZERO(Py_EnterRecursiveCall(" while calling a JavaScript object"));
@@ -142,14 +215,26 @@ _PyJsMethod_Vectorcall_impl(JsVal func,
   FAIL_IF_JS_ERROR(jsargs);
   jsresult = _PyJsvFunction_CallBound(func, receiver, jsargs);
   FAIL_IF_JS_ERROR(jsresult);
-  bool is_generator = _PyJsvGenerator_Check(jsresult);
-  destroy_args = !is_generator;
+  is_promise = _PyJsvPromise_Check(jsresult);
+  bool is_generator = !is_promise && _PyJsvGenerator_Check(jsresult);
+  bool is_async_generator =
+    !is_promise && !is_generator && _PyJsvAsyncGenerator_Check(jsresult);
+  destroy_args = !is_promise && !is_generator && !is_async_generator;
   if (is_generator) {
     jsresult = _Py_wrap_generator(jsresult, pyproxies);
+  } else if (is_async_generator) {
+    jsresult = _Py_wrap_async_generator(jsresult, pyproxies);
   }
-  pyresult = _Py_js2python(jsresult);
+  FAIL_IF_JS_ERROR(jsresult);
+  if (is_promise) {
+    // The arguments are destroyed when the promise settles.
+    JsVal done_callback = _Py_get_async_js_call_done_callback(pyproxies);
+    FAIL_IF_JS_ERROR(done_callback);
+    pyresult = _PyJsProxy_wrap_promise(jsresult, done_callback);
+  } else {
+    pyresult = _Py_js2python(jsresult);
+  }
   FAIL_IF_NULL(pyresult);
-
 
   success = true;
 finally:
@@ -157,9 +242,15 @@ finally:
   if (!success) {
     Py_CLEAR(pyresult);
   }
-  if (destroy_args) {
+  if (destroy_args || !success) {
     destroy_proxies(jsresult, pyproxies);
+  } else if (is_promise) {
+    // The proxies will be destroyed by the done callback when the promise
+    // settles. Nothing to do here.
   } else {
+    // Generator or async generator: the proxies will be destroyed when it is
+    // exhausted. In the meantime, make sure they don't leak if it is garbage
+    // collected before that.
     _Py_gc_register_pyproxies(pyproxies);
   }
   return pyresult;

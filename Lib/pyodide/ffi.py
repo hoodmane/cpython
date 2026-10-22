@@ -1,5 +1,8 @@
 from _pyodide import (
     JsArray,
+    JsAsyncGenerator,
+    JsAsyncIterable,
+    JsAsyncIterator,
     JsBigInt,
     JsBuffer,
     JsCallable,
@@ -9,23 +12,29 @@ from _pyodide import (
     JsIterator,
     JsMap,
     JsMutableMap,
+    JsPromise,
     JsProxy,
     JsTypedArray,
     jsnull,
 )
 from _pyodide_core import (
     JsException,
+    create_once_callable,
     create_proxy,
     destroy_proxies,
     to_js,
 )
 
 __all__ = [
+    "create_once_callable",
     "create_proxy",
     "destroy_proxies",
     "jsnull",
     "to_js",
     "JsArray",
+    "JsAsyncGenerator",
+    "JsAsyncIterable",
+    "JsAsyncIterator",
     "JsBigInt",
     "JsBuffer",
     "JsCallable",
@@ -36,6 +45,7 @@ __all__ = [
     "JsIterator",
     "JsMap",
     "JsMutableMap",
+    "JsPromise",
     "JsProxy",
     "JsTypedArray",
 ]

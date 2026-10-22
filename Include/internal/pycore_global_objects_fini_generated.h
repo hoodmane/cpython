@@ -265,11 +265,13 @@ _PyStaticObjects_CheckAll(PyInterpreterState *interp) {
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(_find_and_load_lazy_submodule), "_find_and_load_lazy_submodule", 29);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(_fix_up_module), "_fix_up_module", 14);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(_flags_), "_flags_", 7);
+    _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(_get_future_resolvers), "_get_future_resolvers", 21);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(_get_sourcefile), "_get_sourcefile", 15);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(_handle_fromlist), "_handle_fromlist", 16);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(_initializing), "_initializing", 13);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(_internal_use), "_internal_use", 13);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(_io), "_io", 3);
+    _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(_is_coroutine_marker), "_is_coroutine_marker", 20);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(_is_text_encoding), "_is_text_encoding", 17);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(_isatty_open_only), "_isatty_open_only", 17);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(_js_type_flags), "_js_type_flags", 14);
@@ -411,6 +413,7 @@ _PyStaticObjects_CheckAll(PyInterpreterState *interp) {
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(coro), "coro", 4);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(count), "count", 5);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(covariant), "covariant", 9);
+    _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(create_future), "create_future", 13);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(create_pyproxies), "create_pyproxies", 16);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(ctx), "ctx", 3);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(cwd), "cwd", 3);
@@ -462,6 +465,7 @@ _PyStaticObjects_CheckAll(PyInterpreterState *interp) {
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(end_lineno), "end_lineno", 10);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(end_offset), "end_offset", 10);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(endpos), "endpos", 6);
+    _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(ensure_future), "ensure_future", 13);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(entrypoint), "entrypoint", 10);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(env), "env", 3);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(error_rate), "error_rate", 10);
@@ -527,6 +531,7 @@ _PyStaticObjects_CheckAll(PyInterpreterState *interp) {
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(generation), "generation", 10);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(get), "get", 3);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(get_debug), "get_debug", 9);
+    _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(get_event_loop), "get_event_loop", 14);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(get_loop), "get_loop", 8);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(get_source), "get_source", 10);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(getattr), "getattr", 7);
@@ -583,6 +588,7 @@ _PyStaticObjects_CheckAll(PyInterpreterState *interp) {
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(is_running), "is_running", 10);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(is_struct), "is_struct", 9);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(isatty), "isatty", 6);
+    _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(iscoroutinefunction), "iscoroutinefunction", 19);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(isinstance), "isinstance", 10);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(isoformat), "isoformat", 9);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(isolation_level), "isolation_level", 15);
@@ -696,8 +702,10 @@ _PyStaticObjects_CheckAll(PyInterpreterState *interp) {
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(offset_src), "offset_src", 10);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(on_type_read), "on_type_read", 12);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(onceregistry), "onceregistry", 12);
+    _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(onfulfilled), "onfulfilled", 11);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(only_active_thread), "only_active_thread", 18);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(only_keys), "only_keys", 9);
+    _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(onrejected), "onrejected", 10);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(op), "op", 2);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(oparg), "oparg", 5);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(opcode), "opcode", 6);
@@ -783,6 +791,7 @@ _PyStaticObjects_CheckAll(PyInterpreterState *interp) {
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(reset), "reset", 5);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(resetids), "resetids", 8);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(restrict), "restrict", 8);
+    _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(result), "result", 6);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(return), "return", 6);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(reverse), "reverse", 7);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(reversed), "reversed", 8);
@@ -807,6 +816,8 @@ _PyStaticObjects_CheckAll(PyInterpreterState *interp) {
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(server_hostname), "server_hostname", 15);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(server_side), "server_side", 11);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(session), "session", 7);
+    _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(set_exception), "set_exception", 13);
+    _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(set_result), "set_result", 10);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(setpgroup), "setpgroup", 9);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(setsid), "setsid", 6);
     _PyStaticObject_CheckUnicodeSingleton((PyObject *)&_Py_ID(setsigdef), "setsigdef", 9);

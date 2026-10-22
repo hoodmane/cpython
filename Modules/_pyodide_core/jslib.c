@@ -143,6 +143,16 @@ EM_JS_VAL(JsVal, _PyJsvObject_CallMethod_TwoArgs, (JsVal obj, JsVal meth, JsVal 
   return obj[meth](arg1, arg2);
 })
 
+EM_JS_VAL(JsVal, _PyJsvObject_CallMethod, (JsVal obj, JsVal meth, JsVal args), {
+  return obj[meth](... args);
+})
+
+JsVal
+_PyJsvObject_CallMethodId(JsVal obj, Js_Identifier* name_id, JsVal args)
+{
+  return _PyJsvObject_CallMethod(obj, _PyJsvString_FromId(name_id), args);
+}
+
 JsVal
 _PyJsvObject_CallMethodId_NoArgs(JsVal obj, Js_Identifier* name_id)
 {
@@ -188,6 +198,20 @@ _PyJsvFunction_Construct,
 
 EM_JS_BOOL(bool, _PyJsvGenerator_Check, (JsVal obj), {
   return getTypeTag(obj) === "[object Generator]";
+});
+
+EM_JS_BOOL(bool, _PyJsvAsyncGenerator_Check, (JsVal obj), {
+  return getTypeTag(obj) === "[object AsyncGenerator]";
+});
+
+// ==================== JsvPromise API  ====================
+
+EM_JS_BOOL(bool, _PyJsvPromise_Check, (JsVal obj), {
+  return isPromise(obj);
+});
+
+EM_JS_VAL(JsVal, _PyJsvPromise_Resolve, (JsVal obj), {
+  return Promise.resolve(obj);
 });
 
 // ==================== JsvBuffer API  ====================

@@ -180,6 +180,92 @@ _pyodide_core_JsGenerator_close(PyObject *self, PyObject *Py_UNUSED(ignored))
     return _pyodide_core_JsGenerator_close_impl(self);
 }
 
+PyDoc_STRVAR(_pyodide_core_JsAsyncGenerator_asend__doc__,
+"asend($self, arg, /)\n"
+"--\n"
+"\n"
+"Resume execution and \"send\" a value into the async generator.\n"
+"\n"
+"The arg argument becomes the result of the current yield expression.\n"
+"The awaitable returned by the asend() method will return the next value\n"
+"yielded by the generator or raises StopAsyncIteration if the\n"
+"asynchronous generator returns. If the generator returned a value, this\n"
+"value is discarded (because in Python async generators cannot return a\n"
+"value).");
+
+#define _PYODIDE_CORE_JSASYNCGENERATOR_ASEND_METHODDEF    \
+    {"asend", (PyCFunction)_pyodide_core_JsAsyncGenerator_asend, METH_O, _pyodide_core_JsAsyncGenerator_asend__doc__},
+
+PyDoc_STRVAR(_pyodide_core_JsAsyncGenerator_athrow__doc__,
+"athrow($self, value, val=<unrepresentable>, tb=<unrepresentable>, /)\n"
+"--\n"
+"\n"
+"Resume execution and raise an exception into the async generator.\n"
+"\n"
+"The exception is raised at the point where the generator was paused.");
+
+#define _PYODIDE_CORE_JSASYNCGENERATOR_ATHROW_METHODDEF    \
+    {"athrow", _PyCFunction_CAST(_pyodide_core_JsAsyncGenerator_athrow), METH_FASTCALL, _pyodide_core_JsAsyncGenerator_athrow__doc__},
+
+static PyObject *
+_pyodide_core_JsAsyncGenerator_athrow_impl(PyObject *self, PyObject *value,
+                                           PyObject *val, PyObject *tb);
+
+static PyObject *
+_pyodide_core_JsAsyncGenerator_athrow(PyObject *self, PyObject *const *args, Py_ssize_t nargs)
+{
+    PyObject *return_value = NULL;
+    PyObject *value;
+    PyObject *val = NULL;
+    PyObject *tb = NULL;
+
+    if (!_PyArg_CheckPositional("athrow", nargs, 1, 3)) {
+        goto exit;
+    }
+    value = args[0];
+    if (nargs < 2) {
+        goto skip_optional;
+    }
+    val = args[1];
+    if (nargs < 3) {
+        goto skip_optional;
+    }
+    tb = args[2];
+skip_optional:
+    return_value = _pyodide_core_JsAsyncGenerator_athrow_impl(self, value, val, tb);
+
+exit:
+    return return_value;
+}
+
+PyDoc_STRVAR(_pyodide_core_JsAsyncGenerator_aclose__doc__,
+"aclose($self, /)\n"
+"--\n"
+"\n"
+"Raise a GeneratorExit at the point where the generator was paused.\n"
+"\n"
+"If the generator function then exits gracefully, is already closed, or\n"
+"raises GeneratorExit (by not catching the exception), then the returned\n"
+"awaitable will raise a StopIteration exception. Any further awaitables\n"
+"returned by subsequent calls to the asynchronous generator will raise a\n"
+"StopAsyncIteration exception. If the generator yields a value, a\n"
+"RuntimeError is raised. If the generator raises any other exception, it\n"
+"is propagated to the caller. If the generator has already exited due to\n"
+"an exception or normal exit, then further calls to aclose() will return\n"
+"an awaitable that does nothing.");
+
+#define _PYODIDE_CORE_JSASYNCGENERATOR_ACLOSE_METHODDEF    \
+    {"aclose", (PyCFunction)_pyodide_core_JsAsyncGenerator_aclose, METH_NOARGS, _pyodide_core_JsAsyncGenerator_aclose__doc__},
+
+static PyObject *
+_pyodide_core_JsAsyncGenerator_aclose_impl(PyObject *self);
+
+static PyObject *
+_pyodide_core_JsAsyncGenerator_aclose(PyObject *self, PyObject *Py_UNUSED(ignored))
+{
+    return _pyodide_core_JsAsyncGenerator_aclose_impl(self);
+}
+
 PyDoc_STRVAR(_pyodide_core_JsProxy___enter____doc__,
 "__enter__($self, /)\n"
 "--\n"
@@ -236,6 +322,166 @@ _pyodide_core_JsProxy___exit__(PyObject *self, PyObject *const *args, Py_ssize_t
     exc_tb = args[2];
 skip_optional:
     return_value = _pyodide_core_JsProxy___exit___impl(self, exc_type, exc_value, exc_tb);
+
+exit:
+    return return_value;
+}
+
+PyDoc_STRVAR(_pyodide_core_JsPromise_then__doc__,
+"then($self, /, onfulfilled=None, onrejected=None)\n"
+"--\n"
+"\n"
+"The Promise.then API, wrapped to manage the handlers\' lifetimes.\n"
+"\n"
+"The references to the handlers are automatically released when the\n"
+"promise resolves.");
+
+#define _PYODIDE_CORE_JSPROMISE_THEN_METHODDEF    \
+    {"then", _PyCFunction_CAST(_pyodide_core_JsPromise_then), METH_FASTCALL|METH_KEYWORDS, _pyodide_core_JsPromise_then__doc__},
+
+static PyObject *
+_pyodide_core_JsPromise_then_impl(PyObject *self, PyObject *onfulfilled,
+                                  PyObject *onrejected);
+
+static PyObject *
+_pyodide_core_JsPromise_then(PyObject *self, PyObject *const *args, Py_ssize_t nargs, PyObject *kwnames)
+{
+    PyObject *return_value = NULL;
+    #if defined(Py_BUILD_CORE) && !defined(Py_BUILD_CORE_MODULE)
+
+    #define NUM_KEYWORDS 2
+    static struct {
+        PyGC_Head _this_is_not_used;
+        PyObject_VAR_HEAD
+        Py_hash_t ob_hash;
+        PyObject *ob_item[NUM_KEYWORDS];
+    } _kwtuple = {
+        .ob_base = PyVarObject_HEAD_INIT(&PyTuple_Type, NUM_KEYWORDS)
+        .ob_hash = -1,
+        .ob_item = { &_Py_ID(onfulfilled), &_Py_ID(onrejected), },
+    };
+    #undef NUM_KEYWORDS
+    #define KWTUPLE (&_kwtuple.ob_base.ob_base)
+
+    #else  // !Py_BUILD_CORE
+    #  define KWTUPLE NULL
+    #endif  // !Py_BUILD_CORE
+
+    static const char * const _keywords[] = {"onfulfilled", "onrejected", NULL};
+    static _PyArg_Parser _parser = {
+        .keywords = _keywords,
+        .fname = "then",
+        .kwtuple = KWTUPLE,
+    };
+    #undef KWTUPLE
+    PyObject *argsbuf[2];
+    Py_ssize_t noptargs = nargs + (kwnames ? PyTuple_GET_SIZE(kwnames) : 0) - 0;
+    PyObject *onfulfilled = Py_None;
+    PyObject *onrejected = Py_None;
+
+    args = _PyArg_UnpackKeywords(args, nargs, NULL, kwnames, &_parser,
+            /*minpos*/ 0, /*maxpos*/ 2, /*minkw*/ 0, /*varpos*/ 0, argsbuf);
+    if (!args) {
+        goto exit;
+    }
+    if (!noptargs) {
+        goto skip_optional_pos;
+    }
+    if (args[0]) {
+        onfulfilled = args[0];
+        if (!--noptargs) {
+            goto skip_optional_pos;
+        }
+    }
+    onrejected = args[1];
+skip_optional_pos:
+    return_value = _pyodide_core_JsPromise_then_impl(self, onfulfilled, onrejected);
+
+exit:
+    return return_value;
+}
+
+PyDoc_STRVAR(_pyodide_core_JsPromise_catch__doc__,
+"catch($self, onrejected, /)\n"
+"--\n"
+"\n"
+"The Promise.catch API, wrapped to manage the handler\'s lifetime.\n"
+"\n"
+"The reference to the handler is automatically released when the promise\n"
+"resolves.");
+
+#define _PYODIDE_CORE_JSPROMISE_CATCH_METHODDEF    \
+    {"catch", (PyCFunction)_pyodide_core_JsPromise_catch, METH_O, _pyodide_core_JsPromise_catch__doc__},
+
+PyDoc_STRVAR(_pyodide_core_JsPromise_finally___doc__,
+"finally_($self, onfinally, /)\n"
+"--\n"
+"\n"
+"The Promise.finally API, wrapped to manage the handler\'s lifetime.\n"
+"\n"
+"The reference to the handler is automatically released when the promise\n"
+"resolves. Note the trailing underscore in the name; it is needed because\n"
+"finally is a reserved keyword in Python.");
+
+#define _PYODIDE_CORE_JSPROMISE_FINALLY__METHODDEF    \
+    {"finally_", (PyCFunction)_pyodide_core_JsPromise_finally_, METH_O, _pyodide_core_JsPromise_finally___doc__},
+
+PyDoc_STRVAR(_pyodide_core_JsProxy___aenter____doc__,
+"__aenter__($self, /)\n"
+"--\n"
+"\n"
+"Implement async context manager if [Symbol.asyncDispose] is present.");
+
+#define _PYODIDE_CORE_JSPROXY___AENTER___METHODDEF    \
+    {"__aenter__", (PyCFunction)_pyodide_core_JsProxy___aenter__, METH_NOARGS, _pyodide_core_JsProxy___aenter____doc__},
+
+static PyObject *
+_pyodide_core_JsProxy___aenter___impl(PyObject *self);
+
+static PyObject *
+_pyodide_core_JsProxy___aenter__(PyObject *self, PyObject *Py_UNUSED(ignored))
+{
+    return _pyodide_core_JsProxy___aenter___impl(self);
+}
+
+PyDoc_STRVAR(_pyodide_core_JsProxy___aexit____doc__,
+"__aexit__($self, exc_type=None, exc_value=None, exc_tb=None, /)\n"
+"--\n"
+"\n"
+"Implement async context manager if [Symbol.asyncDispose] is present.");
+
+#define _PYODIDE_CORE_JSPROXY___AEXIT___METHODDEF    \
+    {"__aexit__", _PyCFunction_CAST(_pyodide_core_JsProxy___aexit__), METH_FASTCALL, _pyodide_core_JsProxy___aexit____doc__},
+
+static PyObject *
+_pyodide_core_JsProxy___aexit___impl(PyObject *self, PyObject *exc_type,
+                                     PyObject *exc_value, PyObject *exc_tb);
+
+static PyObject *
+_pyodide_core_JsProxy___aexit__(PyObject *self, PyObject *const *args, Py_ssize_t nargs)
+{
+    PyObject *return_value = NULL;
+    PyObject *exc_type = Py_None;
+    PyObject *exc_value = Py_None;
+    PyObject *exc_tb = Py_None;
+
+    if (!_PyArg_CheckPositional("__aexit__", nargs, 0, 3)) {
+        goto exit;
+    }
+    if (nargs < 1) {
+        goto skip_optional;
+    }
+    exc_type = args[0];
+    if (nargs < 2) {
+        goto skip_optional;
+    }
+    exc_value = args[1];
+    if (nargs < 3) {
+        goto skip_optional;
+    }
+    exc_tb = args[2];
+skip_optional:
+    return_value = _pyodide_core_JsProxy___aexit___impl(self, exc_type, exc_value, exc_tb);
 
 exit:
     return return_value;
@@ -1040,4 +1286,4 @@ _pyodide_core_JsProxy_as_py_json(PyObject *self, PyObject *Py_UNUSED(ignored))
 {
     return _pyodide_core_JsProxy_as_py_json_impl(self);
 }
-/*[clinic end generated code: output=d33ead98dc03edc6 input=a9049054013a1b77]*/
+/*[clinic end generated code: output=37612e02633c10c7 input=a9049054013a1b77]*/

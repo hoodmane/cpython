@@ -8,6 +8,19 @@ preserve
 #endif
 #include "pycore_modsupport.h"    // _PyArg_UnpackKeywords()
 
+PyDoc_STRVAR(_pyodide_core_create_once_callable__doc__,
+"create_once_callable($module, obj, /)\n"
+"--\n"
+"\n"
+"Wrap a Python callable in a JavaScript function callable only once.\n"
+"\n"
+"After being called the proxy will decrement the reference count of the\n"
+"Callable. The JavaScript function also has a destroy API that can be\n"
+"used to release the proxy without calling it.");
+
+#define _PYODIDE_CORE_CREATE_ONCE_CALLABLE_METHODDEF    \
+    {"create_once_callable", (PyCFunction)_pyodide_core_create_once_callable, METH_O, _pyodide_core_create_once_callable__doc__},
+
 PyDoc_STRVAR(_pyodide_core_create_proxy__doc__,
 "create_proxy($module, obj, /, *, capture_this=False, roundtrip=True)\n"
 "--\n"
@@ -102,4 +115,4 @@ skip_optional_kwonly:
 exit:
     return return_value;
 }
-/*[clinic end generated code: output=5b0b8fe3f9ea1d34 input=a9049054013a1b77]*/
+/*[clinic end generated code: output=ee4ae5efc8c86709 input=a9049054013a1b77]*/

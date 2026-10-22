@@ -121,6 +121,12 @@ _PyJsvObject_SetAttr(JsVal obj, JsVal attr, JsVal value);
 JsVal
 _PyJsvObject_CallMethod_OneArg(JsVal obj, JsVal name, JsVal arg);
 
+/**
+ * Call obj[name](...args) where args is a JavaScript array.
+ */
+JsVal
+_PyJsvObject_CallMethodId(JsVal obj, Js_Identifier* name_id, JsVal args);
+
 JsVal
 _PyJsvObject_CallMethodId_NoArgs(JsVal obj, Js_Identifier* name_id);
 
@@ -139,8 +145,25 @@ _PyJsvFunction_Check(JsVal obj);
 bool
 _PyJsvGenerator_Check(JsVal obj);
 
+bool
+_PyJsvAsyncGenerator_Check(JsVal obj);
+
 JsVal
 _PyJsvFunction_CallBound(JsVal func, JsVal this, JsVal args);
+
+// ==================== JsvPromise API  ====================
+
+/**
+ * Returns true if obj has a `then` method.
+ */
+bool
+_PyJsvPromise_Check(JsVal obj);
+
+/**
+ * Does Promise.resolve(obj).
+ */
+JsVal
+_PyJsvPromise_Resolve(JsVal obj);
 
 // ==================== JsvBuffer API  ====================
 

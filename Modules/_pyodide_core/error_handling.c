@@ -53,7 +53,9 @@ EM_JS(JsVal, _Py_emscripten_restore_stderr, (void), {
   FS.unlink("/dev/capture_stderr");
   // open takes the lowest available file descriptor. Since 0 and 1 are occupied by stdin and stdout it takes 2.
   FS.open("/dev/stderr", 1 /* O_WRONLY */);
-  return UTF8ArrayToString(new Uint8Array(stderr_chars));
+  const result = UTF8ArrayToString(new Uint8Array(stderr_chars));
+  stderr_chars.length = 0;
+  return result;
 })
 
 

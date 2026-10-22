@@ -33,10 +33,17 @@
 #define IS_DOUBLE_PROXY     (1 << 12)
 #define IS_PY_JSON_DICT     (1 << 13)
 #define IS_PY_JSON_SEQUENCE (1 << 14)
-#define IS_BUFFER           (1 << 15)
-#define IS_TYPEDARRAY       (1 << 16)
+#define HAS_ASYNC_DISPOSE   (1 << 15)
+#define IS_AWAITABLE        (1 << 16)
+#define IS_BUFFER           (1 << 17)
+#define IS_TYPEDARRAY       (1 << 18)
+#define IS_ASYNC_ITERABLE   (1 << 19)
+#define IS_ASYNC_ITERATOR   (1 << 20)
+#define IS_ASYNC_GENERATOR  (1 << 21)
 
 Js_IDENTIFIER(next);
+Js_IDENTIFIER(then);
+Js_IDENTIFIER(finally);
 
 
 struct CallableFields
@@ -87,9 +94,11 @@ class _pyodide_core.JsBuffer "PyObject *" "JsProxyType"
 class _pyodide_core.JsDoubleProxy "PyObject *" "JsProxyType"
 class _pyodide_core.JsException "PyObject *" "JsProxyType"
 class _pyodide_core.JsGenerator "PyObject *" "JsProxyType"
+class _pyodide_core.JsAsyncGenerator "PyObject *" "JsProxyType"
 class _pyodide_core.JsMap "PyObject *" "JsProxyType"
+class _pyodide_core.JsPromise "PyObject *" "JsProxyType"
 [clinic start generated code]*/
-/*[clinic end generated code: output=da39a3ee5e6b4b0d input=a2f8d2755462046d]*/
+/*[clinic end generated code: output=da39a3ee5e6b4b0d input=0f58daae94c6221a]*/
 #include "clinic/jsproxy.c.h"
 
 // Layout of dict and ExceptionFields needs to exactly match the layout of the
@@ -140,6 +149,39 @@ _Static_assert(sizeof(PyBaseExceptionObject) ==
 static PyObject* collections_abc;
 static PyObject* MutableMapping;
 static PyObject* JsProxy_metaclass;
+static PyObject* asyncio_mod;
+static PyObject* _pyodide_mod;
+
+/**
+ * Lazily import asyncio and return asyncio.get_event_loop().
+ */
+static PyObject*
+get_event_loop(void)
+{
+  if (asyncio_mod == NULL) {
+    asyncio_mod = PyImport_ImportModule("asyncio");
+    if (asyncio_mod == NULL) {
+      return NULL;
+    }
+  }
+  return PyObject_CallMethodNoArgs(asyncio_mod, &_Py_ID(get_event_loop));
+}
+
+/**
+ * Create a new future on the current event loop.
+ */
+static PyObject*
+create_future(void)
+{
+  PyObject* loop = get_event_loop();
+  if (loop == NULL) {
+    return NULL;
+  }
+  PyObject* result = PyObject_CallMethodNoArgs(loop, &_Py_ID(create_future));
+  Py_DECREF(loop);
+  return result;
+}
+
 
 static PyObject*
 JsProxy_create_pyjson(JsVal object, bool pyjson);
@@ -850,6 +892,290 @@ _pyodide_core_JsGenerator_close_impl(PyObject *self)
   return NULL;
 }
 
+////////////////////////////////////////////////////////////
+// Async iteration
+//
+// __aiter__, __anext__, asend, athrow, and aclose.
+
+EM_JS_VAL(JsVal, _PyJsProxy_GetAsyncIter_js, (JsVal obj), {
+  return obj[Symbol.asyncIterator]();
+});
+
+/**
+ * aiter overload. Present if IS_ASYNC_ITERABLE but not IS_ASYNC_ITERATOR (if
+ * the IS_ASYNC_ITERATOR flag is present we use PyObject_SelfIter). Does
+ * `obj[Symbol.asyncIterator]()`.
+ */
+static PyObject*
+JsProxy_GetAsyncIter(PyObject* self)
+{
+  JsVal iter = _PyJsProxy_GetAsyncIter_js(JsProxy_VAL(self));
+  FAIL_IF_JS_ERROR(iter);
+  return _Py_js2python(iter);
+finally:
+  return NULL;
+}
+
+/**
+ * Called from JavaScript when the promise returned by `next()`, `throw()`, or
+ * `return()` of an async generator settles. `status` is 1 if done, 0 if not
+ * done, and -1 if the promise was rejected. Resolves the Python future with
+ * set_result / set_exception as appropriate.
+ */
+EMSCRIPTEN_KEEPALIVE void
+_Py_agen_handle_result_js_c(PyObject* set_result,
+                            PyObject* set_exception,
+                            int status,
+                            JsVal jsvalue,
+                            bool closing)
+{
+  PyObject* pyvalue = NULL;
+  PyObject* e = NULL;
+  PyObject* status_obj = NULL;
+
+  if (closing && status == 0) {
+    // If closing, status should not be yielding.
+    PyErr_SetString(PyExc_RuntimeError, "JavaScript generator ignored return");
+    goto return_error;
+  }
+
+  pyvalue = _Py_js2python(jsvalue);
+  if (pyvalue == NULL) {
+    goto return_error;
+  }
+
+  if (status == 1 && _PyProxy_Check(jsvalue)) {
+    Js_static_string(msg,
+                     "This borrowed proxy was automatically destroyed at the "
+                     "end of a async generator");
+    _PyProxy_Destroy(jsvalue, &msg);
+  }
+
+  if (status == 0) {
+    status_obj = PyObject_CallOneArg(set_result, pyvalue);
+    goto finally;
+  }
+  if (status == 1) {
+    // Returning
+    e = PyObject_CallOneArg(PyExc_StopAsyncIteration, pyvalue);
+    goto return_error;
+  }
+  // status == -1, rejected
+  e = Py_NewRef(pyvalue);
+
+return_error:
+  if (e == NULL) {
+    e = PyErr_GetRaisedException();
+  }
+  if (closing && (PyErr_GivenExceptionMatches(e, PyExc_StopAsyncIteration) ||
+                  PyErr_GivenExceptionMatches(e, PyExc_GeneratorExit))) {
+    status_obj = PyObject_CallOneArg(set_result, Py_None);
+  } else {
+    status_obj = PyObject_CallOneArg(set_exception, e);
+  }
+finally:
+  if (status_obj == NULL) {
+    // Nothing sensible to do with an error here, it would be lost anyways.
+    PyErr_Clear();
+  }
+  Py_CLEAR(status_obj);
+  Py_CLEAR(pyvalue);
+  Py_CLEAR(e);
+}
+
+// clang-format off
+EM_JS_NUM(int,
+_Py_agen_handle_result_js,
+(JsVal p, char** msg, PyObject* set_result, PyObject* set_exception, bool closing),
+{
+  let errmsg;
+  if (typeof p !== "object") {
+    errmsg = `Result of anext() should be object not ${typeof p}`;
+  } else if (typeof p.then !== "function") {
+    if (typeof p.done === "boolean") {
+      errmsg = `Result of anext() was not a promise, use next() instead.`;
+    } else {
+      errmsg = `Result of anext() was not a promise.`;
+    }
+  }
+  if (errmsg) {
+    ASSIGN_U32(msg, 0, stringToNewUTF8(errmsg));
+    return -1;
+  }
+  // We need to hold onto set_result and set_exception until the promise
+  // resolves.
+  _Py_IncRef(set_result);
+  _Py_IncRef(set_exception);
+  // Call back into C to create the response.
+  p.then(({done, value}) => {
+    if (API.finalized) {
+      return;
+    }
+    __Py_agen_handle_result_js_c(set_result, set_exception, done, value, closing);
+  }, (err) => {
+    if (API.finalized) {
+      return;
+    }
+    __Py_agen_handle_result_js_c(set_result, set_exception, -1, err, closing);
+  }).finally(() => {
+    if (API.finalized) {
+      return;
+    }
+    _Py_DecRef(set_result);
+    _Py_DecRef(set_exception);
+  });
+});
+// clang-format on
+
+/**
+ * Take the promise returned by next(), throw(), or return() of an async
+ * generator and return a Future that is resolved when the promise settles.
+ */
+static PyObject*
+agen_handle_result(JsVal promise, bool closing)
+{
+  bool success = false;
+  PyObject* result = NULL;
+  PyObject* set_result = NULL;
+  PyObject* set_exception = NULL;
+  char* msg = NULL;
+
+  result = create_future();
+  FAIL_IF_NULL(result);
+  set_result = PyObject_GetAttr(result, &_Py_ID(set_result));
+  FAIL_IF_NULL(set_result);
+  set_exception = PyObject_GetAttr(result, &_Py_ID(set_exception));
+  FAIL_IF_NULL(set_exception);
+
+  int status =
+    _Py_agen_handle_result_js(promise, &msg, set_result, set_exception, closing);
+  if (status == -1) {
+    if (msg) {
+      PyErr_SetString(PyExc_TypeError, msg);
+      free(msg);
+    }
+    FAIL();
+  }
+
+  success = true;
+finally:
+  Py_CLEAR(set_result);
+  Py_CLEAR(set_exception);
+  if (!success) {
+    Py_CLEAR(result);
+  }
+  return result;
+}
+
+static PyObject*
+JsAsyncGenerator_asend_inner(PyObject* self, PyObject* arg)
+{
+  PyObject* result = NULL;
+  JsVal proxies = _PyJsvArray_New();
+  JsVal jsarg = Jsv_undefined;
+  if (arg != NULL) {
+    jsarg = _Py_python2js_track_proxies(arg, proxies, true);
+    FAIL_IF_JS_ERROR(jsarg);
+  }
+  JsVal next_res =
+    _PyJsvObject_CallMethodId_OneArg(JsProxy_VAL(self), &JsId_next, jsarg);
+  FAIL_IF_JS_ERROR(next_res);
+  result = agen_handle_result(next_res, false);
+finally:
+  if (arg != NULL) {
+    _Py_destroy_proxies(proxies, &_Py_PYPROXY_DESTROYED_AT_END_OF_FUNCTION_CALL);
+  }
+  return result;
+}
+
+/*[clinic input]
+_pyodide_core.JsAsyncGenerator.asend
+
+    arg: object
+    /
+
+Resume execution and "send" a value into the async generator.
+
+The arg argument becomes the result of the current yield expression.
+The awaitable returned by the asend() method will return the next value
+yielded by the generator or raises StopAsyncIteration if the
+asynchronous generator returns. If the generator returned a value, this
+value is discarded (because in Python async generators cannot return a
+value).
+[clinic start generated code]*/
+
+static PyObject *
+_pyodide_core_JsAsyncGenerator_asend(PyObject *self, PyObject *arg)
+/*[clinic end generated code: output=8e50585563b2caee input=7081213bb2e2cf21]*/
+{
+  return JsAsyncGenerator_asend_inner(self, arg);
+}
+
+/**
+ * __anext__ overload. Controlled by IS_ASYNC_ITERATOR.
+ */
+static PyObject*
+JsProxy_anext(PyObject* self)
+{
+  return JsAsyncGenerator_asend_inner(self, NULL);
+}
+
+/*[clinic input]
+_pyodide_core.JsAsyncGenerator.athrow
+
+    value: object
+
+    val: object = NULL
+
+    tb: object = NULL
+
+    /
+
+Resume execution and raise an exception into the async generator.
+
+The exception is raised at the point where the generator was paused.
+[clinic start generated code]*/
+
+static PyObject *
+_pyodide_core_JsAsyncGenerator_athrow_impl(PyObject *self, PyObject *value,
+                                           PyObject *val, PyObject *tb)
+/*[clinic end generated code: output=ed7228a89f15514d input=c13a3e72245fc69a]*/
+{
+  JsVal throw_res = process_throw_args(self, value, val, tb);
+  FAIL_IF_JS_ERROR(throw_res);
+  return agen_handle_result(throw_res, false);
+finally:
+  return NULL;
+}
+
+/*[clinic input]
+_pyodide_core.JsAsyncGenerator.aclose
+
+Raise a GeneratorExit at the point where the generator was paused.
+
+If the generator function then exits gracefully, is already closed, or
+raises GeneratorExit (by not catching the exception), then the returned
+awaitable will raise a StopIteration exception. Any further awaitables
+returned by subsequent calls to the asynchronous generator will raise a
+StopAsyncIteration exception. If the generator yields a value, a
+RuntimeError is raised. If the generator raises any other exception, it
+is propagated to the caller. If the generator has already exited due to
+an exception or normal exit, then further calls to aclose() will return
+an awaitable that does nothing.
+[clinic start generated code]*/
+
+static PyObject *
+_pyodide_core_JsAsyncGenerator_aclose_impl(PyObject *self)
+/*[clinic end generated code: output=8c20e8c919493233 input=7351d6fe1ac0cdd1]*/
+{
+  JsVal throw_res = process_throw_args(self, PyExc_GeneratorExit, NULL, NULL);
+  FAIL_IF_JS_ERROR(throw_res);
+  return agen_handle_result(throw_res, true);
+finally:
+  return NULL;
+}
+
+
 // A helper method for jsproxy_subscript.
 EM_JS_VAL(JsVal, _PyJsProxy_subscript_js, (JsVal obj, JsVal key), {
   let result = obj.get(key);
@@ -1006,6 +1332,238 @@ _pyodide_core_JsProxy___exit___impl(PyObject *self, PyObject *exc_type,
   }
   Py_RETURN_NONE;
 }
+
+////////////////////////////////////////////////////////////
+// Promises
+//
+// __await__, then, catch, finally_, and the async context manager protocol.
+
+/**
+ * Create a Future attached to the given Promise. When the promise is
+ * resolved/rejected, the status of the future is set accordingly and
+ * done_callback (if not null) is called.
+ */
+PyObject*
+_PyJsProxy_wrap_promise(JsVal promise, JsVal done_callback)
+{
+  bool success = false;
+  PyObject* result = NULL;
+  PyObject* helpers = NULL;
+  PyObject* set_result = NULL;
+  PyObject* set_exception = NULL;
+
+  result = create_future();
+  FAIL_IF_NULL(result);
+
+  // _pyodide._get_future_resolvers returns versions of set_result and
+  // set_exception that do nothing if the future is already done (e.g., because
+  // it was cancelled).
+  helpers = PyObject_CallMethodOneArg(
+    _pyodide_mod, &_Py_ID(_get_future_resolvers), result);
+  FAIL_IF_NULL(helpers);
+  set_result = Py_XNewRef(PyTuple_GetItem(helpers, 0));
+  FAIL_IF_NULL(set_result);
+  set_exception = Py_XNewRef(PyTuple_GetItem(helpers, 1));
+  FAIL_IF_NULL(set_exception);
+
+  promise = _PyJsvPromise_Resolve(promise);
+  FAIL_IF_JS_ERROR(promise);
+  JsVal promise_handles =
+    _PyProxy_create_promise_handles(set_result, set_exception, done_callback);
+  FAIL_IF_JS_ERROR(promise_handles);
+  JsVal jsresult = _PyJsvObject_CallMethodId(promise, &JsId_then, promise_handles);
+  FAIL_IF_JS_ERROR(jsresult);
+
+  success = true;
+finally:
+  Py_CLEAR(helpers);
+  Py_CLEAR(set_result);
+  Py_CLEAR(set_exception);
+  if (!success) {
+    Py_CLEAR(result);
+  }
+  return result;
+}
+
+/**
+ * Overload for `await proxy` for js objects that have a `then` method.
+ * Controlled by IS_AWAITABLE.
+ */
+static PyObject*
+JsProxy_Await(PyObject* self)
+{
+  if (!_PyJsvPromise_Check(JsProxy_VAL(self))) {
+    // This error is unlikely to be hit except in cases of intentional
+    // mischief: it means `then` was a function when the proxy was created but
+    // isn't any more.
+    PyErr_Format(PyExc_TypeError,
+                 "object %R can't be used in 'await' expression",
+                 self);
+    return NULL;
+  }
+  PyObject* fut = _PyJsProxy_wrap_promise(JsProxy_VAL(self), Jsv_null);
+  if (fut == NULL) {
+    return NULL;
+  }
+  PyObject* result = PyObject_CallMethodNoArgs(fut, &_Py_ID(__await__));
+  Py_DECREF(fut);
+  return result;
+}
+
+/*[clinic input]
+_pyodide_core.JsPromise.then
+
+    onfulfilled: object = None
+    onrejected: object = None
+
+The Promise.then API, wrapped to manage the handlers' lifetimes.
+
+The references to the handlers are automatically released when the
+promise resolves.
+[clinic start generated code]*/
+
+static PyObject *
+_pyodide_core_JsPromise_then_impl(PyObject *self, PyObject *onfulfilled,
+                                  PyObject *onrejected)
+/*[clinic end generated code: output=5c49448ffc76e5e7 input=13723d365ed84f95]*/
+{
+  if (Py_IsNone(onfulfilled)) {
+    onfulfilled = NULL;
+  }
+  if (Py_IsNone(onrejected)) {
+    onrejected = NULL;
+  }
+  JsVal promise = _PyJsvPromise_Resolve(JsProxy_VAL(self));
+  FAIL_IF_JS_ERROR(promise);
+  JsVal promise_handles =
+    _PyProxy_create_promise_handles(onfulfilled, onrejected, Jsv_null);
+  FAIL_IF_JS_ERROR(promise_handles);
+  JsVal result_promise = _PyJsvObject_CallMethodId(promise, &JsId_then, promise_handles);
+  FAIL_IF_JS_ERROR(result_promise);
+  return _Py_js2python(result_promise);
+finally:
+  return NULL;
+}
+
+/*[clinic input]
+_pyodide_core.JsPromise.catch
+
+    onrejected: object
+    /
+
+The Promise.catch API, wrapped to manage the handler's lifetime.
+
+The reference to the handler is automatically released when the promise
+resolves.
+[clinic start generated code]*/
+
+static PyObject *
+_pyodide_core_JsPromise_catch(PyObject *self, PyObject *onrejected)
+/*[clinic end generated code: output=9d062b3200473f1b input=7d78b9ab21367363]*/
+{
+  JsVal promise = _PyJsvPromise_Resolve(JsProxy_VAL(self));
+  FAIL_IF_JS_ERROR(promise);
+  // We have to use create_promise_handles so that the handler gets released
+  // even if the promise resolves successfully.
+  JsVal promise_handles =
+    _PyProxy_create_promise_handles(NULL, onrejected, Jsv_null);
+  FAIL_IF_JS_ERROR(promise_handles);
+  JsVal result_promise = _PyJsvObject_CallMethodId(promise, &JsId_then, promise_handles);
+  FAIL_IF_JS_ERROR(result_promise);
+  return _Py_js2python(result_promise);
+finally:
+  return NULL;
+}
+
+/*[clinic input]
+_pyodide_core.JsPromise.finally_
+
+    onfinally: object
+    /
+
+The Promise.finally API, wrapped to manage the handler's lifetime.
+
+The reference to the handler is automatically released when the promise
+resolves. Note the trailing underscore in the name; it is needed because
+finally is a reserved keyword in Python.
+[clinic start generated code]*/
+
+static PyObject *
+_pyodide_core_JsPromise_finally_(PyObject *self, PyObject *onfinally)
+/*[clinic end generated code: output=93eff1cc0683e1af input=f6f6f6924f469bbc]*/
+{
+  JsVal promise = _PyJsvPromise_Resolve(JsProxy_VAL(self));
+  FAIL_IF_JS_ERROR(promise);
+  // Finally method is called no matter what so we can use
+  // `create_once_callable`.
+  JsVal proxy = _PyProxy_create_once_callable(onfinally);
+  FAIL_IF_JS_ERROR(proxy);
+  JsVal result_promise = _PyJsvObject_CallMethodId_OneArg(
+    promise, &JsId_finally, proxy);
+  FAIL_IF_JS_ERROR(result_promise);
+  return _Py_js2python(result_promise);
+finally:
+  return NULL;
+}
+
+/*[clinic input]
+_pyodide_core.JsProxy.__aenter__
+
+Implement async context manager if [Symbol.asyncDispose] is present.
+[clinic start generated code]*/
+
+static PyObject *
+_pyodide_core_JsProxy___aenter___impl(PyObject *self)
+/*[clinic end generated code: output=0776561b9e82b44a input=1fa73f63966e08df]*/
+{
+  bool success = false;
+  PyObject* result = NULL;
+  PyObject* status = NULL;
+
+  result = create_future();
+  FAIL_IF_NULL(result);
+  status = PyObject_CallMethodOneArg(result, &_Py_ID(set_result), self);
+  FAIL_IF_NULL(status);
+
+  success = true;
+finally:
+  Py_CLEAR(status);
+  if (!success) {
+    Py_CLEAR(result);
+  }
+  return result;
+}
+
+EM_JS_VAL(JsVal, JsProxy_aexit_js, (JsVal obj), {
+  return obj[Symbol.asyncDispose]();
+});
+
+/*[clinic input]
+_pyodide_core.JsProxy.__aexit__
+
+    exc_type: object = None
+    exc_value: object = None
+    exc_tb: object = None
+    /
+
+Implement async context manager if [Symbol.asyncDispose] is present.
+[clinic start generated code]*/
+
+static PyObject *
+_pyodide_core_JsProxy___aexit___impl(PyObject *self, PyObject *exc_type,
+                                     PyObject *exc_value, PyObject *exc_tb)
+/*[clinic end generated code: output=1b140234e93a34a6 input=cc23e7c8114eb756]*/
+{
+  // We have to return an awaitable here but [Symbol.asyncDispose]() does not.
+  // Conveniently, wrap_promise() calls Promise.resolve() on the argument, so it
+  // works in both cases.
+  JsVal jsresult = JsProxy_aexit_js(JsProxy_VAL(self));
+  FAIL_IF_JS_ERROR(jsresult);
+  return _PyJsProxy_wrap_promise(jsresult, Jsv_null);
+finally:
+  return NULL;
+}
+
 
 EM_JS_VAL(JsVal, _PyJsMap_GetIter_js, (JsVal obj), {
   let result;
@@ -2972,6 +3530,12 @@ JsProxy_create_subtype(int flags, bool is_py_json)
       _PYODIDE_CORE_JSPROXY___EXIT___METHODDEF
     );
   }
+  if (flags & HAS_ASYNC_DISPOSE) {
+    AddMethods(
+      _PYODIDE_CORE_JSPROXY___AENTER___METHODDEF
+      _PYODIDE_CORE_JSPROXY___AEXIT___METHODDEF
+    );
+  }
 
   if (flags & IS_TYPEDARRAY) {
     // TypedArrays support indexing and assignment but not deletion or slicing.
@@ -3056,6 +3620,26 @@ JsProxy_create_subtype(int flags, bool is_py_json)
       _PYODIDE_CORE_JSGENERATOR_CLOSE_METHODDEF
     );
   }
+  if (flags & IS_ASYNC_GENERATOR) {
+    AddMethods(
+      _PYODIDE_CORE_JSASYNCGENERATOR_ATHROW_METHODDEF
+      _PYODIDE_CORE_JSASYNCGENERATOR_ACLOSE_METHODDEF
+    );
+  }
+
+  if ((flags & IS_ASYNC_ITERABLE) && !(flags & IS_ASYNC_ITERATOR)) {
+    slots[cur_slot++] =
+      (PyType_Slot){ .slot = Py_am_aiter, .pfunc = (void*)JsProxy_GetAsyncIter };
+  }
+
+  // Async iterator methods
+  if (flags & IS_ASYNC_ITERATOR) {
+    slots[cur_slot++] =
+      (PyType_Slot){ .slot = Py_am_aiter, .pfunc = (void*)PyObject_SelfIter };
+    slots[cur_slot++] =
+      (PyType_Slot){ .slot = Py_am_anext, .pfunc = (void*)JsProxy_anext };
+    AddMethods(_PYODIDE_CORE_JSASYNCGENERATOR_ASEND_METHODDEF);
+  }
 
   if ((flags & IS_ITERABLE) && !(flags & IS_ITERATOR)) {
     // If it is an iterator we should use SelfIter instead.
@@ -3088,6 +3672,16 @@ JsProxy_create_subtype(int flags, bool is_py_json)
   }
 
 skip_container_slots:
+
+  if (flags & IS_AWAITABLE) {
+    slots[cur_slot++] =
+      (PyType_Slot){ .slot = Py_am_await, .pfunc = (void*)JsProxy_Await };
+    AddMethods(
+      _PYODIDE_CORE_JSPROMISE_THEN_METHODDEF
+      _PYODIDE_CORE_JSPROMISE_CATCH_METHODDEF
+      _PYODIDE_CORE_JSPROMISE_FINALLY__METHODDEF
+    );
+  }
 
   if (flags & IS_CALLABLE) {
     tp_flags |= Py_TPFLAGS_HAVE_VECTORCALL;
@@ -3278,8 +3872,10 @@ EM_JS_NUM(int, JsProxy_compute_typeflags, (JsVal obj, bool is_py_json), {
     (hasProperty(obj, "length") && typeof obj !== "function"));
   if (Symbol.asyncDispose) {
     SET_FLAG_IF_HAS_METHOD(HAS_DISPOSE, Symbol.dispose);
+    SET_FLAG_IF_HAS_METHOD(HAS_ASYNC_DISPOSE, Symbol.asyncDispose);
   }
   SET_FLAG_IF(IS_CALLABLE, typeof obj === "function");
+  SET_FLAG_IF_HAS_METHOD(IS_AWAITABLE, "then");
   SET_FLAG_IF(IS_BUFFER,
     (isBufferView || typeTag === "[object ArrayBuffer]") &&
     !(type_flags & IS_CALLABLE));
@@ -3287,8 +3883,18 @@ EM_JS_NUM(int, JsProxy_compute_typeflags, (JsVal obj, bool is_py_json), {
   SET_FLAG_IF(IS_ARRAY, isArray);
   SET_FLAG_IF(IS_DOUBLE_PROXY, API.isPyProxy(obj));
   SET_FLAG_IF(IS_GENERATOR, typeTag === "[object Generator]");
+  SET_FLAG_IF(IS_ASYNC_GENERATOR, typeTag === "[object AsyncGenerator]");
   SET_FLAG_IF_HAS_METHOD(IS_ITERABLE, Symbol.iterator);
+  SET_FLAG_IF_HAS_METHOD(IS_ASYNC_ITERABLE, Symbol.asyncIterator);
+  // If it's an iterator, we aren't sure whether it is an async iterator or a
+  // sync iterator -- they both define a next method, you have to see whether
+  // the result is a promise or not to learn whether we are async. But most
+  // iterators also define `Symbol.iterator` to return themself, and most async
+  // iterators define `Symbol.asyncIterator` to return themself. So if one of
+  // these is defined but not the other, we use this to decide what type we are.
+  // If neither is defined, we set both flags.
   SET_FLAG_IF(IS_ITERATOR, hasMethod(obj, "next") && (hasMethod(obj, Symbol.iterator) || !hasMethod(obj, Symbol.asyncIterator)));
+  SET_FLAG_IF(IS_ASYNC_ITERATOR, hasMethod(obj, "next") && (hasMethod(obj, Symbol.asyncIterator) || !hasMethod(obj, Symbol.iterator)));
   /**
    * DOMException is a weird special case. According to WHATWG, there are two
    * types of Exception objects, simple exceptions and DOMExceptions. The spec
@@ -3430,6 +4036,7 @@ _Py_jsproxy_init(PyObject* core_module)
 
   _pyodide = PyImport_ImportModule("_pyodide");
   FAIL_IF_NULL(_pyodide);
+  _pyodide_mod = Py_NewRef(_pyodide);
   JsProxy_metaclass =
     PyObject_GetAttrString(_pyodide, "_JsProxyMetaClass");
   FAIL_IF_NULL(JsProxy_metaclass);
@@ -3459,12 +4066,17 @@ _Py_jsproxy_init(PyObject* core_module)
   AddFlag(HAS_HAS);
   AddFlag(HAS_INCLUDES);
   AddFlag(HAS_DISPOSE);
+  AddFlag(HAS_ASYNC_DISPOSE);
+  AddFlag(IS_AWAITABLE);
   AddFlag(IS_BUFFER);
   AddFlag(IS_CALLABLE);
   AddFlag(IS_ARRAY);
   AddFlag(IS_TYPEDARRAY);
   AddFlag(IS_DOUBLE_PROXY);
+  AddFlag(IS_ASYNC_ITERABLE);
   AddFlag(IS_GENERATOR);
+  AddFlag(IS_ASYNC_GENERATOR);
+  AddFlag(IS_ASYNC_ITERATOR);
   AddFlag(IS_ERROR);
   AddFlag(IS_PY_JSON_DICT);
   AddFlag(IS_PY_JSON_SEQUENCE);

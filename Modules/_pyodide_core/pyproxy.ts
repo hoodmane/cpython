@@ -40,6 +40,17 @@ declare function __PyProxyGen_Return(ptr: number, arg: any): IteratorResult<any>
 declare function __PyProxyGen_Throw(ptr: number, arg: any): IteratorResult<any>;
 declare function __PyProxy_pop(ptr: number, pop_start: boolean): number;
 declare function __PyProxy_slice_assign(ptr: number, start: number, stop: number, value: any): any;
+declare function _PyObject_GetAIter(ptr: number): number;
+declare function __PyProxy_aiter_next(ptr: number): any;
+declare function __PyProxyGen_asend(ptr: number, arg: any): any;
+declare function __PyProxyGen_athrow(ptr: number, arg: any): any;
+declare function __PyProxyGen_areturn(ptr: number): any;
+declare function __PyProxy_iscoroutinefunction(ptr: number): boolean;
+declare function __PyProxy_ensure_future(
+  ptr: number,
+  resolve: (v: any) => void,
+  reject: (e: any) => void,
+): number;
 declare function __PyProxy_get_buffer(ptr: number): any;
 declare function __PyProxy_release_buffer(view_ptr: number): void;
 declare var HEAPU32: Uint32Array;
@@ -69,7 +80,11 @@ declare var IS_SEQUENCE: number;
 declare var IS_MUTABLE_SEQUENCE: number;
 declare var IS_JS_JSON_DICT: number;
 declare var IS_JS_JSON_SEQUENCE: number;
+declare var IS_AWAITABLE: number;
 declare var IS_BUFFER: number;
+declare var IS_ASYNC_ITERABLE: number;
+declare var IS_ASYNC_ITERATOR: number;
+declare var IS_ASYNC_GENERATOR: number;
 
 declare function DEREF_U32(ptr: number, offset: number): number;
 declare function Py_ENTER(): void;
@@ -78,6 +93,9 @@ declare function Py_EXIT(): void;
 
 Module.finalizationRegistry = new FinalizationRegistry(
   ({ ptr }: PyProxyShared) => {
+    if (API.finalized) {
+      return;
+    }
     try {
       Py_ENTER();
       _Py_DecRef(ptr);
@@ -110,6 +128,12 @@ type PyProxyShared = {
   cache: PyProxyCache;
   destroyed_msg: string | undefined;
   gcRegistered: boolean;
+  /**
+   * If the Python object is awaitable, the promise created by _ensure_future
+   * is memoized here so that then/catch/finally keep working after the proxy
+   * is destroyed.
+   */
+  promise: Promise<any> | undefined;
 };
 
 type PyProxyProps = {
@@ -239,6 +263,7 @@ function pyproxy_new(
       cache,
       destroyed_msg: undefined,
       gcRegistered: false,
+      promise: undefined,
     };
     _Py_IncRef(ptr);
   }
@@ -333,6 +358,10 @@ function getPyProxyClass(flags: number) {
     [IS_GENERATOR, PyGeneratorMethods],
     [IS_ITERABLE, PyIterableMethods],
     [IS_ITERATOR, PyIteratorMethods],
+    [IS_ASYNC_ITERABLE, PyAsyncIterableMethods],
+    [IS_ASYNC_ITERATOR, PyAsyncIteratorMethods],
+    [IS_ASYNC_GENERATOR, PyAsyncGeneratorMethods],
+    [IS_AWAITABLE, PyAwaitableMethods],
     [IS_BUFFER, PyBufferMethods],
     [IS_SEQUENCE, PySequenceMethods],
     [IS_MUTABLE_SEQUENCE, PyMutableSequenceMethods],
@@ -451,6 +480,20 @@ class PyProxy {
   [Symbol.dispose]() {
     Module.pyproxy_destroy(this, "", true);
   }
+
+  /**
+   * Make a new :js:class:`~pyodide.ffi.PyProxy` pointing to the same Python
+   * object. Useful if the :js:class:`~pyodide.ffi.PyProxy` is destroyed
+   * somewhere else.
+   */
+  copy(): PyProxy {
+    let attrs = _getAttrs(this);
+    return pyproxy_new(attrs.shared.ptr, {
+      flags: _getFlags(this),
+      cache: attrs.shared.cache,
+      props: attrs.props,
+    });
+  }
 }
 const PyProxyProto = PyProxy.prototype;
 
@@ -485,7 +528,7 @@ function pyproxy_destroy(proxy: PyProxy, destroyed_msg: string, destroy_roundtri
   if (!destroy_roundtrip && props.roundtrip) {
     return;
   }
-  shared.destroyed_msg = destroyed_msg ?? "Object has already been destroyed";
+  shared.destroyed_msg = destroyed_msg || "Object has already been destroyed";
   // Maybe the destructor will call JavaScript code that will somehow try
   // to use this proxy. Mark it deleted before decrementing reference count
   // just in case!
@@ -496,7 +539,9 @@ function pyproxy_destroy(proxy: PyProxy, destroyed_msg: string, destroy_roundtri
   }
   pyproxy_decref_cache(shared.cache);
 
-
+  if (API.finalized) {
+    return;
+  }
   try {
     Py_ENTER();
     _Py_DecRef(ptr);
@@ -1315,6 +1360,9 @@ PyCallableMethods.prototype.prototype = Function.prototype;
 // defined in pyproxy.c in JavaScript functions.
 
 function callPyObjectKwargs(ptrobj: number, jsargs: any[], kwargs: any) {
+  if (API.finalized) {
+    throw new Error("The Python interpreter has already been finalized");
+  }
   // We don't do any checking for kwargs, checks are in PyProxy.callKwargs
   // which only is used when the keyword arguments come from the user.
   const num_pos_args = jsargs.length;
@@ -1341,12 +1389,29 @@ function callPyObjectKwargs(ptrobj: number, jsargs: any[], kwargs: any) {
   if (result === Module.error) {
     throw __Py_pythonexc2js();
   }
+  // Automatically schedule coroutines returned from coroutine functions. This
+  // way, calling an `async def` function from JavaScript behaves like calling
+  // an `async function`: the body starts executing without an explicit await.
+  if (result && result.type === "coroutine" && result._ensure_future) {
+    let is_coroutine;
+    try {
+      Py_ENTER();
+      is_coroutine = __PyProxy_iscoroutinefunction(ptrobj);
+      Py_EXIT();
+    } catch (e) {
+      API.fatal_error(e);
+    }
+    if (is_coroutine) {
+      result._ensure_future();
+    }
+  }
   return result;
 }
 
 function callPyObject(ptrobj: number, jsargs: any) {
   return callPyObjectKwargs(ptrobj, jsargs, {});
 }
+Module.callPyObject = callPyObject;
 
 
 /**
@@ -1586,6 +1651,369 @@ class PyIteratorMethods {
       throw __Py_pythonexc2js();
     }
     return result;
+  }
+}
+
+/**
+ * A helper for [Symbol.asyncIterator]. See iter_helper for an explanation of
+ * the finalization registry handling.
+ */
+async function* aiter_helper(iterptr: number, token: {}): AsyncGenerator<any> {
+  try {
+    while (true) {
+      let p;
+      try {
+        Py_ENTER();
+        p = __PyProxy_aiter_next(iterptr);
+        Py_EXIT();
+      } catch (e) {
+        API.fatal_error(e);
+      }
+      if (p === Module.error) {
+        break;
+      }
+      try {
+        yield await p;
+      } catch (e) {
+        if (isPythonError(e) && e.type === "StopAsyncIteration") {
+          return;
+        }
+        throw e;
+      } finally {
+        p.destroy();
+      }
+    }
+  } finally {
+    Module.finalizationRegistry.unregister(token);
+    _Py_DecRef(iterptr);
+  }
+  if (_PyErr_Occurred()) {
+    throw __Py_pythonexc2js();
+  }
+}
+
+/**
+ * A :js:class:`~pyodide.ffi.PyProxy` whose proxied Python object is
+ * :std:term:`asynchronous iterable` (i.e., has an :meth:`~object.__aiter__`
+ * method).
+ */
+export class PyAsyncIterable extends PyProxy {
+  /** @private */
+  static [Symbol.hasInstance](obj: any): obj is PyAsyncIterable {
+    return (
+      API.isPyProxy(obj) &&
+      !!(_getFlags(obj) & (IS_ASYNC_ITERABLE | IS_ASYNC_ITERATOR))
+    );
+  }
+}
+
+export interface PyAsyncIterable extends PyAsyncIterableMethods {}
+
+// Controlled by IS_ASYNC_ITERABLE, appears for any object with __aiter__ or
+// am_aiter, unless they are async iterators.
+export class PyAsyncIterableMethods {
+  /**
+   * This translates to the Python code ``aiter(obj)``. Return an async iterator
+   * associated to the proxy. See the documentation for
+   * :js:data:`Symbol.asyncIterator`.
+   *
+   * This will be used implicitly by ``for(await let x of proxy){}``.
+   */
+  [Symbol.asyncIterator](): AsyncIterator<any, any, any> {
+    let ptrobj = _getPtr(this);
+    let token = {};
+    let iterptr;
+    try {
+      Py_ENTER();
+      iterptr = _PyObject_GetAIter(ptrobj);
+      Py_EXIT();
+    } catch (e) {
+      API.fatal_error(e);
+    }
+    if (iterptr === 0) {
+      throw __Py_pythonexc2js();
+    }
+
+    let result = aiter_helper(iterptr, token);
+    Module.finalizationRegistry.register(result, { ptr: iterptr }, token);
+    return result;
+  }
+}
+
+/**
+ * A :js:class:`~pyodide.ffi.PyProxy` whose proxied Python object is an
+ * :std:term:`asynchronous iterator`
+ */
+export class PyAsyncIterator extends PyProxy {
+  /** @private */
+  static [Symbol.hasInstance](obj: any): obj is PyAsyncIterator {
+    return API.isPyProxy(obj) && !!(_getFlags(obj) & IS_ASYNC_ITERATOR);
+  }
+}
+
+export interface PyAsyncIterator extends PyAsyncIteratorMethods {}
+
+// Controlled by IS_ASYNC_ITERATOR, appears for any object with __anext__ or
+// am_anext.
+export class PyAsyncIteratorMethods {
+  /** @private */
+  [Symbol.asyncIterator]() {
+    return this;
+  }
+  /**
+   * This translates to the Python code ``anext(obj)``. Returns the next value
+   * of the asynchronous iterator. The argument will be sent to the Python
+   * iterator (if it's a generator for instance).
+   *
+   * This will be used implicitly by ``for(await let x of proxy){}``.
+   *
+   * @param arg The value to send to a generator. The value will be assigned as
+   * a result of a yield expression.
+   * @returns An Object with two properties: ``done`` and ``value``. When the
+   * iterator yields ``some_value``, ``next`` returns ``{done : false, value :
+   * some_value}``. When the iterator is done, ``next`` returns
+   * ``{done : true }``.
+   */
+  async next(arg: any = undefined): Promise<IteratorResult<any, any>> {
+    let p;
+    try {
+      Py_ENTER();
+      p = __PyProxyGen_asend(_getPtr(this), arg);
+      Py_EXIT();
+    } catch (e) {
+      API.fatal_error(e);
+    }
+    if (p === Module.error) {
+      throw __Py_pythonexc2js();
+    }
+    let value;
+    try {
+      value = await p;
+    } catch (e) {
+      if (isPythonError(e) && e.type === "StopAsyncIteration") {
+        return { done: true, value };
+      }
+      throw e;
+    } finally {
+      p.destroy();
+    }
+    return { done: false, value };
+  }
+}
+
+/**
+ * A :js:class:`~pyodide.ffi.PyProxy` whose proxied Python object is an
+ * :std:term:`asynchronous generator` (i.e., it is an instance of
+ * :py:class:`~collections.abc.AsyncGenerator`)
+ */
+export class PyAsyncGenerator extends PyProxy {
+  /** @private */
+  static [Symbol.hasInstance](obj: any): obj is PyAsyncGenerator {
+    return API.isPyProxy(obj) && !!(_getFlags(obj) & IS_ASYNC_GENERATOR);
+  }
+}
+
+export interface PyAsyncGenerator extends PyAsyncGeneratorMethods {}
+
+export class PyAsyncGeneratorMethods {
+  /**
+   * Throws an exception into the Generator.
+   *
+   * See the documentation for :js:meth:`AsyncGenerator.throw`.
+   *
+   * @param exc Error The error to throw into the generator. Must be an
+   * instanceof ``Error``.
+   * @returns An Object with two properties: ``done`` and ``value``. When the
+   * generator yields ``some_value``, ``return`` returns ``{done : false, value
+   * : some_value}``. When the generator raises a
+   * ``StopIteration(result_value)`` exception, ``return`` returns ``{done :
+   * true, value : result_value}``.
+   */
+  async throw(exc: any): Promise<IteratorResult<any, any>> {
+    let p;
+    try {
+      Py_ENTER();
+      p = __PyProxyGen_athrow(_getPtr(this), exc);
+      Py_EXIT();
+    } catch (e) {
+      API.fatal_error(e);
+    }
+    if (p === Module.error) {
+      throw __Py_pythonexc2js();
+    }
+    let value;
+    try {
+      value = await p;
+    } catch (e) {
+      if (
+        isPythonError(e) &&
+        (e.type === "StopAsyncIteration" || e.type === "GeneratorExit")
+      ) {
+        return { done: true, value };
+      }
+      throw e;
+    } finally {
+      p.destroy();
+    }
+    return { done: false, value };
+  }
+
+  /**
+   * Throws a :py:exc:`GeneratorExit` into the generator and if the
+   * :py:exc:`GeneratorExit` is not caught returns the argument value ``{done:
+   * true, value: v}``. If the generator catches the :py:exc:`GeneratorExit` and
+   * returns or yields another value the next value of the generator this is
+   * returned in the normal way. If it throws some error other than
+   * :py:exc:`GeneratorExit` or :py:exc:`StopAsyncIteration`, that error is
+   * propagated. See the documentation for :js:meth:`AsyncGenerator.throw`
+   *
+   * @param v The value to return from the generator.
+   * @returns An Object with two properties: ``done`` and ``value``. When the
+   * generator yields ``some_value``, ``return`` returns ``{done : false, value
+   * : some_value}``. When the generator raises a :py:exc:`StopAsyncIteration`
+   * exception, ``return`` returns ``{done : true, value : result_value}``.
+   */
+  async return(v: any): Promise<IteratorResult<any, any>> {
+    let p;
+    try {
+      Py_ENTER();
+      p = __PyProxyGen_areturn(_getPtr(this));
+      Py_EXIT();
+    } catch (e) {
+      API.fatal_error(e);
+    }
+    if (p === Module.error) {
+      throw __Py_pythonexc2js();
+    }
+    let value;
+    try {
+      value = await p;
+    } catch (e) {
+      if (isPythonError(e)) {
+        if (e.type === "StopAsyncIteration") {
+          return { done: true, value };
+        } else if (e.type === "GeneratorExit") {
+          return { done: true, value: v };
+        }
+      }
+      throw e;
+    } finally {
+      p.destroy();
+    }
+    return { done: false, value };
+  }
+}
+
+/**
+ * A :js:class:`~pyodide.ffi.PyProxy` whose proxied Python object is an
+ * :std:term:`awaitable` (i.e., has an :meth:`~object.__await__` method).
+ */
+export class PyAwaitable extends PyProxy {
+  /** @private */
+  static [Symbol.hasInstance](obj: any): obj is PyAwaitable {
+    return API.isPyProxy(obj) && !!(_getFlags(obj) & IS_AWAITABLE);
+  }
+}
+
+export interface PyAwaitable extends Promise<any> {}
+
+// Controlled by IS_AWAITABLE, appears for any object with an __await__ method
+// or a coroutine.
+export class PyAwaitableMethods {
+  /**
+   * This wraps __pyproxy_ensure_future and makes a function that converts a
+   * Python awaitable to a promise, scheduling the awaitable on the Python
+   * event loop if necessary. The proxy is destroyed once the awaitable is
+   * scheduled: the Future holds a reference to the coroutine so we don't need
+   * one any more.
+   * @private
+   */
+  _ensure_future(): Promise<any> {
+    const { shared } = _getAttrsQuiet(this);
+    if (shared.promise) {
+      return shared.promise;
+    }
+    if (API.finalized) {
+      // The interpreter is gone so the awaitable can never resolve.
+      return new Promise(() => {});
+    }
+    const ptr = shared.ptr;
+    if (!ptr) {
+      // Destroyed and promise wasn't resolved. Raise error!
+      _getAttrs(this);
+    }
+    let resolveHandle: (v: any) => void;
+    let rejectHandle: (e: any) => void;
+    let promise = new Promise((resolve, reject) => {
+      resolveHandle = resolve;
+      rejectHandle = reject;
+    });
+    let err;
+    try {
+      Py_ENTER();
+      err = __PyProxy_ensure_future(ptr, resolveHandle!, rejectHandle!);
+      Py_EXIT();
+    } catch (e) {
+      API.fatal_error(e);
+    }
+    if (err === -1) {
+      throw __Py_pythonexc2js();
+    }
+    shared.promise = promise;
+    // @ts-ignore
+    this.destroy();
+    return promise;
+  }
+  /**
+   * Runs ``asyncio.ensure_future(awaitable)``, executes
+   * ``onFulfilled(result)`` when the :py:class:`~asyncio.Future` resolves
+   * successfully, executes ``onRejected(error)`` when the
+   * :py:class:`~asyncio.Future` fails. Will be used implicitly by ``await
+   * obj``.
+   *
+   * See the documentation for :js:meth:`Promise.then`.
+   *
+   * @param onFulfilled A handler called with the result as an argument if the
+   * awaitable succeeds.
+   * @param onRejected A handler called with the error as an argument if the
+   * awaitable fails.
+   * @returns The resulting Promise.
+   */
+  then(
+    onFulfilled: (value: any) => any,
+    onRejected: (reason: any) => any,
+  ): Promise<any> {
+    let promise = this._ensure_future();
+    return promise.then(onFulfilled, onRejected);
+  }
+  /**
+   * Runs ``asyncio.ensure_future(awaitable)`` and executes
+   * ``onRejected(error)`` if the future fails.
+   *
+   * See the documentation for :js:meth:`Promise.catch`.
+   *
+   * @param onRejected A handler called with the error as an argument if the
+   * awaitable fails.
+   * @returns The resulting Promise.
+   */
+  catch(onRejected: (reason: any) => any) {
+    let promise = this._ensure_future();
+    return promise.catch(onRejected);
+  }
+  /**
+   * Runs ``asyncio.ensure_future(awaitable)`` and executes
+   * ``onFinally(error)`` when the future resolves.
+   *
+   * See the documentation for :js:meth:`Promise.finally`.
+   *
+   * @param onFinally A handler that is called with zero arguments when the
+   * awaitable resolves.
+   * @returns A Promise that resolves or rejects with the same result as the
+   * original Promise, but only after executing the ``onFinally`` handler.
+   */
+  finally(onFinally: () => void) {
+    let promise = this._ensure_future();
+    return promise.finally(onFinally);
   }
 }
 

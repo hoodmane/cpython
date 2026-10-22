@@ -11,6 +11,7 @@
 #include "pytypedefs.h"
 #include "pyproxy.h"
 #include "jsproxy.h"
+#include "pycore_runtime.h"       // _Py_ID()
 
 
 #include "clinic/pyproxy.c.h"
@@ -35,10 +36,28 @@ module _pyodide_core
 #define IS_SEQUENCE            (1 << 10)
 #define IS_JS_JSON_DICT        (1 << 11)
 #define IS_JS_JSON_SEQUENCE    (1 << 12)
-#define IS_BUFFER              (1 << 13)
+#define IS_AWAITABLE           (1 << 13)
+#define IS_BUFFER              (1 << 14)
+#define IS_ASYNC_ITERABLE      (1 << 15)
+#define IS_ASYNC_ITERATOR      (1 << 16)
+#define IS_ASYNC_GENERATOR     (1 << 17)
 
 
 PyAPI_FUNC(int) _PyGen_FetchStopIterationValue(PyObject **);
+
+static PyObject* asyncio_mod;
+
+/**
+ * Lazily import asyncio and return a new reference to it.
+ */
+static PyObject*
+get_asyncio(void)
+{
+  if (asyncio_mod == NULL) {
+    asyncio_mod = PyImport_ImportModule("asyncio");
+  }
+  return asyncio_mod;
+}
 
 
 EM_JS_VAL(JsVal, _PyProxy_New, (PyObject *ptrobj), {
@@ -125,8 +144,25 @@ _PyProxy_type(PyObject* ptrobj)
 }
 
 static PyObject* Generator;
+static PyObject* AsyncGenerator;
 static PyObject* Sequence;
 static PyObject* MutableSequence;
+
+/**
+ * Is the generator object a "legacy" coroutine, i.e., a generator decorated
+ * with @types.coroutine? Copied from genobject.c.
+ */
+static bool
+gen_is_coroutine(PyObject* o)
+{
+  if (PyGen_CheckExact(o)) {
+    PyCodeObject* code = PyGen_GetCode((PyGenObject*)o);
+    bool result = code->co_flags & CO_ITERABLE_COROUTINE;
+    Py_DECREF(code);
+    return result;
+  }
+  return false;
+}
 
 static int
 type_getflags(PyTypeObject* obj_type)
@@ -138,6 +174,10 @@ type_getflags(PyTypeObject* obj_type)
   PyMappingMethods null_map_proto = { 0 };
   PyMappingMethods* map_proto =
     obj_type->tp_as_mapping ? obj_type->tp_as_mapping : &null_map_proto;
+
+  PyAsyncMethods null_async_proto = { 0 };
+  PyAsyncMethods* async_proto =
+    obj_type->tp_as_async ? obj_type->tp_as_async : &null_async_proto;
 
   PyBufferProcs null_buffer_proto = { 0 };
   PyBufferProcs* buffer_proto =
@@ -160,7 +200,11 @@ type_getflags(PyTypeObject* obj_type)
   int isgen = PyObject_IsSubclass((PyObject*)obj_type, Generator);
   FAIL_IF_MINUS_ONE(isgen);
   SET_FLAG_IF(IS_GENERATOR, isgen);
+  int isasyncgen = PyObject_IsSubclass((PyObject*)obj_type, AsyncGenerator);
+  FAIL_IF_MINUS_ONE(isasyncgen);
+  SET_FLAG_IF(IS_ASYNC_GENERATOR, isasyncgen);
   SET_FLAG_IF(IS_ITERABLE, obj_type->tp_iter || seq_proto->sq_item);
+  SET_FLAG_IF(IS_ASYNC_ITERABLE, async_proto->am_aiter);
 
   extern PyObject* _PyObject_NextNotImplemented(PyObject *);
   if (obj_type->tp_iternext != NULL &&
@@ -168,6 +212,15 @@ type_getflags(PyTypeObject* obj_type)
     result &= ~IS_ITERABLE;
     result |= IS_ITERATOR;
   }
+  if (async_proto->am_anext) {
+    result &= ~IS_ASYNC_ITERABLE;
+    result |= IS_ASYNC_ITERATOR;
+  }
+  // GET_AWAITABLE in ceval accepts coroutines, legacy generator-based
+  // coroutines, and objects with an __await__ method. Legacy coroutines can't
+  // be detected from the type alone, see _PyProxy_getflags.
+  SET_FLAG_IF(IS_AWAITABLE,
+              Py_Is(obj_type, &PyCoro_Type) || async_proto->am_await);
   SET_FLAG_IF(IS_BUFFER, buffer_proto->bf_getbuffer);
   // A sequence has __len__, __getitem__, __contains__, and __iter__ so if any
   // of these settings is missing, can skip the IsInstance check.
@@ -222,6 +275,12 @@ _PyProxy_getflags(PyObject* pyobj, bool is_js_json)
   int result = type_getflags(obj_type);
   if (result == -1) {
     return -1;
+  }
+  // If the object is a legacy generator-based coroutine we can't tell just by
+  // looking at the type, we have to check the code flags of the generator.
+  if (!(result & IS_AWAITABLE) && (result & IS_GENERATOR) &&
+      gen_is_coroutine(pyobj)) {
+    result |= IS_AWAITABLE;
   }
   if (is_js_json) {
     if (result & IS_SEQUENCE) {
@@ -723,6 +782,305 @@ finally:
 
 ///////////////////////////////////////////////////////////////////////////////
 //
+// Async iteration
+
+EMSCRIPTEN_KEEPALIVE JsVal
+_PyProxyGen_asend(PyObject* receiver, JsVal jsval)
+{
+  PyObject* v = NULL;
+  PyObject* asend = NULL;
+  PyObject* pyresult = NULL;
+  JsVal result = JS_ERROR;
+
+  v = _Py_js2python(jsval);
+  FAIL_IF_NULL(v);
+  if (PyObject_GetOptionalAttr(receiver, &_Py_ID(asend), &asend) == -1) {
+    FAIL();
+  }
+  if (asend != NULL) {
+    pyresult = PyObject_CallOneArg(asend, v);
+  } else {
+    PyTypeObject* t = Py_TYPE(receiver);
+    if (t->tp_as_async == NULL || t->tp_as_async->am_anext == NULL) {
+      PyErr_Format(PyExc_TypeError,
+                   "'%.200s' object is not an async iterator",
+                   t->tp_name);
+      FAIL();
+    }
+    pyresult = (*t->tp_as_async->am_anext)(receiver);
+  }
+  FAIL_IF_NULL(pyresult);
+  result = _Py_python2js(pyresult);
+
+finally:
+  Py_CLEAR(v);
+  Py_CLEAR(asend);
+  Py_CLEAR(pyresult);
+  return result;
+}
+
+EMSCRIPTEN_KEEPALIVE JsVal
+_PyProxyGen_areturn(PyObject* receiver)
+{
+  PyObject* pyresult =
+    PyObject_CallMethodOneArg(receiver, &_Py_ID(athrow), PyExc_GeneratorExit);
+  if (pyresult == NULL) {
+    return JS_ERROR;
+  }
+  JsVal result = _Py_python2js(pyresult);
+  Py_DECREF(pyresult);
+  return result;
+}
+
+EMSCRIPTEN_KEEPALIVE JsVal
+_PyProxyGen_athrow(PyObject* receiver, JsVal jsval)
+{
+  PyObject* v = NULL;
+  PyObject* pyresult = NULL;
+  JsVal result = JS_ERROR;
+
+  v = _Py_js2python(jsval);
+  FAIL_IF_NULL(v);
+  if (!PyExceptionInstance_Check(v)) {
+    /* Not something you can raise.  throw() fails. */
+    PyErr_Format(PyExc_TypeError,
+                 "exceptions must be classes or instances "
+                 "deriving from BaseException, not %s",
+                 Py_TYPE(v)->tp_name);
+    FAIL();
+  }
+  pyresult = PyObject_CallMethodOneArg(receiver, &_Py_ID(athrow), v);
+  FAIL_IF_NULL(pyresult);
+  result = _Py_python2js(pyresult);
+
+finally:
+  Py_CLEAR(v);
+  Py_CLEAR(pyresult);
+  return result;
+}
+
+EMSCRIPTEN_KEEPALIVE JsVal
+_PyProxy_aiter_next(PyObject* aiterator)
+{
+  PyTypeObject* t = Py_TYPE(aiterator);
+  if (t->tp_as_async == NULL || t->tp_as_async->am_anext == NULL) {
+    PyErr_Format(
+      PyExc_TypeError, "'%.200s' object is not an async iterator", t->tp_name);
+    return JS_ERROR;
+  }
+  PyObject* awaitable = (*t->tp_as_async->am_anext)(aiterator);
+  if (awaitable == NULL) {
+    return JS_ERROR;
+  }
+  JsVal result = _Py_python2js(awaitable);
+  Py_DECREF(awaitable);
+  return result;
+}
+
+/**
+ * Is f a coroutine function? Used to decide whether to automatically schedule
+ * the coroutine returned from a call from JavaScript into Python.
+ */
+EMSCRIPTEN_KEEPALIVE bool
+_PyProxy_iscoroutinefunction(PyObject* f)
+{
+  // Some fast paths for common cases to avoid calling into Python
+  if (PyMethod_Check(f)) {
+    f = PyMethod_GET_FUNCTION(f);
+  }
+  if (PyFunction_Check(f)) {
+    int has_marker = PyObject_HasAttrWithError(f, &_Py_ID(_is_coroutine_marker));
+    if (has_marker == -1) {
+      PyErr_Clear();
+      return false;
+    }
+    if (!has_marker) {
+      PyCodeObject* code = (PyCodeObject*)PyFunction_GET_CODE(f);
+      return (code->co_flags) & CO_COROUTINE;
+    }
+  }
+
+  // Wasn't a basic callable, call into inspect.iscoroutinefunction
+  PyObject* inspect = PyImport_ImportModule("inspect");
+  if (inspect == NULL) {
+    PyErr_Clear();
+    return false;
+  }
+  PyObject* result =
+    PyObject_CallMethodOneArg(inspect, &_Py_ID(iscoroutinefunction), f);
+  Py_DECREF(inspect);
+  if (result == NULL) {
+    PyErr_Clear();
+    return false;
+  }
+  bool is_coroutine = Py_IsTrue(result);
+  Py_DECREF(result);
+  return is_coroutine;
+}
+
+///////////////////////////////////////////////////////////////////////////////
+//
+// Await / "then" Implementation
+//
+// We want convert the object to a future with `ensure_future` and then make a
+// promise that resolves when the future does. We can add a callback to the
+// future with future.add_done_callback but we need to make a little python
+// closure "FutureDoneCallback" that remembers how to resolve the promise.
+//
+// From JavaScript we will use the single function _PyProxy_ensure_future, the
+// rest of this segment is helper functions for _PyProxy_ensure_future. The
+// FutureDoneCallback object is never exposed to the user.
+
+/**
+ * A simple Callable python object. Intended to be called with a single argument
+ * which is the future that was resolved.
+ */
+typedef struct
+{
+  PyObject_HEAD
+  /** Will call this function with the result if the future succeeded */
+  JsRef resolve_handle;
+  /** Will call this function with the error if the future failed */
+  JsRef reject_handle;
+} FutureDoneCallback;
+
+static void
+FutureDoneCallback_dealloc(PyObject* o)
+{
+  FutureDoneCallback* self = (FutureDoneCallback*)o;
+  hiwire_CLEAR(self->resolve_handle);
+  hiwire_CLEAR(self->reject_handle);
+  Py_TYPE(self)->tp_free((PyObject*)self);
+}
+
+EM_JS(void, _Py_call_one_arg_js, (JsVal func, JsVal arg), {
+  func(arg);
+});
+
+/**
+ * Helper method: if the future resolved successfully, call resolve_handle on
+ * the result.
+ */
+static int
+FutureDoneCallback_call_resolve(FutureDoneCallback* self, PyObject* result)
+{
+  JsVal result_js = _Py_python2js(result);
+  if (_PyJsvError_Check(result_js)) {
+    return -1;
+  }
+  _Py_call_one_arg_js(hiwire_get(self->resolve_handle), result_js);
+  return 0;
+}
+
+/**
+ * Helper method: if the future threw an error, call reject_handle on a
+ * converted exception. The caller leaves the python error indicator set.
+ */
+static int
+FutureDoneCallback_call_reject(FutureDoneCallback* self)
+{
+  // _Py_pythonexc2js looks up the current exception and wraps it in a Js
+  // error.
+  JsVal excval = _Py_pythonexc2js();
+  if (_PyJsvError_Check(excval)) {
+    return -1;
+  }
+  _Py_call_one_arg_js(hiwire_get(self->reject_handle), excval);
+  return 0;
+}
+
+/**
+ * Intended to be called with a single argument which is the future that was
+ * resolved. Resolves the promise as appropriate based on the result of the
+ * future.
+ */
+static PyObject*
+FutureDoneCallback_call(PyObject* o, PyObject* args, PyObject* kwargs)
+{
+  FutureDoneCallback* self = (FutureDoneCallback*)o;
+  PyObject* fut;
+  if (!PyArg_UnpackTuple(args, "future_done_callback", 1, 1, &fut)) {
+    return NULL;
+  }
+  PyObject* result = PyObject_CallMethodNoArgs(fut, &_Py_ID(result));
+  int err;
+  if (result != NULL) {
+    err = FutureDoneCallback_call_resolve(self, result);
+    Py_DECREF(result);
+  } else {
+    err = FutureDoneCallback_call_reject(self);
+  }
+  if (err == 0) {
+    Py_RETURN_NONE;
+  } else {
+    return NULL;
+  }
+}
+
+static PyTypeObject FutureDoneCallbackType = {
+  .tp_name = "pyodide.ffi._FutureDoneCallback",
+  .tp_doc =
+    "Callback for internal use to allow awaiting a future from JavaScript",
+  .tp_basicsize = sizeof(FutureDoneCallback),
+  .tp_itemsize = 0,
+  .tp_flags = Py_TPFLAGS_DEFAULT,
+  .tp_dealloc = FutureDoneCallback_dealloc,
+  .tp_call = FutureDoneCallback_call,
+};
+
+static PyObject*
+FutureDoneCallback_cnew(JsVal resolve_handle, JsVal reject_handle)
+{
+  FutureDoneCallback* self =
+    (FutureDoneCallback*)FutureDoneCallbackType.tp_alloc(
+      &FutureDoneCallbackType, 0);
+  if (self == NULL) {
+    return NULL;
+  }
+  self->resolve_handle = hiwire_new(resolve_handle);
+  self->reject_handle = hiwire_new(reject_handle);
+  return (PyObject*)self;
+}
+
+/**
+ * Schedule the awaitable pyobject with asyncio.ensure_future and arrange for
+ * resolve_handle or reject_handle to be called when it is done.
+ *
+ * :param pyobject: An awaitable python object
+ * :param resolve_handle: The resolve javascript method for a promise
+ * :param reject_handle: The reject javascript method for a promise
+ * :return: 0 on success, -1 on failure
+ */
+EMSCRIPTEN_KEEPALIVE int
+_PyProxy_ensure_future(PyObject* pyobject,
+                       JsVal resolve_handle,
+                       JsVal reject_handle)
+{
+  bool success = false;
+  PyObject* future = NULL;
+  PyObject* callback = NULL;
+  PyObject* retval = NULL;
+
+  PyObject* asyncio = get_asyncio();
+  FAIL_IF_NULL(asyncio);
+  future = PyObject_CallMethodOneArg(asyncio, &_Py_ID(ensure_future), pyobject);
+  FAIL_IF_NULL(future);
+  callback = FutureDoneCallback_cnew(resolve_handle, reject_handle);
+  FAIL_IF_NULL(callback);
+  retval =
+    PyObject_CallMethodOneArg(future, &_Py_ID(add_done_callback), callback);
+  FAIL_IF_NULL(retval);
+
+  success = true;
+finally:
+  Py_CLEAR(future);
+  Py_CLEAR(callback);
+  Py_CLEAR(retval);
+  return success ? 0 : -1;
+}
+
+///////////////////////////////////////////////////////////////////////////////
+//
 // Buffers
 
 EM_JS(JsVal, _Py_array_to_js, (Py_ssize_t * array, int len), {
@@ -843,6 +1201,187 @@ _PyProxy_release_buffer(Py_buffer* view)
   PyMem_Free(view);
 }
 
+///////////////////////////////////////////////////////////////////////////////
+//
+// Promise handles and once-callables
+
+/**
+ * Wrap a Python callable in a JavaScript function that may be called exactly
+ * once. The reference to the Python callable is released when the function is
+ * called (or when the wrapper is garbage collected). Useful for the "finally"
+ * wrapper on a JsProxy of a promise, and also exposed in the pyodide Python
+ * module.
+ */
+EM_JS_VAL(JsVal, _PyProxy_create_once_callable, (PyObject * obj), {
+  _Py_IncRef(obj);
+  let alreadyCalled = false;
+  function wrapper(... args)
+  {
+    if (alreadyCalled) {
+      throw new Error("OnceProxy can only be called once");
+    }
+    try {
+      return Module.callPyObject(obj, args);
+    } finally {
+      wrapper.destroy();
+    }
+  }
+  wrapper.destroy = function()
+  {
+    if (alreadyCalled) {
+      throw new Error("OnceProxy has already been destroyed");
+    }
+    alreadyCalled = true;
+    Module.finalizationRegistry.unregister(wrapper);
+    _Py_DecRef(obj);
+  };
+  Module.finalizationRegistry.register(wrapper, { ptr : obj }, wrapper);
+  return wrapper;
+});
+
+/**
+ * Convert the JavaScript result of a promise to Python and call the Python
+ * handle_result callback with it. Called from create_promise_handles.
+ */
+EMSCRIPTEN_KEEPALIVE int
+_PyProxy_promise_handles_result_helper(PyObject* handle_result, JsVal jsval)
+{
+  bool success = false;
+  PyObject* pyval = NULL;
+  PyObject* result = NULL;
+
+  pyval = _Py_js2python(jsval);
+  FAIL_IF_NULL(pyval);
+  result = PyObject_CallOneArg(handle_result, pyval);
+  FAIL_IF_NULL(result);
+
+  success = true;
+finally:
+  Py_CLEAR(pyval);
+  Py_CLEAR(result);
+  return success ? 0 : -1;
+}
+
+/**
+ * Arguments:
+ *  handle_result -- Python callable expecting one argument, called with the
+ *  result if the promise is resolved. Can be NULL.
+ *
+ *  handle_exception -- Python callable expecting one argument, called with the
+ *  exception if the promise is rejected. Can be NULL.
+ *
+ *  done_callback -- A JavaScript callback to be called when the promise is
+ *  either resolved or rejected. Can be null.
+ *
+ * Returns: a pair [onResolved, onRejected].
+ *
+ * The purpose of this function is to handle memory management when attaching
+ * Python functions to Promises. This function stores a reference to both
+ * handle_result and handle_exception, and frees both when either onResolved or
+ * onRejected is called. Of course if the Promise never resolves then the
+ * handles will be leaked. We can't use create_once_callable because either
+ * onResolved or onRejected is called but not both. In either case, we release
+ * both functions.
+ *
+ * The return values are intended to be attached to a promise e.g.,
+ * some_promise.then(onResolved, onRejected).
+ */
+// clang-format off
+EM_JS_VAL(JsVal, _PyProxy_create_promise_handles, (
+  PyObject* handle_result,
+  PyObject* handle_exception,
+  JsVal done_callback
+), {
+  if (handle_result) {
+    _Py_IncRef(handle_result);
+  }
+  if (handle_exception) {
+    _Py_IncRef(handle_exception);
+  }
+  if (!done_callback) {
+    done_callback = (x) => {};
+  }
+  let used = false;
+  function checkUsed(){
+    if (used) {
+      throw new Error("One of the promise handles has already been called.");
+    }
+  }
+  function destroy(){
+    checkUsed();
+    used = true;
+    if (handle_result) {
+      _Py_DecRef(handle_result);
+    }
+    if (handle_exception) {
+      _Py_DecRef(handle_exception);
+    }
+  }
+  function onFulfilled(res) {
+    if (API.finalized) {
+      return;
+    }
+    checkUsed();
+    try {
+      if (handle_result) {
+        if (__PyProxy_promise_handles_result_helper(handle_result, res) === -1) {
+          throw __Py_pythonexc2js();
+        }
+      } else {
+        // No handler: pass the value through like Promise.then does.
+        return res;
+      }
+    } finally {
+      done_callback(res);
+      destroy();
+    }
+  }
+  function onRejected(err) {
+    if (API.finalized) {
+      return;
+    }
+    checkUsed();
+    try {
+      if (handle_exception) {
+        return Module.callPyObject(handle_exception, [err]);
+      }
+      // No handler: propagate the rejection like Promise.then does.
+      throw err;
+    } finally {
+      done_callback(undefined);
+      destroy();
+    }
+  }
+  onFulfilled.destroy = destroy;
+  onRejected.destroy = destroy;
+  return [onFulfilled, onRejected];
+})
+// clang-format on
+
+/*[clinic input]
+_pyodide_core.create_once_callable
+
+    obj: object
+    /
+
+Wrap a Python callable in a JavaScript function callable only once.
+
+After being called the proxy will decrement the reference count of the
+Callable. The JavaScript function also has a destroy API that can be
+used to release the proxy without calling it.
+[clinic start generated code]*/
+
+static PyObject *
+_pyodide_core_create_once_callable(PyObject *module, PyObject *obj)
+/*[clinic end generated code: output=3fe062564a700f55 input=9dce58f8016cea70]*/
+{
+  JsVal v = _PyProxy_create_once_callable(obj);
+  if (_PyJsvError_Check(v)) {
+    return NULL;
+  }
+  return _PyJsProxy_create(v);
+}
+
 EMSCRIPTEN_KEEPALIVE JsVal
 _PyProxy_slice_assign(PyObject* pyobj,
                       Py_ssize_t start,
@@ -942,6 +1481,7 @@ _pyodide_core_create_proxy_impl(PyObject *module, PyObject *obj,
 
 static PyMethodDef methods[] = {
   _PYODIDE_CORE_CREATE_PROXY_METHODDEF
+  _PYODIDE_CORE_CREATE_ONCE_CALLABLE_METHODDEF
   { NULL } /* Sentinel */
 };
 
@@ -953,10 +1493,13 @@ _Py_pyproxy_init(PyObject* core)
   PyObject* collections_abc = NULL;
 
   FAIL_IF_MINUS_ONE(PyModule_AddFunctions(core, methods));
+  FAIL_IF_MINUS_ONE(PyType_Ready(&FutureDoneCallbackType));
   collections_abc = PyImport_ImportModule("collections.abc");
   FAIL_IF_NULL(collections_abc);
   Generator = PyObject_GetAttrString(collections_abc, "Generator");
   FAIL_IF_NULL(Generator);
+  AsyncGenerator = PyObject_GetAttrString(collections_abc, "AsyncGenerator");
+  FAIL_IF_NULL(AsyncGenerator);
   Sequence = PyObject_GetAttrString(collections_abc, "Sequence");
   FAIL_IF_NULL(Sequence);
   MutableSequence = PyObject_GetAttrString(collections_abc, "MutableSequence");

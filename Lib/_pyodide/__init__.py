@@ -2,6 +2,10 @@ js_flags = {}
 from functools import reduce
 from abc import ABCMeta
 from collections.abc import (
+    AsyncGenerator,
+    AsyncIterable,
+    AsyncIterator,
+    Awaitable,
     Generator,
     Iterator,
     Iterable,
@@ -76,6 +80,24 @@ class JsIterable(JsProxy, Iterable, metaclass=_ABCMeta):
 
     _js_type_flags = ["IS_ITERABLE"]
 
+class JsAsyncIterator(JsProxy, AsyncIterator, metaclass=_ABCMeta):
+    """A JsProxy of a JavaScript async iterator.
+
+    An object is a :py:class:`JsAsyncIterator` if it has a :js:meth:`~AsyncIterator.next`
+    method and either has a :js:data:`Symbol.asyncIterator` or has no
+    :js:data:`Symbol.iterator`
+    """
+
+    _js_type_flags = ["IS_ASYNC_ITERATOR"]
+
+class JsAsyncIterable(JsProxy, AsyncIterable, metaclass=_ABCMeta):
+    """A JavaScript async iterable object
+
+    A JavaScript object is async iterable if it has a :js:data:`Symbol.asyncIterator` method.
+    """
+
+    _js_type_flags = ["IS_ASYNC_ITERABLE"]
+
 class JsGenerator(JsIterable, Generator, metaclass=_ABCMeta):
     """A JavaScript generator
 
@@ -88,6 +110,28 @@ class JsGenerator(JsIterable, Generator, metaclass=_ABCMeta):
     """
 
     _js_type_flags = ["IS_GENERATOR", "IS_ITERATOR"]
+
+class JsAsyncGenerator(JsAsyncIterable, AsyncGenerator, metaclass=_ABCMeta):
+    """A JavaScript async generator
+
+    A JavaScript object is treated as an async generator if it's
+    Symbol.toStringTag is "AsyncGenerator". Most likely this will be
+    because it is a true async generator produced by the JavaScript runtime,
+    but it may be a custom object trying hard to pretend to be an async
+    generator. It should have AsyncGenerator.next, AsyncGenerator.return, and
+    AsyncGenerator.throw methods.
+    """
+
+    _js_type_flags = ["IS_ASYNC_GENERATOR"]
+
+class JsPromise(JsProxy, Awaitable, metaclass=_ABCMeta):
+    """A JsProxy of a Promise or some other thenable JavaScript object.
+
+    A JavaScript object is considered to be a Promise if it has a then
+    method.
+    """
+
+    _js_type_flags = ["IS_AWAITABLE"]
 
 class JsCallable(JsProxy):
     """A JavaScript callable
@@ -163,6 +207,26 @@ class JsNull:
 
 #: The Python representation of the JavaScript null object.
 jsnull: JsNull = object.__new__(JsNull)
+
+
+def _set_result(fut, val):
+    if fut.done():
+        return
+    fut.set_result(val)
+
+
+def _set_exception(fut, val):
+    if fut.done():
+        return
+    fut.set_exception(val)
+
+
+def _get_future_resolvers(fut):
+    """Return (set_result, set_exception) for fut that do nothing if fut is
+    already done (e.g. because it was cancelled). Used by _pyodide_core when
+    adapting a JavaScript promise to a Python future.
+    """
+    return (_set_result.__get__(fut), _set_exception.__get__(fut))
 
 
 def _int_to_bigint(x):

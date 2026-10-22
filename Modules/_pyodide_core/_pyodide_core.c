@@ -62,11 +62,22 @@ _Py_jsproxy_init(PyObject *m);
 int
 _Py_pyproxy_init(PyObject *m);
 
+EM_JS(void, _Py_pyodide_core_set_finalized_js, (void), {
+  API.finalized = true;
+});
+
+static void
+_pyodide_core_atexit(void)
+{
+  _Py_pyodide_core_set_finalized_js();
+}
+
 static int
 _pyodide_core_exec(PyObject *m)
 {
   bool success = false;
-    
+
+  FAIL_IF_MINUS_ONE(Py_AtExit(_pyodide_core_atexit));
   FAIL_IF_MINUS_ONE(_Py_python2js_init(m));
   FAIL_IF_MINUS_ONE(_Py_jsproxy_init(m));
   FAIL_IF_MINUS_ONE(_Py_pyproxy_init(m));

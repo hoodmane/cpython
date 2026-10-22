@@ -1,7 +1,12 @@
+import asyncio
 import sys
 import unittest
 from array import array
 from collections.abc import (
+    AsyncGenerator,
+    AsyncIterable,
+    AsyncIterator,
+    Awaitable,
     Callable,
     Generator,
     Iterable,
@@ -22,6 +27,9 @@ from js import Array, BigInt64Array, Uint8Array
 from pyodide.code import run_js
 from pyodide.ffi import (
     JsArray,
+    JsAsyncGenerator,
+    JsAsyncIterable,
+    JsAsyncIterator,
     JsBigInt,
     JsBuffer,
     JsCallable,
@@ -32,12 +40,30 @@ from pyodide.ffi import (
     JsIterator,
     JsMap,
     JsMutableMap,
+    JsPromise,
     JsTypedArray,
+    create_once_callable,
     create_proxy,
     destroy_proxies,
     jsnull,
     to_js,
 )
+from pyodide.webloop import PyodideFuture, WebLoop
+
+
+def setUpModule():
+    # Converting a JavaScript promise to a Python awaitable needs an event
+    # loop. The asynchronous behavior itself is tested from JavaScript in
+    # Platforms/emscripten/node_test/ because it needs the JavaScript event
+    # loop to turn.
+    global _loop
+    _loop = WebLoop()
+    asyncio.set_event_loop(_loop)
+
+
+def tearDownModule():
+    asyncio.set_event_loop(None)
+    asyncio._set_running_loop(None)
 
 
 class ConversionTest(TestCase):
@@ -874,6 +900,49 @@ class JsProxyTest(TestCase):
         self.assertIsInstance(p, JsDoubleProxy)
         p.destroy()
 
+        # Use indexing rather than a call to get a JsProxy of the promise, a
+        # call would convert the promise to a Future.
+        jspromise = run_js("[Promise.resolve(1)]")[0]
+        self.assertIsInstance(jspromise, JsPromise)
+        self.assertIsInstance(jspromise, Awaitable)
+        assert issubclass(JsPromise, Awaitable)
+        self.assertIsInstance(run_js("[({then(){}})]")[0], JsPromise)
+        self.assertNotIsInstance(run_js("({})"), JsPromise)
+
+        agen = run_js("(async function*(){})()")
+        self.assertIsInstance(agen, JsAsyncGenerator)
+        self.assertIsInstance(agen, JsAsyncIterator)
+        self.assertIsInstance(agen, JsAsyncIterable)
+        self.assertIsInstance(agen, AsyncGenerator)
+        self.assertNotIsInstance(agen, JsGenerator)
+        self.assertNotIsInstance(agen, JsIterator)
+        assert issubclass(JsAsyncGenerator, AsyncGenerator)
+        assert issubclass(JsAsyncGenerator, JsAsyncIterable)
+
+        gen = run_js("(function*(){})()")
+        self.assertNotIsInstance(gen, JsAsyncGenerator)
+        self.assertNotIsInstance(gen, JsAsyncIterator)
+
+        self.assertIsInstance(run_js("({[Symbol.asyncIterator](){}})"), JsAsyncIterable)
+        self.assertIsInstance(run_js("({[Symbol.asyncIterator](){}})"), AsyncIterable)
+        self.assertNotIsInstance(run_js("({[Symbol.asyncIterator](){}})"), JsIterable)
+        assert issubclass(JsAsyncIterable, AsyncIterable)
+
+        # With only a next method, we can't tell whether it is a sync or an
+        # async iterator so we treat it as both.
+        self.assertIsInstance(run_js("({next(){}})"), JsAsyncIterator)
+        self.assertIsInstance(run_js("({next(){}})"), AsyncIterator)
+        assert issubclass(JsAsyncIterator, AsyncIterator)
+        self.assertIsInstance(
+            run_js("({next(){}, [Symbol.asyncIterator](){}})"), JsAsyncIterator
+        )
+        self.assertNotIsInstance(
+            run_js("({next(){}, [Symbol.asyncIterator](){}})"), JsIterator
+        )
+        self.assertNotIsInstance(
+            run_js("({next(){}, [Symbol.iterator](){}})"), JsAsyncIterator
+        )
+
         buf = run_js("new Uint8Array(4)")
         self.assertIsInstance(buf, JsBuffer)
         self.assertIsInstance(buf, JsTypedArray)
@@ -1075,6 +1144,94 @@ class JsProxyTest(TestCase):
         self.assertFalse(run_js("new Uint8Array(0)"))
         self.assertTrue(a)
 
+    def test_jsproxy_await(self):
+        # We can't let the event loop run from here, but we can check that
+        # awaiting a JavaScript promise suspends on a pending Future.
+        p = run_js("[Promise.resolve(7)]")[0]
+        self.assertIsInstance(p, JsPromise)
+
+        async def f():
+            return await p
+
+        c = f()
+        fut = c.send(None)
+        self.assertIsInstance(fut, PyodideFuture)
+        self.assertFalse(fut.done())
+        c.close()
+
+        # A thenable that isn't a Promise works too (Promise.resolve adopts it)
+        t = run_js("[{then(resolve, reject) { resolve(3); }}]")[0]
+        self.assertIsInstance(t, JsPromise)
+
+        async def g():
+            return await t
+
+        c = g()
+        self.assertFalse(c.send(None).done())
+        c.close()
+
+    def test_jsproxy_call_returns_promise(self):
+        # Calling a JavaScript function that returns a promise returns a
+        # Future. Its arguments are not destroyed until the promise settles.
+        d = {}
+        fut = run_js("async (x) => { globalThis.x = x; return 7; }")(d)
+        self.assertIsInstance(fut, PyodideFuture)
+        self.assertFalse(fut.done())
+        self.assertEqual(run_js("x.toString()"), "{}")
+        run_js("delete globalThis.x")
+
+    def test_jsproxy_then(self):
+        p = run_js("[Promise.resolve(7)]")[0]
+        results = []
+        p2 = p.then(results.append)
+        self.assertIsInstance(p2, JsPromise)
+        self.assertIsInstance(p.catch(results.append), JsPromise)
+        self.assertIsInstance(p.finally_(lambda: None), JsPromise)
+        # Nothing has happened yet, the handlers run on the event loop.
+        self.assertEqual(results, [])
+
+    def test_jsproxy_async_generator_methods(self):
+        g = run_js("(async function*(){ yield 1; })()")
+        self.assertIsInstance(g.asend(None), PyodideFuture)
+        self.assertIsInstance(g.athrow(ValueError()), PyodideFuture)
+        self.assertIsInstance(g.aclose(), PyodideFuture)
+        self.assertIsInstance(anext(g), PyodideFuture)
+        self.assertIs(aiter(g), g)
+        with self.assertRaisesRegex(TypeError, "not iterable"):
+            iter(g)
+
+        # A sync generator doesn't have the async methods
+        s = run_js("(function*(){ yield 1; })()")
+        self.assertFalse(hasattr(s, "asend"))
+        self.assertFalse(hasattr(s, "__anext__"))
+        # And calling next() on an async iterator from a sync context fails
+        # with a helpful message.
+        with self.assertRaisesRegex(TypeError, "use anext"):
+            next(run_js("({next(){ return Promise.resolve({done: false}); }})"))
+
+    def test_jsproxy_async_context_manager_methods(self):
+        o = run_js("({ [Symbol.asyncDispose]() {} })")
+        self.assertTrue(hasattr(o, "__aenter__"))
+        self.assertTrue(hasattr(o, "__aexit__"))
+        fut = o.__aenter__()
+        self.assertIsInstance(fut, PyodideFuture)
+        self.assertTrue(fut.done())
+        self.assertIs(fut.result(), o)
+        self.assertIsInstance(o.__aexit__(None, None, None), PyodideFuture)
+        self.assertFalse(hasattr(run_js("({})"), "__aenter__"))
+
+    def test_create_once_callable(self):
+        calls = []
+        f = create_once_callable(calls.append)
+        self.assertIsInstance(f, JsCallable)
+        run_js("(f) => f(7)")(f)
+        self.assertEqual(calls, [7])
+        with self.assertRaisesRegex(JsException, "OnceProxy can only be called once"):
+            run_js("(f) => f(8)")(f)
+        g = create_once_callable(calls.append)
+        g.destroy()
+        with self.assertRaisesRegex(JsException, "already been destroyed"):
+            g.destroy()
 
 
 class PyProxyTest(TestCase):
@@ -2128,3 +2285,58 @@ class PyProxyTest(TestCase):
             to_js(memoryview(array("i", range(6))).cast("B").cast("i", (2, 3)))
         )
         self.assertEqual(res.to_py(), [[0, 1, 2], [3, 4, 5]])
+
+    def test_pyproxy_awaitable(self):
+        async def f():
+            return 1
+
+        c = f()
+        info = run_js(
+            """
+            (c) => [typeof c.then, typeof c.catch, typeof c.finally,
+                    c instanceof Promise]
+            """
+        )(c)
+        self.assertEqual(info.to_py(), ["function", "function", "function", False])
+        c.close()
+        # Non awaitables don't have then
+        self.assertEqual(run_js("(x) => typeof x.then")({}), "undefined")
+
+        # A legacy generator based coroutine is awaitable too
+        import types
+
+        @types.coroutine
+        def g():
+            yield
+
+        self.assertEqual(run_js("(x) => typeof x.then")(g()), "function")
+
+        def h():
+            yield
+
+        self.assertEqual(run_js("(x) => typeof x.then")(h()), "undefined")
+
+    def test_pyproxy_async_iter_methods(self):
+        async def agen():
+            yield 1
+
+        a = agen()
+        info = run_js(
+            """
+            (a) => [typeof a[Symbol.asyncIterator], typeof a.next, typeof a.throw,
+                    typeof a.return, typeof a[Symbol.iterator]]
+            """
+        )(a)
+        self.assertEqual(
+            info.to_py(), ["function", "function", "function", "function", "undefined"]
+        )
+
+        class A:
+            def __aiter__(self):
+                return agen()
+
+        info = run_js("(a) => [typeof a[Symbol.asyncIterator], typeof a.next]")(A())
+        self.assertEqual(info.to_py(), ["function", "undefined"])
+        # The result of next() is a promise
+        self.assertTrue(run_js("(a) => a.next() instanceof Promise")(agen()))
+

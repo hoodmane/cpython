@@ -37,6 +37,12 @@ You can run the browser smoke test with:
 ```shell
 ./Platforms/emscripten/browser_test/run_test.sh
 ```
+The asynchronous parts of the JavaScript foreign function interface (promises,
+async iteration, the event loop) need the JavaScript event loop to turn, so they
+are tested from JavaScript with node's builtin test runner:
+```shell
+node --test 'Platforms/emscripten/node_test/*.test.mjs'
+```
 
 ### The Web Example
 
@@ -113,8 +119,10 @@ await createEmscriptenModule({
 #### Network stack
 
 - Python's socket module does not work with Emscripten's emulated POSIX
-  sockets yet. Network modules like ``asyncio``, ``urllib``, ``selectors``,
-  etc. are not available.
+  sockets yet. Network modules like ``urllib``, ``selectors``, etc. are not
+  available. The default ``asyncio`` event loop is not available either, use
+  ``pyodide.webloop.WebLoop`` which schedules callbacks on the JavaScript
+  event loop.
 - Only ``AF_INET`` and ``AF_INET6`` with ``SOCK_STREAM`` (TCP) or
   ``SOCK_DGRAM`` (UDP) are available. ``AF_UNIX`` is not supported.
 - ``socketpair`` does not work.

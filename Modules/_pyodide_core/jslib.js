@@ -1,6 +1,11 @@
 const API = {};
 Module.API = API;
 
+// Set to true by Py_AtExit when the interpreter is finalized. JavaScript
+// callbacks (promise handlers, setTimeout callbacks scheduled by the WebLoop,
+// finalizers) may fire after that; they must not call into Python any more.
+API.finalized = false;
+
 const getTypeTag = (x) => {
   try {
     return Object.prototype.toString.call(x);
@@ -49,6 +54,14 @@ function bufferAsUint8Array(arg) {
     return new Uint8Array(arg);
   }
 }
+
+const isPromise = (obj) => {
+  try {
+    return typeof obj?.then === "function";
+  } catch (e) {
+    return false;
+  }
+};
 
 function hexStringToUTF8Array(hex) {
   const bytes = [];

@@ -2442,9 +2442,14 @@ AS_CASE([$ac_sys_system],
 
     dnl Include file system support
     AS_VAR_APPEND([LINKFORSHARED], [" -sFORCE_FILESYSTEM -lidbfs.js -lnodefs.js -lproxyfs.js -lworkerfs.js"])
-    AS_VAR_APPEND([LINKFORSHARED], [" -sEXPORTED_RUNTIME_METHODS=FS,callMain,ENV,HEAPU32,TTY,ERRNO_CODES"])
+    AS_VAR_APPEND([LINKFORSHARED], [" -sEXPORTED_RUNTIME_METHODS=FS,callMain,ENV,HEAPU32,TTY,ERRNO_CODES,stringToNewUTF8"])
     AS_VAR_APPEND([LINKFORSHARED], [" -sEXPORTED_FUNCTIONS="])
     AS_VAR_APPEND([LINKFORSHARED], ["_main,"])
+    dnl Embedding API, used by Platforms/emscripten/node_test
+    AS_VAR_APPEND([LINKFORSHARED], ["_Py_InitializeEx,"])
+    AS_VAR_APPEND([LINKFORSHARED], ["_Py_FinalizeEx,"])
+    AS_VAR_APPEND([LINKFORSHARED], ["_PyRun_SimpleString,"])
+    AS_VAR_APPEND([LINKFORSHARED], ["_free,"])
     AS_VAR_APPEND([LINKFORSHARED], ["_Py_Version,"])
     AS_VAR_APPEND([LINKFORSHARED], ["_PyGILState_GetThisThreadState,"])
     AS_VAR_APPEND([LINKFORSHARED], ["_PyLong_FromDouble,"])
@@ -2456,6 +2461,7 @@ AS_CASE([$ac_sys_system],
     AS_VAR_APPEND([LINKFORSHARED], ["_PyLongWriter_Finish,"])
     AS_VAR_APPEND([LINKFORSHARED], ["_PyObject_Size,"])
     AS_VAR_APPEND([LINKFORSHARED], ["_PyObject_GetIter,"])
+    AS_VAR_APPEND([LINKFORSHARED], ["_PyObject_GetAIter,"])
     AS_VAR_APPEND([LINKFORSHARED], ["_PyDict_New,"])
     AS_VAR_APPEND([LINKFORSHARED], ["_PyDict_SetItem,"])
     AS_VAR_APPEND([LINKFORSHARED], ["_PyList_New,"])

@@ -1552,11 +1552,13 @@ extern "C" {
     INIT_ID(_find_and_load_lazy_submodule), \
     INIT_ID(_fix_up_module), \
     INIT_ID(_flags_), \
+    INIT_ID(_get_future_resolvers), \
     INIT_ID(_get_sourcefile), \
     INIT_ID(_handle_fromlist), \
     INIT_ID(_initializing), \
     INIT_ID(_internal_use), \
     INIT_ID(_io), \
+    INIT_ID(_is_coroutine_marker), \
     INIT_ID(_is_text_encoding), \
     INIT_ID(_isatty_open_only), \
     INIT_ID(_js_type_flags), \
@@ -1698,6 +1700,7 @@ extern "C" {
     INIT_ID(coro), \
     INIT_ID(count), \
     INIT_ID(covariant), \
+    INIT_ID(create_future), \
     INIT_ID(create_pyproxies), \
     INIT_ID(ctx), \
     INIT_ID(cwd), \
@@ -1749,6 +1752,7 @@ extern "C" {
     INIT_ID(end_lineno), \
     INIT_ID(end_offset), \
     INIT_ID(endpos), \
+    INIT_ID(ensure_future), \
     INIT_ID(entrypoint), \
     INIT_ID(env), \
     INIT_ID(error_rate), \
@@ -1814,6 +1818,7 @@ extern "C" {
     INIT_ID(generation), \
     INIT_ID(get), \
     INIT_ID(get_debug), \
+    INIT_ID(get_event_loop), \
     INIT_ID(get_loop), \
     INIT_ID(get_source), \
     INIT_ID(getattr), \
@@ -1870,6 +1875,7 @@ extern "C" {
     INIT_ID(is_running), \
     INIT_ID(is_struct), \
     INIT_ID(isatty), \
+    INIT_ID(iscoroutinefunction), \
     INIT_ID(isinstance), \
     INIT_ID(isoformat), \
     INIT_ID(isolation_level), \
@@ -1983,8 +1989,10 @@ extern "C" {
     INIT_ID(offset_src), \
     INIT_ID(on_type_read), \
     INIT_ID(onceregistry), \
+    INIT_ID(onfulfilled), \
     INIT_ID(only_active_thread), \
     INIT_ID(only_keys), \
+    INIT_ID(onrejected), \
     INIT_ID(op), \
     INIT_ID(oparg), \
     INIT_ID(opcode), \
@@ -2070,6 +2078,7 @@ extern "C" {
     INIT_ID(reset), \
     INIT_ID(resetids), \
     INIT_ID(restrict), \
+    INIT_ID(result), \
     INIT_ID(return), \
     INIT_ID(reverse), \
     INIT_ID(reversed), \
@@ -2094,6 +2103,8 @@ extern "C" {
     INIT_ID(server_hostname), \
     INIT_ID(server_side), \
     INIT_ID(session), \
+    INIT_ID(set_exception), \
+    INIT_ID(set_result), \
     INIT_ID(setpgroup), \
     INIT_ID(setsid), \
     INIT_ID(setsigdef), \
