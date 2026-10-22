@@ -45,6 +45,24 @@ class RootStackTests(unittest.TestCase):
         self.assertEqual(_testcapi.execstack_root_state(), RUNNING)
 
     @threading_helper.requires_working_threading()
+    def test_running_stack_seen_from_another_thread(self):
+        # Our root is RUNNING. Its live state is in our thread state, which
+        # another thread must not read: GetFrame reports no frame there.
+        cap = _testcapi.execstack_hold_current()
+        seen = []
+
+        def body():
+            seen.append(_testcapi.execstack_held_state(cap))
+
+        t = threading.Thread(target=body)
+        t.start()
+        t.join()
+        self.assertEqual(seen, [(RUNNING, None)])
+        # From our own thread it is our current frame.
+        state, frame = _testcapi.execstack_held_state(cap)
+        self.assertEqual((state, frame), (RUNNING, sys._getframe()))
+
+    @threading_helper.requires_working_threading()
     def test_root_outlives_thread(self):
         holder = []
 

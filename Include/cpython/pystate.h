@@ -395,13 +395,15 @@ PyAPI_FUNC(PyUnstable_ExecStack_State) PyUnstable_ExecStack_GetState(
 // Return a new reference to the topmost complete frame of the stack, or NULL
 // (with the error indicator cleared) if there is none. Same contract as
 // PyThreadState_GetFrame(). Safe to call on a SUSPENDED stack; f_back on the
-// result is also safe.
+// result is also safe. A RUNNING stack's frames live in its thread state and
+// can only be read from that thread; from any other thread this returns NULL.
 PyAPI_FUNC(PyFrameObject *) PyUnstable_ExecStack_GetFrame(
     PyUnstable_ExecStack *stack);
 
 // Contextvars context of the stack. GetContext returns a new reference or
-// NULL. SetContext accepts NULL or a PyContext. For the RUNNING stack of the
-// current thread these operate on the thread state.
+// NULL. SetContext accepts NULL or a PyContext. For a RUNNING stack these
+// operate on its thread state and must be called from that thread: GetContext
+// returns NULL and SetContext fails with SystemError from any other thread.
 PyAPI_FUNC(PyObject *) PyUnstable_ExecStack_GetContext(
     PyUnstable_ExecStack *stack);
 PyAPI_FUNC(int) PyUnstable_ExecStack_SetContext(

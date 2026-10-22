@@ -49,10 +49,10 @@ typedef struct {
 } execstack_link;
 
 struct _PyExecStack {
-    PyThreadState *tstate;   // thread this stack runs/ran on, NULL if NEW.
-                             // Only dereferenced while RUNNING: a suspended
-                             // stack may outlive its thread.
-    uint64_t tstate_id;      // tstate->id, for the ownership check
+    uint64_t tstate_id;      // id of the thread this stack runs/ran on,
+                             // 0 if NEW. An id rather than a pointer: a
+                             // suspended stack may outlive its thread and
+                             // the address could be reused.
     Py_ssize_t refs;         // owners: New()/GetExecStack() callers, tstate
     int state;               // PyUnstable_ExecStack_State
     int is_root;             // created for a thread's original stack
@@ -108,6 +108,22 @@ is_entry_frame(_PyInterpreterFrame *frame)
     return frame->owner >= FRAME_OWNED_BY_INTERPRETER;
 }
 
+// The thread state a RUNNING stack's live fields are in. Only the thread the
+// stack is running on may look at them (anything else would be a race), so
+// this fails if called from another thread.
+static PyThreadState *
+running_tstate(PyUnstable_ExecStack *stack)
+{
+    assert(stack->state == PyUnstable_ExecStack_RUNNING);
+    PyThreadState *tstate = _PyThreadState_GET();
+    if (tstate == NULL || tstate->id != stack->tstate_id) {
+        PyErr_SetString(PyExc_SystemError,
+                        "execution stack is running on another thread");
+        return NULL;
+    }
+    return tstate;
+}
+
 static PyUnstable_ExecStack *
 execstack_alloc(void)
 {
@@ -150,7 +166,6 @@ get_running(PyThreadState *tstate)
     if (root == NULL) {
         return NULL;
     }
-    root->tstate = tstate;
     root->tstate_id = tstate->id;
     root->is_root = 1;
     root->state = PyUnstable_ExecStack_RUNNING;
@@ -583,9 +598,7 @@ check_resume_target(PyThreadState *tstate, PyUnstable_ExecStack *target)
                         "execution stack has been cleared");
         return -1;
     }
-    if (target->tstate != NULL && target->tstate_id != tstate->id) {
-        // Compare ids, not pointers: a suspended stack can outlive its
-        // thread and a new thread state may reuse the address.
+    if (target->tstate_id != 0 && target->tstate_id != tstate->id) {
         PyErr_SetString(PyExc_SystemError,
                         "execution stack belongs to a different thread");
         return -1;
@@ -644,7 +657,6 @@ PyUnstable_ExecStack_Resume(PyThreadState *tstate, PyUnstable_ExecStack *target)
     }
 
     if (target->state == PyUnstable_ExecStack_NEW) {
-        target->tstate = tstate;
         target->tstate_id = tstate->id;
         init_fresh_state(tstate, target);
     }
@@ -689,8 +701,14 @@ PyUnstable_ExecStack_GetFrame(PyUnstable_ExecStack *stack)
 {
     _PyInterpreterFrame *frame;
     switch (stack->state) {
-    case PyUnstable_ExecStack_RUNNING:
-        return PyThreadState_GetFrame(stack->tstate);
+    case PyUnstable_ExecStack_RUNNING: {
+        PyThreadState *tstate = running_tstate(stack);
+        if (tstate == NULL) {
+            PyErr_Clear();
+            return NULL;
+        }
+        return PyThreadState_GetFrame(tstate);
+    }
     case PyUnstable_ExecStack_SUSPENDED:
         frame = _PyFrame_GetFirstComplete(stack->top_frame);
         break;
@@ -712,7 +730,12 @@ PyObject *
 PyUnstable_ExecStack_GetContext(PyUnstable_ExecStack *stack)
 {
     if (stack->state == PyUnstable_ExecStack_RUNNING) {
-        return Py_XNewRef(stack->tstate->context);
+        PyThreadState *tstate = running_tstate(stack);
+        if (tstate == NULL) {
+            PyErr_Clear();
+            return NULL;
+        }
+        return Py_XNewRef(tstate->context);
     }
     return Py_XNewRef(stack->context);
 }
@@ -726,11 +749,8 @@ PyUnstable_ExecStack_SetContext(PyUnstable_ExecStack *stack, PyObject *context)
         return -1;
     }
     if (stack->state == PyUnstable_ExecStack_RUNNING) {
-        PyThreadState *tstate = stack->tstate;
-        if (tstate != _PyThreadState_GET()) {
-            PyErr_SetString(PyExc_SystemError,
-                            "cannot set the context of a stack running on "
-                            "another thread");
+        PyThreadState *tstate = running_tstate(stack);
+        if (tstate == NULL) {
             return -1;
         }
         Py_XSETREF(tstate->context, Py_XNewRef(context));
@@ -831,7 +851,6 @@ _PyExecStack_ClearThreadState(PyThreadState *tstate)
         // by PyThreadState_Clear. Leave the object empty and detached so
         // that any remaining owner can still inspect and free it.
         running->state = PyUnstable_ExecStack_SUSPENDED;
-        running->tstate = NULL;
         running->cleared = 1;
         running->current_frame = NULL;
         running->top_frame = NULL;
@@ -845,7 +864,6 @@ _PyExecStack_ClearThreadState(PyThreadState *tstate)
         // The thread is exiting while a user stack is running. The root
         // stack is suspended and owns the thread's original frames.
         clear_state(root);
-        root->tstate = NULL;
     }
     // Drop the thread state's reference to the root.
     assert(root->refs > 0);
