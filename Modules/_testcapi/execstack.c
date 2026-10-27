@@ -70,10 +70,9 @@ static _Thread_local FiberObject *switch_from = NULL;
 static _Thread_local FiberObject *switch_to = NULL;
 static _Thread_local ucontext_t root_ctx;
 static _Thread_local ucontext_t trampoline_ctx;
-// The execution stack object for the thread's own (root) stack. A library
-// creates this itself with PyUnstable_ExecStack_New(); it adopts the thread's
-// live state on the first Suspend(). Leaked when the thread exits (this is a
-// test; greenlet keeps it in its main greenlet).
+// The execution stack object for the thread's own (root) stack, created with
+// PyUnstable_ExecStack_Adopt(). Leaked when the thread exits (this is a test;
+// greenlet keeps it in its main greenlet).
 static _Thread_local PyUnstable_ExecStack *root_exec_stack = NULL;
 
 static inline char *
@@ -200,7 +199,7 @@ jump(FiberObject *to)
     }
 
     if (root_exec_stack == NULL) {
-        root_exec_stack = PyUnstable_ExecStack_New(NULL);
+        root_exec_stack = PyUnstable_ExecStack_Adopt(tstate);
         if (root_exec_stack == NULL) {
             return -1;
         }
@@ -506,8 +505,8 @@ static PyType_Spec fiber_spec = {
 
 
 /* Tests of the API on the thread's own stack, without any C stack switching:
- * a NEW stack adopts the running state, and we can Suspend()/Resume() it in
- * place. The "root" here is a stack object we create and keep in a capsule. */
+ * Adopt() the running state, Suspend()/Resume() it in place, misuse. The
+ * "root" here is a stack object we create and keep in a capsule. */
 
 static void
 execstack_capsule_destructor(PyObject *capsule)
@@ -529,20 +528,11 @@ capsule_for(PyUnstable_ExecStack *stack)
     return capsule;
 }
 
-// New stack that adopts the current thread's running state: Suspend() it,
-// then Resume() it straight away, leaving it RUNNING and bound to us.
 static PyObject *
 execstack_adopt_current(PyObject *self, PyObject *Py_UNUSED(args))
 {
-    PyThreadState *tstate = PyThreadState_Get();
-    PyUnstable_ExecStack *stack = PyUnstable_ExecStack_New(NULL);
+    PyUnstable_ExecStack *stack = PyUnstable_ExecStack_Adopt(PyThreadState_Get());
     if (stack == NULL) {
-        return NULL;
-    }
-    if (PyUnstable_ExecStack_Suspend(tstate, stack) < 0
-        || PyUnstable_ExecStack_Resume(tstate, stack) < 0)
-    {
-        PyUnstable_ExecStack_Free(stack);
         return NULL;
     }
     return capsule_for(stack);
@@ -596,11 +586,20 @@ execstack_root_misuse(PyObject *self, PyObject *capsule)
     if (PyUnstable_ExecStack_Resume(tstate, root) < 0) {
         return NULL;
     }
-    // A cleared stack can't be resumed.
+    // A NEW stack can't be suspended: only Resume() starts it.
     PyUnstable_ExecStack *dead = PyUnstable_ExecStack_New(NULL);
     if (dead == NULL) {
         return NULL;
     }
+    if (PyUnstable_ExecStack_Suspend(tstate, dead) == 0) {
+        PyErr_SetString(PyExc_AssertionError, "Suspend(new) succeeded");
+        return NULL;
+    }
+    if (!PyErr_ExceptionMatches(PyExc_SystemError)) {
+        return NULL;
+    }
+    PyErr_Clear();
+    // A cleared stack can't be resumed.
     if (PyUnstable_ExecStack_Clear(dead) < 0) {
         PyUnstable_ExecStack_Free(dead);
         return NULL;

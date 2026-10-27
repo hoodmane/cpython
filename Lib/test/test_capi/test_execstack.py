@@ -26,8 +26,8 @@ SUSPENDED = _testcapi.EXECSTACK_SUSPENDED
 
 
 class RootStackTests(unittest.TestCase):
-    """The API without any C stack switching: a NEW stack adopting the
-    thread's running state, inspected from this and other threads."""
+    """The API without any C stack switching: Adopt() of the thread's
+    running state, inspected from this and other threads."""
 
     def test_adopted_stack_is_running(self):
         cap = _testcapi.execstack_adopt_current()

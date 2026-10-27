@@ -327,10 +327,10 @@ PyAPI_FUNC(void) PyUnstable_ThreadState_ResetStackProtection(
 
    The thread state does not track execution stacks itself. The library
    creates one with PyUnstable_ExecStack_New() for every coroutine and one
-   more for the thread's original stack, and names them explicitly when
-   switching. A stack is NEW until it first runs, RUNNING while its state is
-   live in the thread state, and SUSPENDED while its state is saved in the
-   stack object.
+   with PyUnstable_ExecStack_Adopt() for the thread's original stack, and
+   names them explicitly when switching. A stack is NEW until it first runs,
+   RUNNING while its state is live in the thread state, and SUSPENDED while
+   its state is saved in the stack object.
 
    The error indicator (tstate->current_exception) is *not* part of an
    execution stack: it travels with control across a switch, which is how a
@@ -351,10 +351,14 @@ typedef enum {
 // (may be NULL). Returns NULL with an exception set on failure.
 PyAPI_FUNC(PyUnstable_ExecStack *) PyUnstable_ExecStack_New(PyObject *context);
 
+// Create a RUNNING stack standing for whatever is executing on tstate right
+// now (typically called once per thread, for the thread's original stack).
+// Does not touch the thread state. Returns NULL with MemoryError on failure.
+PyAPI_FUNC(PyUnstable_ExecStack *) PyUnstable_ExecStack_Adopt(
+    PyThreadState *tstate);
+
 // Move the per-stack state out of tstate into `stack` and mark it SUSPENDED.
-// `stack` must be the stack that is RUNNING on tstate, or a NEW stack, which
-// then adopts whatever is running (this is how the thread's original stack
-// gets an object: create one with New() and pass it to the first Suspend()).
+// `stack` must be the stack that is RUNNING on tstate.
 // Returns -1 with an exception set and the thread state unchanged on failure.
 // Must be called while attached to tstate and while the C stack of the
 // running code is still intact: the interpreter reads the frames it keeps on

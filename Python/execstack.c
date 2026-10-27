@@ -3,13 +3,13 @@
  * See the comment block in Include/cpython/pystate.h for the API contract.
  *
  * The thread state knows nothing about execution stacks. A library creates
- * one _PyExecStack per coroutine, plus one for the thread's original stack,
- * and tells us which is which: PyUnstable_ExecStack_Suspend(tstate, stack)
- * moves the per-stack fields of the thread state into `stack` (which must be
- * the one that is running, or a NEW stack adopting the current state) and
- * PyUnstable_ExecStack_Resume(tstate, target) loads `target`. While a stack
- * is RUNNING its saved fields are meaningless: the live values are in the
- * thread state.
+ * one _PyExecStack per coroutine with PyUnstable_ExecStack_New(), one for
+ * the thread's original stack with PyUnstable_ExecStack_Adopt(), and tells
+ * us which is which: PyUnstable_ExecStack_Suspend(tstate, stack) moves the
+ * per-stack fields of the thread state into `stack` (which must be the one
+ * that is running) and PyUnstable_ExecStack_Resume(tstate, target) loads
+ * `target`. While a stack is RUNNING its saved fields are meaningless: the
+ * live values are in the thread state.
  *
  * Which PyThreadState fields are per-stack is decided here and nowhere else.
  * When adding a field to PyThreadState or _PyThreadStateImpl, classify it:
@@ -541,6 +541,22 @@ PyUnstable_ExecStack_New(PyObject *context)
     return stack;
 }
 
+PyUnstable_ExecStack *
+PyUnstable_ExecStack_Adopt(PyThreadState *tstate)
+{
+    assert(tstate != NULL);
+    assert(tstate == _PyThreadState_GET());
+    // Nothing to save: the state of what is running stays live in tstate
+    // until the first Suspend() of this stack.
+    PyUnstable_ExecStack *stack = execstack_alloc();
+    if (stack == NULL) {
+        return NULL;
+    }
+    stack->tstate_id = tstate->id;
+    stack->state = PyUnstable_ExecStack_RUNNING;
+    return stack;
+}
+
 PyUnstable_ExecStack_State
 PyUnstable_ExecStack_GetState(PyUnstable_ExecStack *stack)
 {
@@ -581,25 +597,14 @@ PyUnstable_ExecStack_Suspend(PyThreadState *tstate, PyUnstable_ExecStack *stack)
                         "execution stack has been cleared");
         return -1;
     }
-    switch (stack->state) {
-    case PyUnstable_ExecStack_NEW:
-        // Adopt the current state: this becomes the stack for whatever was
-        // running on the thread so far (typically the thread's original
-        // stack). Its own context, if New() was given one, is dropped in
-        // favour of the live one.
-        Py_CLEAR(stack->context);
-        stack->tstate_id = tstate->id;
-        break;
-    case PyUnstable_ExecStack_RUNNING:
-        if (stack->tstate_id != tstate->id) {
-            PyErr_SetString(PyExc_SystemError,
-                            "execution stack is running on another thread");
-            return -1;
-        }
-        break;
-    default:
+    if (stack->state != PyUnstable_ExecStack_RUNNING) {
         PyErr_SetString(PyExc_SystemError,
                         "execution stack is not running");
+        return -1;
+    }
+    if (stack->tstate_id != tstate->id) {
+        PyErr_SetString(PyExc_SystemError,
+                        "execution stack is running on another thread");
         return -1;
     }
 
