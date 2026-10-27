@@ -367,10 +367,10 @@ fiber_get_frame(PyObject *op, void *Py_UNUSED(closure))
 }
 
 static PyObject *
-fiber_get_state(PyObject *op, void *Py_UNUSED(closure))
+fiber_get_running(PyObject *op, void *Py_UNUSED(closure))
 {
     FiberObject *self = (FiberObject *)op;
-    return PyLong_FromLong(PyUnstable_ExecStack_GetState(self->stack));
+    return PyBool_FromLong(PyUnstable_ExecStack_IsRunning(self->stack));
 }
 
 // How many bytes of C stack are spilled to the heap right now: non-zero
@@ -445,7 +445,7 @@ fiber_clear(PyObject *op)
     Py_CLEAR(self->run);
     Py_CLEAR(self->transfer);
     if (self->stack != NULL
-        && PyUnstable_ExecStack_GetState(self->stack) != PyUnstable_ExecStack_RUNNING)
+        && !PyUnstable_ExecStack_IsRunning(self->stack))
     {
         if (PyUnstable_ExecStack_Clear(self->stack) < 0) {
             PyErr_FormatUnraisable("Exception ignored in fiber_clear");
@@ -478,7 +478,7 @@ static PyMethodDef fiber_methods[] = {
 
 static PyGetSetDef fiber_getset[] = {
     {"frame", fiber_get_frame, NULL, NULL, NULL},
-    {"state", fiber_get_state, NULL, NULL, NULL},
+    {"running", fiber_get_running, NULL, NULL, NULL},
     {"saved_stack_size", fiber_get_saved_stack_size, NULL, NULL, NULL},
     {"context", fiber_get_context, fiber_set_context, NULL, NULL},
     {NULL},
@@ -546,7 +546,7 @@ execstack_held_state(PyObject *self, PyObject *capsule)
         return NULL;
     }
     PyFrameObject *frame = PyUnstable_ExecStack_GetFrame(stack);
-    return Py_BuildValue("(iN)", PyUnstable_ExecStack_GetState(stack),
+    return Py_BuildValue("(ON)", PyUnstable_ExecStack_IsRunning(stack) ? Py_True : Py_False,
                          frame ? (PyObject *)frame : Py_NewRef(Py_None));
 }
 
@@ -639,12 +639,6 @@ int
 _PyTestCapi_Init_ExecStack(PyObject *m)
 {
     if (PyModule_AddFunctions(m, test_methods) < 0) {
-        return -1;
-    }
-    if (PyModule_AddIntConstant(m, "EXECSTACK_NEW", PyUnstable_ExecStack_NEW) < 0
-        || PyModule_AddIntConstant(m, "EXECSTACK_RUNNING", PyUnstable_ExecStack_RUNNING) < 0
-        || PyModule_AddIntConstant(m, "EXECSTACK_SUSPENDED", PyUnstable_ExecStack_SUSPENDED) < 0)
-    {
         return -1;
     }
 #ifdef HAVE_FIBER_TEST

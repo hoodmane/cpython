@@ -20,10 +20,6 @@ from test.support import import_helper, threading_helper, requires_jit_enabled
 _testcapi = import_helper.import_module('_testcapi')
 _testinternalcapi = import_helper.import_module('_testinternalcapi')
 
-NEW = _testcapi.EXECSTACK_NEW
-RUNNING = _testcapi.EXECSTACK_RUNNING
-SUSPENDED = _testcapi.EXECSTACK_SUSPENDED
-
 
 class RootStackTests(unittest.TestCase):
     """The API without any C stack switching: Adopt() of the thread's
@@ -31,16 +27,15 @@ class RootStackTests(unittest.TestCase):
 
     def test_adopted_stack_is_running(self):
         cap = _testcapi.execstack_adopt_current()
-        state, frame = _testcapi.execstack_held_state(cap)
-        self.assertEqual(state, RUNNING)
+        running, frame = _testcapi.execstack_held_state(cap)
+        self.assertTrue(running)
         self.assertIs(frame, sys._getframe())
 
     def test_root_misuse(self):
         cap = _testcapi.execstack_adopt_current()
         _testcapi.execstack_root_misuse(cap)
         # Still running and intact afterwards.
-        state, frame = _testcapi.execstack_held_state(cap)
-        self.assertEqual((state, frame), (RUNNING, sys._getframe()))
+        self.assertEqual(_testcapi.execstack_held_state(cap), (True, sys._getframe()))
 
     @threading_helper.requires_working_threading()
     def test_running_stack_seen_from_another_thread(self):
@@ -55,7 +50,7 @@ class RootStackTests(unittest.TestCase):
         t = threading.Thread(target=body)
         t.start()
         t.join()
-        self.assertEqual(seen, [(RUNNING, None)])
+        self.assertEqual(seen, [(True, None)])
 
     @threading_helper.requires_working_threading()
     def test_root_outlives_thread(self):
@@ -70,8 +65,7 @@ class RootStackTests(unittest.TestCase):
         cap = holder.pop()
         # The thread is gone. Nothing was saved in the stack (it was RUNNING
         # when the thread exited), and the live state went with the thread.
-        state, frame = _testcapi.execstack_held_state(cap)
-        self.assertEqual((state, frame), (RUNNING, None))
+        self.assertEqual(_testcapi.execstack_held_state(cap), (True, None))
         del cap   # freeing it is fine
 
     def test_new_rejects_non_context(self):
@@ -107,10 +101,10 @@ class FiberTests(unittest.TestCase):
             return 'ret'
 
         f = self.Fiber(run)
-        self.assertEqual(f.state, NEW)
+        self.assertFalse(f.running)
         self.assertIsNone(f.frame)
         self.assertEqual(f.switch(1), 'a')
-        self.assertEqual(f.state, SUSPENDED)
+        self.assertFalse(f.running)
         self.assertEqual(f.switch(2), 'b')
         self.assertEqual(f.switch(3), 'ret')
         self.assertEqual(log, [('start', 1), ('resumed', 2), ('resumed', 3)])
@@ -353,7 +347,7 @@ class FiberTests(unittest.TestCase):
         f.switch()
         with self.assertRaises(ZeroDivisionError):
             f.throw(ZeroDivisionError())
-        self.assertEqual(f.state, SUSPENDED)
+        self.assertFalse(f.running)
         with self.assertRaises(ValueError):
             f.switch()  # finished
 
@@ -650,7 +644,7 @@ class FiberTests(unittest.TestCase):
         t.start()
         t.join()
         f = holder.pop()
-        self.assertEqual(f.state, SUSPENDED)
+        self.assertFalse(f.running)
         # The thread state, and the base_frame sentinel embedded in it, are
         # gone. Walking the suspended chain must not touch them.
         self.assertEqual(self.frame_names(f.frame), ['run'])

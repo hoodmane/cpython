@@ -328,9 +328,9 @@ PyAPI_FUNC(void) PyUnstable_ThreadState_ResetStackProtection(
    The thread state does not track execution stacks itself. The library
    creates one with PyUnstable_ExecStack_New() for every coroutine and one
    with PyUnstable_ExecStack_Adopt() for the thread's original stack, and
-   names them explicitly when switching. A stack is NEW until it first runs,
-   RUNNING while its state is live in the thread state, and SUSPENDED while
-   its state is saved in the stack object.
+   names them explicitly when switching. A stack is either running (its
+   state is live in the thread state) or not (its state, if it has any yet,
+   is saved in the stack object).
 
    The error indicator (tstate->current_exception) is *not* part of an
    execution stack: it travels with control across a switch, which is how a
@@ -341,24 +341,19 @@ PyAPI_FUNC(void) PyUnstable_ThreadState_ResetStackProtection(
 
 typedef struct _PyExecStack PyUnstable_ExecStack;
 
-typedef enum {
-    PyUnstable_ExecStack_NEW = 0,
-    PyUnstable_ExecStack_RUNNING = 1,
-    PyUnstable_ExecStack_SUSPENDED = 2,
-} PyUnstable_ExecStack_State;
-
-// Create a NEW stack with no frames and the given contextvars context
-// (may be NULL). Returns NULL with an exception set on failure.
+// Create a stack with no frames and the given contextvars context (may be
+// NULL). It is not running; the first Resume() into it starts it with an
+// empty frame chain. Returns NULL with an exception set on failure.
 PyAPI_FUNC(PyUnstable_ExecStack *) PyUnstable_ExecStack_New(PyObject *context);
 
-// Create a RUNNING stack standing for whatever is executing on tstate right
+// Create a running stack standing for whatever is executing on tstate right
 // now (typically called once per thread, for the thread's original stack).
 // Does not touch the thread state. Returns NULL with MemoryError on failure.
 PyAPI_FUNC(PyUnstable_ExecStack *) PyUnstable_ExecStack_Adopt(
     PyThreadState *tstate);
 
-// Move the per-stack state out of tstate into `stack` and mark it SUSPENDED.
-// `stack` must be the stack that is RUNNING on tstate.
+// Move the per-stack state out of tstate into `stack`, which must be the
+// stack that is running on tstate.
 // Returns -1 with an exception set and the thread state unchanged on failure.
 // Must be called while attached to tstate and while the C stack of the
 // running code is still intact: the interpreter reads the frames it keeps on
@@ -370,9 +365,9 @@ PyAPI_FUNC(int) PyUnstable_ExecStack_Suspend(
     PyUnstable_ExecStack *stack);
 
 // Install `target` as the running stack of tstate after a Suspend().
-// `target` must be NEW, or SUSPENDED and previously run on tstate. Must be
-// called once the C stack of `target` is in place. Returns -1 with
-// SystemError on misuse; cannot fail otherwise. Does not run Python code.
+// `target` must not be running and, if it has run before, must have run on
+// tstate. Must be called once the C stack of `target` is in place. Returns -1
+// with SystemError on misuse; cannot fail otherwise. Does not run Python code.
 PyAPI_FUNC(int) PyUnstable_ExecStack_Resume(
     PyThreadState *tstate,
     PyUnstable_ExecStack *target);
@@ -386,19 +381,21 @@ PyAPI_FUNC(int) PyUnstable_ExecStack_Switch(
     PyUnstable_ExecStack *current,
     PyUnstable_ExecStack *target);
 
-PyAPI_FUNC(PyUnstable_ExecStack_State) PyUnstable_ExecStack_GetState(
-    PyUnstable_ExecStack *stack);
+// 1 if the stack's state is live in a thread state, 0 if it is saved in the
+// stack object (or the stack has not run yet).
+PyAPI_FUNC(int) PyUnstable_ExecStack_IsRunning(PyUnstable_ExecStack *stack);
 
 // Return a new reference to the topmost complete frame of the stack, or NULL
 // (with the error indicator cleared) if there is none. Same contract as
-// PyThreadState_GetFrame(). Safe to call on a SUSPENDED stack; f_back on the
-// result is also safe. A RUNNING stack's frames live in its thread state and
-// can only be read from that thread; from any other thread this returns NULL.
+// PyThreadState_GetFrame(). Safe to call on a stack that is not running;
+// f_back on the result is also safe. A running stack's frames live in its
+// thread state and can only be read from that thread; from any other thread
+// this returns NULL.
 PyAPI_FUNC(PyFrameObject *) PyUnstable_ExecStack_GetFrame(
     PyUnstable_ExecStack *stack);
 
 // Contextvars context of the stack. GetContext returns a new reference or
-// NULL. SetContext accepts NULL or a PyContext. For a RUNNING stack these
+// NULL. SetContext accepts NULL or a PyContext. For a running stack these
 // operate on its thread state and must be called from that thread: GetContext
 // returns NULL and SetContext fails with SystemError from any other thread.
 PyAPI_FUNC(PyObject *) PyUnstable_ExecStack_GetContext(
@@ -407,8 +404,8 @@ PyAPI_FUNC(int) PyUnstable_ExecStack_SetContext(
     PyUnstable_ExecStack *stack,
     PyObject *context);
 
-// For the owner's tp_traverse. Visits the objects owned by a SUSPENDED (or
-// NEW) stack, including the contents of its frames.
+// For the owner's tp_traverse. Visits the objects owned by a stack that is
+// not running, including the contents of its frames.
 PyAPI_FUNC(int) PyUnstable_ExecStack_Traverse(
     PyUnstable_ExecStack *stack,
     visitproc visit,
@@ -416,10 +413,10 @@ PyAPI_FUNC(int) PyUnstable_ExecStack_Traverse(
 
 // For the owner's tp_clear. Release everything the stack owns, clearing any
 // suspended frames. The stack remains allocated but can no longer be switched
-// to. Returns -1 with SystemError if the stack is RUNNING on this thread.
+// to. Returns -1 with SystemError if the stack is running on this thread.
 PyAPI_FUNC(int) PyUnstable_ExecStack_Clear(PyUnstable_ExecStack *stack);
 
-// Clear (unless RUNNING, in which case the live state belongs to the thread)
+// Clear (unless running, in which case the live state belongs to the thread)
 // and deallocate. Stacks are not reference counted: the library owns each one.
 // A stack whose thread has exited can still be inspected, cleared and freed.
 PyAPI_FUNC(void) PyUnstable_ExecStack_Free(PyUnstable_ExecStack *stack);
