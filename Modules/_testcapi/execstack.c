@@ -70,6 +70,10 @@ static _Thread_local FiberObject *switch_from = NULL;
 static _Thread_local FiberObject *switch_to = NULL;
 static _Thread_local ucontext_t root_ctx;
 static _Thread_local ucontext_t trampoline_ctx;
+// The execution stack object for the thread's own (root) stack. A library
+// creates this itself with PyUnstable_ExecStack_New(); it adopts the thread's
+// live state on the first Suspend(). Leaked when the thread exits (this is a
+// test; greenlet keeps it in its main greenlet).
 static _Thread_local PyUnstable_ExecStack *root_exec_stack = NULL;
 
 static inline char *
@@ -195,13 +199,16 @@ jump(FiberObject *to)
         }
     }
 
-    // Save the Python side of our stack while our C stack is still intact.
-    PyUnstable_ExecStack *mine = PyUnstable_ExecStack_Suspend(tstate);
-    if (mine == NULL) {
-        return -1;
+    if (root_exec_stack == NULL) {
+        root_exec_stack = PyUnstable_ExecStack_New(NULL);
+        if (root_exec_stack == NULL) {
+            return -1;
+        }
     }
-    if (from == NULL) {
-        root_exec_stack = mine;
+    // Save the Python side of our stack while our C stack is still intact.
+    PyUnstable_ExecStack *mine = from ? from->stack : root_exec_stack;
+    if (PyUnstable_ExecStack_Suspend(tstate, mine) < 0) {
+        return -1;
     }
 
     switch_from = from;
@@ -455,9 +462,7 @@ fiber_dealloc(PyObject *op)
     PyObject_GC_UnTrack(op);
     (void)fiber_clear(op);
     if (self->stack != NULL) {
-        if (PyUnstable_ExecStack_Free(self->stack) < 0) {
-            PyErr_FormatUnraisable("Exception ignored in fiber_dealloc");
-        }
+        PyUnstable_ExecStack_Free(self->stack);
     }
     PyMem_RawFree(self->saved);
     PyTypeObject *tp = Py_TYPE(op);
@@ -500,121 +505,47 @@ static PyType_Spec fiber_spec = {
 #endif  // HAVE_FIBER_TEST
 
 
-static PyObject *
-execstack_root_state(PyObject *self, PyObject *Py_UNUSED(args))
-{
-    PyThreadState *tstate = PyThreadState_Get();
-    PyUnstable_ExecStack *root = PyUnstable_ThreadState_GetExecStack(tstate);
-    if (root == NULL) {
-        return NULL;
-    }
-    int state = PyUnstable_ExecStack_GetState(root);
-    PyUnstable_ExecStack_Free(root);
-    return PyLong_FromLong(state);
-}
-
-static PyObject *
-execstack_root_frame(PyObject *self, PyObject *Py_UNUSED(args))
-{
-    PyThreadState *tstate = PyThreadState_Get();
-    PyUnstable_ExecStack *root = PyUnstable_ThreadState_GetExecStack(tstate);
-    if (root == NULL) {
-        return NULL;
-    }
-    PyFrameObject *frame = PyUnstable_ExecStack_GetFrame(root);
-    PyUnstable_ExecStack_Free(root);
-    if (frame == NULL) {
-        Py_RETURN_NONE;
-    }
-    return (PyObject *)frame;
-}
-
-static PyObject *
-execstack_root_misuse(PyObject *self, PyObject *Py_UNUSED(args))
-{
-    // Deallocating or clearing the running root stack must fail cleanly.
-    PyThreadState *tstate = PyThreadState_Get();
-    PyUnstable_ExecStack *root = PyUnstable_ThreadState_GetExecStack(tstate);
-    if (root == NULL) {
-        return NULL;
-    }
-    // Releasing the reference we just took is fine...
-    if (PyUnstable_ExecStack_Free(root) < 0) {
-        return NULL;
-    }
-    // ...but releasing the thread state's own reference is not.
-    if (PyUnstable_ExecStack_Free(root) == 0) {
-        PyErr_SetString(PyExc_AssertionError, "Free(root) succeeded");
-        return NULL;
-    }
-    if (!PyErr_ExceptionMatches(PyExc_SystemError)) {
-        return NULL;
-    }
-    PyErr_Clear();
-    if (PyUnstable_ExecStack_Clear(root) == 0) {
-        PyErr_SetString(PyExc_AssertionError, "Clear(root) succeeded");
-        return NULL;
-    }
-    if (!PyErr_ExceptionMatches(PyExc_SystemError)) {
-        return NULL;
-    }
-    PyErr_Clear();
-    if (PyUnstable_ExecStack_Switch(tstate, root) != root) {
-        PyErr_SetString(PyExc_AssertionError, "Switch(root) is not a no-op");
-        return NULL;
-    }
-    if (PyUnstable_ExecStack_Resume(tstate, root) == 0) {
-        PyErr_SetString(PyExc_AssertionError, "Resume without Suspend succeeded");
-        return NULL;
-    }
-    if (!PyErr_ExceptionMatches(PyExc_SystemError)) {
-        return NULL;
-    }
-    PyErr_Clear();
-    // Suspend/Resume round trip on the same stack.
-    if (PyUnstable_ExecStack_Suspend(tstate) != root) {
-        return NULL;
-    }
-    if (PyUnstable_ThreadState_GetExecStack(tstate) != NULL) {
-        PyErr_SetString(PyExc_AssertionError, "GetExecStack succeeded while suspended");
-        return NULL;
-    }
-    if (!PyErr_ExceptionMatches(PyExc_SystemError)) {
-        return NULL;
-    }
-    PyErr_Clear();
-    if (PyUnstable_ExecStack_Resume(tstate, root) < 0) {
-        return NULL;
-    }
-    Py_RETURN_NONE;
-}
+/* Tests of the API on the thread's own stack, without any C stack switching:
+ * a NEW stack adopts the running state, and we can Suspend()/Resume() it in
+ * place. The "root" here is a stack object we create and keep in a capsule. */
 
 static void
 execstack_capsule_destructor(PyObject *capsule)
 {
     PyUnstable_ExecStack *stack = PyCapsule_GetPointer(capsule, "execstack");
-    if (stack != NULL && PyUnstable_ExecStack_Free(stack) < 0) {
-        PyErr_FormatUnraisable("Exception ignored freeing exec stack");
+    if (stack != NULL) {
+        PyUnstable_ExecStack_Free(stack);
     }
 }
 
-// Take a reference to the current thread's running stack and wrap it in a
-// capsule, so a test can keep the thread's root stack alive after the
-// thread exits.
 static PyObject *
-execstack_hold_current(PyObject *self, PyObject *Py_UNUSED(args))
+capsule_for(PyUnstable_ExecStack *stack)
 {
-    PyThreadState *tstate = PyThreadState_Get();
-    PyUnstable_ExecStack *stack = PyUnstable_ThreadState_GetExecStack(tstate);
-    if (stack == NULL) {
-        return NULL;
-    }
     PyObject *capsule = PyCapsule_New(stack, "execstack",
                                       execstack_capsule_destructor);
     if (capsule == NULL) {
         PyUnstable_ExecStack_Free(stack);
     }
     return capsule;
+}
+
+// New stack that adopts the current thread's running state: Suspend() it,
+// then Resume() it straight away, leaving it RUNNING and bound to us.
+static PyObject *
+execstack_adopt_current(PyObject *self, PyObject *Py_UNUSED(args))
+{
+    PyThreadState *tstate = PyThreadState_Get();
+    PyUnstable_ExecStack *stack = PyUnstable_ExecStack_New(NULL);
+    if (stack == NULL) {
+        return NULL;
+    }
+    if (PyUnstable_ExecStack_Suspend(tstate, stack) < 0
+        || PyUnstable_ExecStack_Resume(tstate, stack) < 0)
+    {
+        PyUnstable_ExecStack_Free(stack);
+        return NULL;
+    }
+    return capsule_for(stack);
 }
 
 static PyObject *
@@ -625,10 +556,65 @@ execstack_held_state(PyObject *self, PyObject *capsule)
         return NULL;
     }
     PyFrameObject *frame = PyUnstable_ExecStack_GetFrame(stack);
-    PyObject *result = Py_BuildValue("(iN)",
-                                     PyUnstable_ExecStack_GetState(stack),
-                                     frame ? (PyObject *)frame : Py_NewRef(Py_None));
-    return result;
+    return Py_BuildValue("(iN)", PyUnstable_ExecStack_GetState(stack),
+                         frame ? (PyObject *)frame : Py_NewRef(Py_None));
+}
+
+#define EXPECT_SYSTEMERROR(call, what)                                   \
+    do {                                                                 \
+        if ((call) == 0) {                                               \
+            PyErr_SetString(PyExc_AssertionError, what " succeeded");    \
+            return NULL;                                                 \
+        }                                                                \
+        if (!PyErr_ExceptionMatches(PyExc_SystemError)) {                \
+            return NULL;                                                 \
+        }                                                                \
+        PyErr_Clear();                                                   \
+    } while (0)
+
+static PyObject *
+execstack_root_misuse(PyObject *self, PyObject *capsule)
+{
+    PyThreadState *tstate = PyThreadState_Get();
+    PyUnstable_ExecStack *root = PyCapsule_GetPointer(capsule, "execstack");
+    if (root == NULL) {
+        return NULL;
+    }
+    // `root` is RUNNING on this thread.
+    EXPECT_SYSTEMERROR(PyUnstable_ExecStack_Clear(root), "Clear(running)");
+    EXPECT_SYSTEMERROR(PyUnstable_ExecStack_Resume(tstate, root),
+                       "Resume(running)");
+    if (PyUnstable_ExecStack_Switch(tstate, root, root) < 0) {
+        return NULL;   // must be a no-op
+    }
+    // Suspend/Resume round trip on the same stack.
+    if (PyUnstable_ExecStack_Suspend(tstate, root) < 0) {
+        return NULL;
+    }
+    EXPECT_SYSTEMERROR(PyUnstable_ExecStack_Suspend(tstate, root),
+                       "Suspend(suspended)");
+    if (PyUnstable_ExecStack_Resume(tstate, root) < 0) {
+        return NULL;
+    }
+    // A cleared stack can't be resumed.
+    PyUnstable_ExecStack *dead = PyUnstable_ExecStack_New(NULL);
+    if (dead == NULL) {
+        return NULL;
+    }
+    if (PyUnstable_ExecStack_Clear(dead) < 0) {
+        PyUnstable_ExecStack_Free(dead);
+        return NULL;
+    }
+    if (PyUnstable_ExecStack_Switch(tstate, root, dead) == 0) {
+        PyErr_SetString(PyExc_AssertionError, "Switch to cleared succeeded");
+        return NULL;
+    }
+    PyUnstable_ExecStack_Free(dead);
+    if (!PyErr_ExceptionMatches(PyExc_SystemError)) {
+        return NULL;
+    }
+    PyErr_Clear();
+    Py_RETURN_NONE;
 }
 
 static PyObject *
@@ -643,12 +629,10 @@ execstack_new_bad_context(PyObject *self, PyObject *arg)
 }
 
 static PyMethodDef test_methods[] = {
-    {"execstack_root_state", execstack_root_state, METH_NOARGS, NULL},
-    {"execstack_root_frame", execstack_root_frame, METH_NOARGS, NULL},
-    {"execstack_root_misuse", execstack_root_misuse, METH_NOARGS, NULL},
-    {"execstack_new_bad_context", execstack_new_bad_context, METH_O, NULL},
-    {"execstack_hold_current", execstack_hold_current, METH_NOARGS, NULL},
+    {"execstack_adopt_current", execstack_adopt_current, METH_NOARGS, NULL},
     {"execstack_held_state", execstack_held_state, METH_O, NULL},
+    {"execstack_root_misuse", execstack_root_misuse, METH_O, NULL},
+    {"execstack_new_bad_context", execstack_new_bad_context, METH_O, NULL},
     {NULL},
 };
 

@@ -1646,8 +1646,6 @@ init_threadstate(_PyThreadStateImpl *_tstate,
     _tstate->asyncio_running_loop = NULL;
     _tstate->asyncio_running_task = NULL;
     _tstate->lazy_imports = NULL;
-    _tstate->exec_stack = NULL;
-    _tstate->root_exec_stack = NULL;
 
 #ifdef _Py_TIER2
     _tstate->jit_tracer_state = NULL;
@@ -1846,11 +1844,6 @@ PyThreadState_Clear(PyThreadState *tstate)
     // XXX Deal with the possibility of problematic finalizers.
 
     /* Don't clear tstate->pyframe: it is a borrowed reference */
-
-    // Release the thread's execution stacks first: if the root stack is
-    // suspended it owns frames and a context of its own that the Py_CLEARs
-    // below do not know about.
-    _PyExecStack_ClearThreadState(tstate);
 
     Py_CLEAR(tstate->threading_local_key);
     Py_CLEAR(tstate->threading_local_sentinel);

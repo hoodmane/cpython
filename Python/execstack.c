@@ -2,11 +2,14 @@
  *
  * See the comment block in Include/cpython/pystate.h for the API contract.
  *
- * A PyThreadState has exactly one RUNNING _PyExecStack. While a stack is
- * RUNNING its saved fields are meaningless: the live values are in the thread
- * state. PyUnstable_ExecStack_Switch() moves the per-stack fields of the
- * thread state into the running stack (making it SUSPENDED) and then loads
- * the target.
+ * The thread state knows nothing about execution stacks. A library creates
+ * one _PyExecStack per coroutine, plus one for the thread's original stack,
+ * and tells us which is which: PyUnstable_ExecStack_Suspend(tstate, stack)
+ * moves the per-stack fields of the thread state into `stack` (which must be
+ * the one that is running, or a NEW stack adopting the current state) and
+ * PyUnstable_ExecStack_Resume(tstate, target) loads `target`. While a stack
+ * is RUNNING its saved fields are meaningless: the live values are in the
+ * thread state.
  *
  * Which PyThreadState fields are per-stack is decided here and nowhere else.
  * When adding a field to PyThreadState or _PyThreadStateImpl, classify it:
@@ -53,9 +56,7 @@ struct _PyExecStack {
                              // 0 if NEW. An id rather than a pointer: a
                              // suspended stack may outlive its thread and
                              // the address could be reused.
-    Py_ssize_t refs;         // owners: New()/GetExecStack() callers, tstate
     int state;               // PyUnstable_ExecStack_State
-    int is_root;             // created for a thread's original stack
     int cleared;             // Clear() was called; cannot be switched to
 
     /* Saved per-stack fields, valid only while SUSPENDED (context is also
@@ -133,7 +134,6 @@ execstack_alloc(void)
         return NULL;
     }
     stack->state = PyUnstable_ExecStack_NEW;
-    stack->refs = 1;
     return stack;
 }
 
@@ -146,34 +146,6 @@ execstack_dealloc(PyUnstable_ExecStack *stack)
 #endif
     PyMem_RawFree(stack);
 }
-
-// Return the stack running on tstate (borrowed), creating the root stack
-// if needed. The thread state holds the root's initial reference.
-static PyUnstable_ExecStack *
-get_running(PyThreadState *tstate)
-{
-    _PyThreadStateImpl *impl = (_PyThreadStateImpl *)tstate;
-    if (impl->exec_stack != NULL) {
-        return impl->exec_stack;
-    }
-    if (impl->root_exec_stack != NULL) {
-        PyErr_SetString(PyExc_SystemError,
-                        "no execution stack is running: between "
-                        "PyUnstable_ExecStack_Suspend() and _Resume()");
-        return NULL;
-    }
-    PyUnstable_ExecStack *root = execstack_alloc();
-    if (root == NULL) {
-        return NULL;
-    }
-    root->tstate_id = tstate->id;
-    root->is_root = 1;
-    root->state = PyUnstable_ExecStack_RUNNING;
-    impl->exec_stack = root;
-    impl->root_exec_stack = root;
-    return root;
-}
-
 
 /* Entry frame unlinking ---------------------------------------------------- */
 
@@ -506,7 +478,8 @@ clear_frames(PyUnstable_ExecStack *stack)
 static void
 clear_state(PyUnstable_ExecStack *stack)
 {
-    assert(stack->state != PyUnstable_ExecStack_RUNNING);
+    // RUNNING is allowed only for a stack whose thread has exited: nothing
+    // is saved in it, so there is only the context to drop.
     stack->cleared = 1;
     Py_CLEAR(stack->context);
     if (stack->state == PyUnstable_ExecStack_SUSPENDED) {
@@ -568,17 +541,6 @@ PyUnstable_ExecStack_New(PyObject *context)
     return stack;
 }
 
-PyUnstable_ExecStack *
-PyUnstable_ThreadState_GetExecStack(PyThreadState *tstate)
-{
-    assert(tstate != NULL);
-    PyUnstable_ExecStack *stack = get_running(tstate);
-    if (stack != NULL) {
-        stack->refs++;
-    }
-    return stack;
-}
-
 PyUnstable_ExecStack_State
 PyUnstable_ExecStack_GetState(PyUnstable_ExecStack *stack)
 {
@@ -606,36 +568,57 @@ check_resume_target(PyThreadState *tstate, PyUnstable_ExecStack *target)
     return 0;
 }
 
-PyUnstable_ExecStack *
-PyUnstable_ExecStack_Suspend(PyThreadState *tstate)
+int
+PyUnstable_ExecStack_Suspend(PyThreadState *tstate, PyUnstable_ExecStack *stack)
 {
     assert(tstate != NULL);
     assert(tstate == _PyThreadState_GET());
+    assert(stack != NULL);
     _PyThreadStateImpl *impl = (_PyThreadStateImpl *)tstate;
 
-    PyUnstable_ExecStack *current = get_running(tstate);
-    if (current == NULL) {
-        return NULL;
+    if (stack->cleared) {
+        PyErr_SetString(PyExc_SystemError,
+                        "execution stack has been cleared");
+        return -1;
+    }
+    switch (stack->state) {
+    case PyUnstable_ExecStack_NEW:
+        // Adopt the current state: this becomes the stack for whatever was
+        // running on the thread so far (typically the thread's original
+        // stack). Its own context, if New() was given one, is dropped in
+        // favour of the live one.
+        Py_CLEAR(stack->context);
+        stack->tstate_id = tstate->id;
+        break;
+    case PyUnstable_ExecStack_RUNNING:
+        if (stack->tstate_id != tstate->id) {
+            PyErr_SetString(PyExc_SystemError,
+                            "execution stack is running on another thread");
+            return -1;
+        }
+        break;
+    default:
+        PyErr_SetString(PyExc_SystemError,
+                        "execution stack is not running");
+        return -1;
     }
 
     // Reserve what we need before mutating anything so that failure leaves
     // the thread state untouched.
     Py_ssize_t n_links = count_entry_links(tstate->current_frame);
-    if (reserve_links(current, n_links) < 0) {
-        return NULL;
+    if (reserve_links(stack, n_links) < 0) {
+        return -1;
     }
 #ifdef Py_GIL_DISABLED
-    if (snapshot_c_stack_refs(current, impl->c_stack_refs) < 0) {
-        return NULL;
+    if (snapshot_c_stack_refs(stack, impl->c_stack_refs) < 0) {
+        return -1;
     }
 #endif
+    (void)impl;
 
-    save_state(current, tstate);
-    current->state = PyUnstable_ExecStack_SUSPENDED;
-    // No stack is running until Resume(). get_running() recognises this
-    // state by exec_stack == NULL with root_exec_stack != NULL.
-    impl->exec_stack = NULL;
-    return current;
+    save_state(stack, tstate);
+    stack->state = PyUnstable_ExecStack_SUSPENDED;
+    return 0;
 }
 
 int
@@ -644,18 +627,10 @@ PyUnstable_ExecStack_Resume(PyThreadState *tstate, PyUnstable_ExecStack *target)
     assert(tstate != NULL);
     assert(tstate == _PyThreadState_GET());
     assert(target != NULL);
-    _PyThreadStateImpl *impl = (_PyThreadStateImpl *)tstate;
 
-    if (impl->exec_stack != NULL || impl->root_exec_stack == NULL) {
-        PyErr_SetString(PyExc_SystemError,
-                        "PyUnstable_ExecStack_Resume() called without a "
-                        "preceding PyUnstable_ExecStack_Suspend()");
-        return -1;
-    }
     if (check_resume_target(tstate, target) < 0) {
         return -1;
     }
-
     if (target->state == PyUnstable_ExecStack_NEW) {
         target->tstate_id = tstate->id;
         init_fresh_state(tstate, target);
@@ -665,35 +640,33 @@ PyUnstable_ExecStack_Resume(PyThreadState *tstate, PyUnstable_ExecStack *target)
         load_state(tstate, target);
     }
     target->state = PyUnstable_ExecStack_RUNNING;
-    impl->exec_stack = target;
     return 0;
 }
 
-PyUnstable_ExecStack *
-PyUnstable_ExecStack_Switch(PyThreadState *tstate, PyUnstable_ExecStack *target)
+int
+PyUnstable_ExecStack_Switch(PyThreadState *tstate,
+                            PyUnstable_ExecStack *current,
+                            PyUnstable_ExecStack *target)
 {
     assert(tstate != NULL);
     assert(tstate == _PyThreadState_GET());
+    assert(current != NULL);
     assert(target != NULL);
 
-    PyUnstable_ExecStack *current = get_running(tstate);
-    if (current == NULL) {
-        return NULL;
-    }
     if (target == current) {
-        return current;
+        return 0;
     }
     // Validate the target first so that a failure leaves everything as is.
     if (check_resume_target(tstate, target) < 0) {
-        return NULL;
+        return -1;
     }
-    if (PyUnstable_ExecStack_Suspend(tstate) == NULL) {
-        return NULL;
+    if (PyUnstable_ExecStack_Suspend(tstate, current) < 0) {
+        return -1;
     }
     int err = PyUnstable_ExecStack_Resume(tstate, target);
     (void)err;
     assert(err == 0);  // target was validated and Resume cannot fail otherwise
-    return current;
+    return 0;
 }
 
 PyFrameObject *
@@ -802,7 +775,13 @@ PyUnstable_ExecStack_Traverse(PyUnstable_ExecStack *stack, visitproc visit,
 int
 PyUnstable_ExecStack_Clear(PyUnstable_ExecStack *stack)
 {
-    if (stack->state == PyUnstable_ExecStack_RUNNING) {
+    if (stack->state == PyUnstable_ExecStack_RUNNING
+        && stack->tstate_id == _PyThreadState_GET()->id)
+    {
+        // Its state is live in our thread state; there is nothing to
+        // release and no sensible way to "clear" the running code. (A stack
+        // left RUNNING by a thread that exited has nothing saved either, and
+        // clearing it is harmless.)
         PyErr_SetString(PyExc_SystemError,
                         "cannot clear a running execution stack");
         return -1;
@@ -811,63 +790,12 @@ PyUnstable_ExecStack_Clear(PyUnstable_ExecStack *stack)
     return 0;
 }
 
-int
+void
 PyUnstable_ExecStack_Free(PyUnstable_ExecStack *stack)
 {
-    assert(stack->refs > 0);
-    if (stack->refs == 1 && stack->state == PyUnstable_ExecStack_RUNNING) {
-        // Only the thread state itself may drop the last reference to a
-        // running stack (see _PyExecStack_ClearThreadState).
-        PyErr_SetString(PyExc_SystemError,
-                        "cannot free a running execution stack");
-        return -1;
+    if (stack->state != PyUnstable_ExecStack_RUNNING) {
+        clear_state(stack);
     }
-    if (--stack->refs > 0) {
-        return 0;
-    }
-    clear_state(stack);
+    // RUNNING: the live state belongs to the thread; we only drop the handle.
     execstack_dealloc(stack);
-    return 0;
-}
-
-
-/* Thread state teardown ---------------------------------------------------- */
-
-void
-_PyExecStack_ClearThreadState(PyThreadState *tstate)
-{
-    _PyThreadStateImpl *impl = (_PyThreadStateImpl *)tstate;
-    PyUnstable_ExecStack *running = impl->exec_stack;
-    PyUnstable_ExecStack *root = impl->root_exec_stack;
-    if (root == NULL) {
-        assert(running == NULL);
-        return;
-    }
-    impl->exec_stack = NULL;
-    impl->root_exec_stack = NULL;
-
-    if (running != NULL) {
-        // The running stack's live state is in tstate and will be released
-        // by PyThreadState_Clear. Leave the object empty and detached so
-        // that any remaining owner can still inspect and free it.
-        running->state = PyUnstable_ExecStack_SUSPENDED;
-        running->cleared = 1;
-        running->current_frame = NULL;
-        running->top_frame = NULL;
-        running->n_links = 0;
-        memset(&running->exc_state, 0, sizeof(running->exc_state));
-    }
-    // (running == NULL: the thread died between Suspend() and Resume();
-    // nothing can be done about any stack other than the root.)
-
-    if (running != root) {
-        // The thread is exiting while a user stack is running. The root
-        // stack is suspended and owns the thread's original frames.
-        clear_state(root);
-    }
-    // Drop the thread state's reference to the root.
-    assert(root->refs > 0);
-    if (--root->refs == 0) {
-        execstack_dealloc(root);
-    }
 }

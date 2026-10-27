@@ -325,10 +325,12 @@ PyAPI_FUNC(void) PyUnstable_ThreadState_ResetStackProtection(
    use this API to swap that state in and out of a PyThreadState without
    touching its fields directly.
 
-   Each PyThreadState has exactly one RUNNING execution stack at any time.
-   The thread's original stack (the "root" stack) is created lazily and
-   referenced by the thread state. Every other stack is created with
-   PyUnstable_ExecStack_New().
+   The thread state does not track execution stacks itself. The library
+   creates one with PyUnstable_ExecStack_New() for every coroutine and one
+   more for the thread's original stack, and names them explicitly when
+   switching. A stack is NEW until it first runs, RUNNING while its state is
+   live in the thread state, and SUSPENDED while its state is saved in the
+   stack object.
 
    The error indicator (tstate->current_exception) is *not* part of an
    execution stack: it travels with control across a switch, which is how a
@@ -349,28 +351,19 @@ typedef enum {
 // (may be NULL). Returns NULL with an exception set on failure.
 PyAPI_FUNC(PyUnstable_ExecStack *) PyUnstable_ExecStack_New(PyObject *context);
 
-// Return a new reference to the stack currently running on tstate, creating
-// the thread's root stack if necessary. Release it with
-// PyUnstable_ExecStack_Free(). Returns NULL with MemoryError on failure.
-//
-// Stacks are reference counted: PyUnstable_ExecStack_New() and this function
-// each hand out one reference, and the thread state holds one reference to
-// its root stack. A root stack whose thread has exited becomes SUSPENDED,
-// empty and detached; it can still be inspected and freed by its remaining
-// owners but can no longer be switched to.
-PyAPI_FUNC(PyUnstable_ExecStack *) PyUnstable_ThreadState_GetExecStack(
-    PyThreadState *tstate);
-
-// Move the per-stack state out of tstate into the running stack and mark it
-// SUSPENDED. Returns that stack (borrowed), or NULL with an exception set and
-// the thread state unchanged. Must be called while attached to tstate and
-// while the C stack of the running stack is still intact: the interpreter
-// reads the frames it keeps on the C stack. Afterwards, until
-// PyUnstable_ExecStack_Resume() is called, no stack is running on tstate; no
-// Python code may run and nothing but the low-level C stack switch itself
-// may happen in between. Does not run Python code.
-PyAPI_FUNC(PyUnstable_ExecStack *) PyUnstable_ExecStack_Suspend(
-    PyThreadState *tstate);
+// Move the per-stack state out of tstate into `stack` and mark it SUSPENDED.
+// `stack` must be the stack that is RUNNING on tstate, or a NEW stack, which
+// then adopts whatever is running (this is how the thread's original stack
+// gets an object: create one with New() and pass it to the first Suspend()).
+// Returns -1 with an exception set and the thread state unchanged on failure.
+// Must be called while attached to tstate and while the C stack of the
+// running code is still intact: the interpreter reads the frames it keeps on
+// the C stack. Afterwards, until PyUnstable_ExecStack_Resume() is called, no
+// Python code may run and nothing but the low-level C stack switch itself may
+// happen. Does not run Python code.
+PyAPI_FUNC(int) PyUnstable_ExecStack_Suspend(
+    PyThreadState *tstate,
+    PyUnstable_ExecStack *stack);
 
 // Install `target` as the running stack of tstate after a Suspend().
 // `target` must be NEW, or SUSPENDED and previously run on tstate. Must be
@@ -380,13 +373,13 @@ PyAPI_FUNC(int) PyUnstable_ExecStack_Resume(
     PyThreadState *tstate,
     PyUnstable_ExecStack *target);
 
-// Suspend() followed by Resume(target), for implementations whose outgoing
-// and incoming C stacks are both intact at the same time (e.g. separately
-// allocated stacks). Returns the stack that was running (borrowed), or NULL
-// with an exception set and the thread state unchanged. Switching to the
-// running stack is a no-op.
-PyAPI_FUNC(PyUnstable_ExecStack *) PyUnstable_ExecStack_Switch(
+// Suspend(current) followed by Resume(target), for implementations whose
+// outgoing and incoming C stacks are both intact at the same time (e.g.
+// separately allocated stacks). Returns -1 with an exception set and the
+// thread state unchanged on failure. A no-op if current == target.
+PyAPI_FUNC(int) PyUnstable_ExecStack_Switch(
     PyThreadState *tstate,
+    PyUnstable_ExecStack *current,
     PyUnstable_ExecStack *target);
 
 PyAPI_FUNC(PyUnstable_ExecStack_State) PyUnstable_ExecStack_GetState(
@@ -419,13 +412,13 @@ PyAPI_FUNC(int) PyUnstable_ExecStack_Traverse(
 
 // For the owner's tp_clear. Release everything the stack owns, clearing any
 // suspended frames. The stack remains allocated but can no longer be switched
-// to. Returns -1 with SystemError if the stack is RUNNING.
+// to. Returns -1 with SystemError if the stack is RUNNING on this thread.
 PyAPI_FUNC(int) PyUnstable_ExecStack_Clear(PyUnstable_ExecStack *stack);
 
-// Release a reference. When the last reference is dropped the stack is
-// cleared and deallocated. Returns -1 with SystemError if that would
-// deallocate a RUNNING stack.
-PyAPI_FUNC(int) PyUnstable_ExecStack_Free(PyUnstable_ExecStack *stack);
+// Clear (unless RUNNING, in which case the live state belongs to the thread)
+// and deallocate. Stacks are not reference counted: the library owns each one.
+// A stack whose thread has exited can still be inspected, cleared and freed.
+PyAPI_FUNC(void) PyUnstable_ExecStack_Free(PyUnstable_ExecStack *stack);
 
 /* Routines for advanced debuggers, requested by David Beazley.
    Don't use unless you know what you are doing! */

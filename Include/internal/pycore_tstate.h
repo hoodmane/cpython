@@ -61,12 +61,6 @@ typedef struct _PyThreadStateImpl {
         GENERATOR_YIELD = 1,
     } generator_return_kind;
 
-    // Stackful coroutine support, see Python/execstack.c. `exec_stack` is
-    // the stack currently running on this thread; `root_exec_stack` is the
-    // thread's original stack. Both are NULL until first used.
-    struct _PyExecStack *exec_stack;
-    struct _PyExecStack *root_exec_stack;
-
     /* Head of circular linked-list of all tasks which are instances of `asyncio.Task`
        or subclasses of it used in `asyncio.all_tasks`.
     */
@@ -118,10 +112,6 @@ typedef struct _PyThreadStateImpl {
     char __padding[_Py_QSBR_CACHE_LINE_SIZE];
 #endif
 } _PyThreadStateImpl;
-
-// Release the execution stacks owned by a thread state. Called from
-// PyThreadState_Clear().
-extern void _PyExecStack_ClearThreadState(PyThreadState *tstate);
 
 #ifdef __cplusplus
 }
