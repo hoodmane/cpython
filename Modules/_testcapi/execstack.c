@@ -18,9 +18,10 @@
  *    fiber is read out of its ucontext_t. That is the only platform specific
  *    part, so this is only built for x86-64 glibc.
  *
- *  - The split Suspend()/Resume() protocol is therefore not just exercised
- *    but required: Suspend() runs before the outgoing C stack is destroyed
- *    and Resume() after the incoming one has been restored.
+ *  - PyUnstable_ExecStack_Switch() is called before the C stack switch, as
+ *    its contract requires: it reads the outgoing C stack (still intact at
+ *    that point) and must not read the incoming one (still spilled). The
+ *    poisoning makes any violation of the latter crash.
  */
 
 #include "parts.h"
@@ -204,9 +205,12 @@ jump(FiberObject *to)
             return -1;
         }
     }
-    // Save the Python side of our stack while our C stack is still intact.
+    // Switch the Python side while our C stack is still intact. From here
+    // until the trampoline has restored the target's C stack, the thread
+    // state describes the target but no Python code may run.
     PyUnstable_ExecStack *mine = from ? from->stack : root_exec_stack;
-    if (PyUnstable_ExecStack_Suspend(tstate, mine) < 0) {
+    PyUnstable_ExecStack *theirs = to ? to->stack : root_exec_stack;
+    if (PyUnstable_ExecStack_Switch(tstate, mine, theirs) < 0) {
         return -1;
     }
 
@@ -220,14 +224,7 @@ jump(FiberObject *to)
     makecontext(&trampoline_ctx, trampoline, 0);
     swapcontext(from ? &from->ctx : &root_ctx, &trampoline_ctx);
 
-    // Somebody switched back to us. Our C stack has been restored, so locals
-    // are valid again, but follow greenlet's discipline and reload from
-    // thread-local state anyway. `current` was set to us by the switcher.
-    tstate = PyThreadState_Get();
-    mine = current ? current->stack : root_exec_stack;
-    if (PyUnstable_ExecStack_Resume(tstate, mine) < 0) {
-        Py_FatalError("fiber: PyUnstable_ExecStack_Resume failed after switch");
-    }
+    // Somebody switched back to us; they already switched the Python side.
     return 0;
 }
 
@@ -235,11 +232,7 @@ jump(FiberObject *to)
 void
 fiber_entry(void)
 {
-    FiberObject *self = current;
-    PyThreadState *tstate = PyThreadState_Get();
-    if (PyUnstable_ExecStack_Resume(tstate, self->stack) < 0) {
-        Py_FatalError("fiber: PyUnstable_ExecStack_Resume failed in entry");
-    }
+    FiberObject *self = current;   // our stack is already installed
 
     PyObject *arg = self->transfer;
     self->transfer = NULL;
@@ -505,7 +498,7 @@ static PyType_Spec fiber_spec = {
 
 
 /* Tests of the API on the thread's own stack, without any C stack switching:
- * Adopt() the running state, Suspend()/Resume() it in place, misuse. The
+ * Adopt() the running state, switch between two stacks in place, misuse. The
  * "root" here is a stack object we create and keep in a capsule. */
 
 static void
@@ -572,48 +565,69 @@ execstack_root_misuse(PyObject *self, PyObject *capsule)
     }
     // `root` is RUNNING on this thread.
     EXPECT_SYSTEMERROR(PyUnstable_ExecStack_Clear(root), "Clear(running)");
-    EXPECT_SYSTEMERROR(PyUnstable_ExecStack_Resume(tstate, root),
-                       "Resume(running)");
     if (PyUnstable_ExecStack_Switch(tstate, root, root) < 0) {
         return NULL;   // must be a no-op
     }
-    // Suspend/Resume round trip on the same stack.
-    if (PyUnstable_ExecStack_Suspend(tstate, root) < 0) {
+    // A second RUNNING stack for the same thread: can't switch to it, and
+    // can't switch *from* a stack that isn't running.
+    PyUnstable_ExecStack *other = PyUnstable_ExecStack_Adopt(tstate);
+    if (other == NULL) {
         return NULL;
     }
-    EXPECT_SYSTEMERROR(PyUnstable_ExecStack_Suspend(tstate, root),
-                       "Suspend(suspended)");
-    if (PyUnstable_ExecStack_Resume(tstate, root) < 0) {
+    EXPECT_SYSTEMERROR(PyUnstable_ExecStack_Switch(tstate, root, other),
+                       "Switch(running, running)");
+    PyUnstable_ExecStack *fresh = PyUnstable_ExecStack_New(NULL);
+    if (fresh == NULL) {
         return NULL;
     }
-    // A NEW stack can't be suspended: only Resume() starts it.
-    PyUnstable_ExecStack *dead = PyUnstable_ExecStack_New(NULL);
-    if (dead == NULL) {
+    EXPECT_SYSTEMERROR(PyUnstable_ExecStack_Switch(tstate, fresh, root),
+                       "Switch(new, ...)");
+    // A cleared stack can't be switched to.
+    if (PyUnstable_ExecStack_Clear(fresh) < 0) {
         return NULL;
     }
-    if (PyUnstable_ExecStack_Suspend(tstate, dead) == 0) {
-        PyErr_SetString(PyExc_AssertionError, "Suspend(new) succeeded");
-        return NULL;
-    }
-    if (!PyErr_ExceptionMatches(PyExc_SystemError)) {
-        return NULL;
-    }
-    PyErr_Clear();
-    // A cleared stack can't be resumed.
-    if (PyUnstable_ExecStack_Clear(dead) < 0) {
-        PyUnstable_ExecStack_Free(dead);
-        return NULL;
-    }
-    if (PyUnstable_ExecStack_Switch(tstate, root, dead) == 0) {
-        PyErr_SetString(PyExc_AssertionError, "Switch to cleared succeeded");
-        return NULL;
-    }
-    PyUnstable_ExecStack_Free(dead);
-    if (!PyErr_ExceptionMatches(PyExc_SystemError)) {
-        return NULL;
-    }
-    PyErr_Clear();
+    EXPECT_SYSTEMERROR(PyUnstable_ExecStack_Switch(tstate, root, fresh),
+                       "Switch to cleared");
+    PyUnstable_ExecStack_Free(fresh);
+    PyUnstable_ExecStack_Free(other);
     Py_RETURN_NONE;
+}
+
+// Round trip without any C stack switching: switch from the root to a fresh
+// stack, call `func` on it (its frames hang off an empty chain), switch back.
+// The C stack is shared and intact throughout, which is allowed since the
+// new stack's "entry frames" are simply the ones the eval loop pushes now.
+// Returns (result_of_func, frame_seen_by_func_or_None).
+static PyObject *
+execstack_run_on_fresh_stack(PyObject *self, PyObject *args)
+{
+    PyObject *capsule, *func;
+    if (!PyArg_ParseTuple(args, "OO", &capsule, &func)) {
+        return NULL;
+    }
+    PyThreadState *tstate = PyThreadState_Get();
+    PyUnstable_ExecStack *root = PyCapsule_GetPointer(capsule, "execstack");
+    if (root == NULL) {
+        return NULL;
+    }
+    PyUnstable_ExecStack *fresh = PyUnstable_ExecStack_New(NULL);
+    if (fresh == NULL) {
+        return NULL;
+    }
+    if (PyUnstable_ExecStack_Switch(tstate, root, fresh) < 0) {
+        PyUnstable_ExecStack_Free(fresh);
+        return NULL;
+    }
+    PyObject *result = PyObject_CallNoArgs(func);
+    // The error indicator travels with control, so an exception from func
+    // simply stays set across the switch back.
+    if (PyUnstable_ExecStack_Switch(tstate, fresh, root) < 0) {
+        Py_XDECREF(result);
+        PyUnstable_ExecStack_Free(fresh);
+        return NULL;
+    }
+    PyUnstable_ExecStack_Free(fresh);
+    return result;
 }
 
 static PyObject *
@@ -631,6 +645,7 @@ static PyMethodDef test_methods[] = {
     {"execstack_adopt_current", execstack_adopt_current, METH_NOARGS, NULL},
     {"execstack_held_state", execstack_held_state, METH_O, NULL},
     {"execstack_root_misuse", execstack_root_misuse, METH_O, NULL},
+    {"execstack_run_on_fresh_stack", execstack_run_on_fresh_stack, METH_VARARGS, NULL},
     {"execstack_new_bad_context", execstack_new_bad_context, METH_O, NULL},
     {NULL},
 };

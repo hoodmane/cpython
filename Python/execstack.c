@@ -5,11 +5,19 @@
  * The thread state knows nothing about execution stacks. A library creates
  * one _PyExecStack per coroutine with PyUnstable_ExecStack_New(), one for
  * the thread's original stack with PyUnstable_ExecStack_Adopt(), and tells
- * us which is which: PyUnstable_ExecStack_Suspend(tstate, stack) moves the
- * per-stack fields of the thread state into `stack` (which must be the one
- * that is running) and PyUnstable_ExecStack_Resume(tstate, target) loads
- * `target`. While a stack is RUNNING its saved fields are meaningless: the
- * live values are in the thread state.
+ * us which is which: PyUnstable_ExecStack_Switch(tstate, current, target)
+ * moves the per-stack fields of the thread state into `current` (which must
+ * be the one that is running) and loads `target`. While a stack is RUNNING
+ * its saved fields are meaningless: the live values are in the thread state.
+ *
+ * Switch() is called *before* the library switches C stacks. Saving reads
+ * the outgoing C stack (the entry frames, and on free-threaded builds the
+ * critical sections, live there), so it must happen while that stack is
+ * intact. Loading, on the other hand, only writes to the thread state and to
+ * heap frames -- it stores pointers into the incoming C stack but never
+ * dereferences them -- so it does not need the incoming C stack yet. That is
+ * what lets libraries like greenlet, which overwrite the outgoing C stack
+ * with the incoming one, use a single call.
  *
  * Which PyThreadState fields are per-stack is decided here and nowhere else.
  * When adding a field to PyThreadState or _PyThreadStateImpl, classify it:
@@ -91,6 +99,11 @@ struct _PyExecStack {
     PyObject *asyncio_running_task;        // strong
     uintptr_t critical_section;
 #ifdef Py_GIL_DISABLED
+    // Mutexes of the topmost critical section, copied out at suspension
+    // because the PyCriticalSection itself lives on the (then spilled) C
+    // stack and load_state() must not touch it.
+    PyMutex *cs_mutex1;
+    PyMutex *cs_mutex2;
     _PyCStackRef *c_stack_refs;
     // Strong references to the objects held by the C-stack refs above,
     // taken at suspension so the GC can see them while the C stack is gone.
@@ -335,9 +348,21 @@ save_state(PyUnstable_ExecStack *stack, PyThreadState *tstate)
     // Release the locks held by critical sections on the stack we are
     // leaving, exactly as detaching from the thread would. Otherwise the
     // stack we switch to could deadlock trying to take one of them.
+#ifdef Py_GIL_DISABLED
+    stack->cs_mutex1 = NULL;
+    stack->cs_mutex2 = NULL;
     if (tstate->critical_section != 0) {
+        // Remember what to re-lock before the C stack goes away.
+        uintptr_t tag = tstate->critical_section;
+        PyCriticalSection *c =
+            (PyCriticalSection *)(tag & ~_Py_CRITICAL_SECTION_MASK);
+        stack->cs_mutex1 = c->_cs_mutex;
+        if (tag & _Py_CRITICAL_SECTION_TWO_MUTEXES) {
+            stack->cs_mutex2 = ((PyCriticalSection2 *)c)->_cs_mutex2;
+        }
         _PyCriticalSection_SuspendAll(tstate);
     }
+#endif
     stack->critical_section = tstate->critical_section;
 
 #ifdef Py_GIL_DISABLED
@@ -396,11 +421,27 @@ load_state(PyThreadState *tstate, PyUnstable_ExecStack *stack)
 
     tstate->critical_section = stack->critical_section;
     stack->critical_section = 0;
-    if (tstate->critical_section != 0) {
-        _PyCriticalSection_Resume(tstate);
-    }
-
 #ifdef Py_GIL_DISABLED
+    if (tstate->critical_section != 0) {
+        // Like _PyCriticalSection_Resume(), but from the copies made in
+        // save_state(): the PyCriticalSection is on the incoming C stack,
+        // which the library has not restored yet. While we wait for the
+        // locks the tag is still marked INACTIVE, so a detach in the
+        // meantime (SuspendAll stops at an inactive head) leaves it alone
+        // and an attach (Resume) would find NULL mutexes -- which is why
+        // _PyCriticalSection_Resume NULLs them too; here they simply are
+        // not reachable through tstate at all.
+        assert(!_PyCriticalSection_IsActive(tstate->critical_section));
+        if (stack->cs_mutex1) {
+            PyMutex_Lock(stack->cs_mutex1);
+        }
+        if (stack->cs_mutex2) {
+            PyMutex_Lock(stack->cs_mutex2);
+        }
+        stack->cs_mutex1 = NULL;
+        stack->cs_mutex2 = NULL;
+        tstate->critical_section &= ~_Py_CRITICAL_SECTION_INACTIVE;
+    }
     impl->c_stack_refs = stack->c_stack_refs;
     stack->c_stack_refs = NULL;
     drop_c_stack_ref_snapshot(stack);
@@ -506,6 +547,10 @@ clear_state(PyUnstable_ExecStack *stack)
         stack->jit_exit = NULL;
         stack->last_profiled_frame = NULL;
         stack->critical_section = 0;
+#ifdef Py_GIL_DISABLED
+        stack->cs_mutex1 = NULL;
+        stack->cs_mutex2 = NULL;
+#endif
 #if _Py_TIER2
         if (stack->jit_tracer_state != NULL) {
             // Abandon the trace that was being recorded when the stack was
@@ -593,12 +638,10 @@ check_resume_target(PyThreadState *tstate, PyUnstable_ExecStack *target)
     return 0;
 }
 
-int
-PyUnstable_ExecStack_Suspend(PyThreadState *tstate, PyUnstable_ExecStack *stack)
+// Move the per-stack state of tstate into `stack`, the stack that is running.
+static int
+suspend(PyThreadState *tstate, PyUnstable_ExecStack *stack)
 {
-    assert(tstate != NULL);
-    assert(tstate == _PyThreadState_GET());
-    assert(stack != NULL);
     _PyThreadStateImpl *impl = (_PyThreadStateImpl *)tstate;
 
     if (stack->cleared) {
@@ -635,16 +678,10 @@ PyUnstable_ExecStack_Suspend(PyThreadState *tstate, PyUnstable_ExecStack *stack)
     return 0;
 }
 
-int
-PyUnstable_ExecStack_Resume(PyThreadState *tstate, PyUnstable_ExecStack *target)
+// Install `target`, which has been validated by check_resume_target().
+static void
+resume(PyThreadState *tstate, PyUnstable_ExecStack *target)
 {
-    assert(tstate != NULL);
-    assert(tstate == _PyThreadState_GET());
-    assert(target != NULL);
-
-    if (check_resume_target(tstate, target) < 0) {
-        return -1;
-    }
     if (target->state == EXECSTACK_NEW) {
         target->tstate_id = tstate->id;
         init_fresh_state(tstate, target);
@@ -654,7 +691,6 @@ PyUnstable_ExecStack_Resume(PyThreadState *tstate, PyUnstable_ExecStack *target)
         load_state(tstate, target);
     }
     target->state = EXECSTACK_RUNNING;
-    return 0;
 }
 
 int
@@ -674,12 +710,10 @@ PyUnstable_ExecStack_Switch(PyThreadState *tstate,
     if (check_resume_target(tstate, target) < 0) {
         return -1;
     }
-    if (PyUnstable_ExecStack_Suspend(tstate, current) < 0) {
+    if (suspend(tstate, current) < 0) {
         return -1;
     }
-    int err = PyUnstable_ExecStack_Resume(tstate, target);
-    (void)err;
-    assert(err == 0);  // target was validated and Resume cannot fail otherwise
+    resume(tstate, target);
     return 0;
 }
 

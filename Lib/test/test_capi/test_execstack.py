@@ -21,7 +21,21 @@ _testcapi = import_helper.import_module('_testcapi')
 _testinternalcapi = import_helper.import_module('_testinternalcapi')
 
 
+def frame_codes(frame):
+    codes = []
+    while frame is not None:
+        codes.append(frame.f_code)
+        frame = frame.f_back
+    return codes
+
+
+def frame_names(frame):
+    return [code.co_name for code in frame_codes(frame)]
+
+
 class RootStackTests(unittest.TestCase):
+    frame_names = staticmethod(frame_names)
+
     """The API without any C stack switching: Adopt() of the thread's
     running state, inspected from this and other threads."""
 
@@ -68,6 +82,29 @@ class RootStackTests(unittest.TestCase):
         self.assertEqual(_testcapi.execstack_held_state(cap), (True, None))
         del cap   # freeing it is fine
 
+    def test_switch_in_place_on_shared_c_stack(self):
+        """Switch() needs no C stack switch at all: here a fresh stack runs
+        Python code on the same C stack as the caller."""
+        cap = _testcapi.execstack_adopt_current()
+        seen = {}
+
+        def body():
+            seen['depth'] = len(self.frame_names(sys._getframe()))
+            with self.assertRaises(ValueError):
+                sys._getframe(1)   # nothing above us on this stack
+            return 'ok'
+
+        self.assertEqual(_testcapi.execstack_run_on_fresh_stack(cap, body), 'ok')
+        self.assertEqual(seen['depth'], 1)
+        # We are back on our own stack with our frames.
+        self.assertIs(_testcapi.execstack_held_state(cap)[1], sys._getframe())
+
+        def raiser():
+            raise KeyError('x')
+
+        with self.assertRaises(KeyError):
+            _testcapi.execstack_run_on_fresh_stack(cap, raiser)
+
     def test_new_rejects_non_context(self):
         with self.assertRaises(TypeError):
             _testcapi.execstack_new_bad_context(42)
@@ -79,15 +116,8 @@ class RootStackTests(unittest.TestCase):
 class FiberTests(unittest.TestCase):
     Fiber = getattr(_testcapi, 'Fiber', None)
 
-    def frame_names(self, frame):
-        return [code.co_name for code in self.frame_codes(frame)]
-
-    def frame_codes(self, frame):
-        codes = []
-        while frame is not None:
-            codes.append(frame.f_code)
-            frame = frame.f_back
-        return codes
+    frame_names = staticmethod(frame_names)
+    frame_codes = staticmethod(frame_codes)
 
     def test_basic_switching(self):
         log = []
@@ -570,6 +600,38 @@ class FiberTests(unittest.TestCase):
         f = self.Fiber(run)
         f.switch()
         self.assertEqual(f.switch(), 'ok')
+
+    def test_switch_while_holding_critical_section(self):
+        """On free-threaded builds, dict operations hold the dict's lock
+        (a critical section on the C stack) while calling __hash__. A fiber
+        that suspends from inside __hash__ must release it, so that the
+        resuming side can use the same dict, and must get it back on resume
+        (otherwise the still-running dict operation would corrupt it)."""
+        d = {}
+
+        class Key:
+            def __init__(self, fib):
+                self.fib = fib
+            def __hash__(self):
+                self.fib.switch_back('in hash')
+                return 1
+            def __eq__(self, other):
+                return True
+
+        def run(fib, arg):
+            d.setdefault(Key(fib), 'from fiber')
+            # Back from the switch with the lock re-taken, the operation
+            # completed normally.
+            return d
+
+        f = self.Fiber(run)
+        self.assertEqual(f.switch(), 'in hash')
+        # Uses the same dict while the fiber's setdefault is mid-flight. On a
+        # free-threaded build this would deadlock if the fiber kept the lock.
+        d['other'] = 1
+        self.assertEqual(len(d), 1)
+        self.assertIs(f.switch(), d)
+        self.assertEqual(sorted(map(str, d.values())), ['1', 'from fiber'])
 
     def test_c_stack_is_spilled_while_suspended(self):
         def run(fib, arg):

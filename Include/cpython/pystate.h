@@ -352,30 +352,18 @@ PyAPI_FUNC(PyUnstable_ExecStack *) PyUnstable_ExecStack_New(PyObject *context);
 PyAPI_FUNC(PyUnstable_ExecStack *) PyUnstable_ExecStack_Adopt(
     PyThreadState *tstate);
 
-// Move the per-stack state out of tstate into `stack`, which must be the
-// stack that is running on tstate.
-// Returns -1 with an exception set and the thread state unchanged on failure.
-// Must be called while attached to tstate and while the C stack of the
-// running code is still intact: the interpreter reads the frames it keeps on
-// the C stack. Afterwards, until PyUnstable_ExecStack_Resume() is called, no
-// Python code may run and nothing but the low-level C stack switch itself may
-// happen. Does not run Python code.
-PyAPI_FUNC(int) PyUnstable_ExecStack_Suspend(
-    PyThreadState *tstate,
-    PyUnstable_ExecStack *stack);
-
-// Install `target` as the running stack of tstate after a Suspend().
-// `target` must not be running and, if it has run before, must have run on
-// tstate. Must be called once the C stack of `target` is in place. Returns -1
-// with SystemError on misuse; cannot fail otherwise. Does not run Python code.
-PyAPI_FUNC(int) PyUnstable_ExecStack_Resume(
-    PyThreadState *tstate,
-    PyUnstable_ExecStack *target);
-
-// Suspend(current) followed by Resume(target), for implementations whose
-// outgoing and incoming C stacks are both intact at the same time (e.g.
-// separately allocated stacks). Returns -1 with an exception set and the
-// thread state unchanged on failure. A no-op if current == target.
+// Move the per-stack state out of tstate into `current`, which must be the
+// stack that is running on tstate, and install `target`, which must not be
+// running and, if it has run before, must have run on tstate. A no-op if the
+// two are the same. Returns -1 with an exception set and the thread state
+// unchanged on failure.
+//
+// Call this *before* switching C stacks, while attached to tstate and while
+// the outgoing C stack is still intact: the interpreter reads the frames and
+// critical sections it keeps there. It does not read the incoming C stack, so
+// it is fine if that has not been restored yet (as in greenlet, where the two
+// share the same memory). No Python code may run between this call and the
+// completion of the C stack switch. Does not run Python code itself.
 PyAPI_FUNC(int) PyUnstable_ExecStack_Switch(
     PyThreadState *tstate,
     PyUnstable_ExecStack *current,
