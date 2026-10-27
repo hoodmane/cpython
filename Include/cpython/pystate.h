@@ -341,10 +341,11 @@ PyAPI_FUNC(void) PyUnstable_ThreadState_ResetStackProtection(
 
 typedef struct _PyExecStack PyUnstable_ExecStack;
 
-// Create a stack with no frames and the given contextvars context (may be
-// NULL). It is not running; the first Resume() into it starts it with an
-// empty frame chain. Returns NULL with an exception set on failure.
-PyAPI_FUNC(PyUnstable_ExecStack *) PyUnstable_ExecStack_New(PyObject *context);
+// Create a stack with no frames and an empty contextvars context (use
+// SetContext() to give it one). It is not running; the first Switch() into
+// it starts it with an empty frame chain. Returns NULL with MemoryError on
+// failure.
+PyAPI_FUNC(PyUnstable_ExecStack *) PyUnstable_ExecStack_New(void);
 
 // Create a running stack standing for whatever is executing on tstate right
 // now (typically called once per thread, for the thread's original stack).

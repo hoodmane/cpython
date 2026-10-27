@@ -408,7 +408,7 @@ fiber_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
         return NULL;
     }
     self->run = Py_NewRef(run);
-    self->stack = PyUnstable_ExecStack_New(NULL);
+    self->stack = PyUnstable_ExecStack_New();
     if (self->stack == NULL) {
         Py_DECREF(self);
         return NULL;
@@ -576,7 +576,7 @@ execstack_root_misuse(PyObject *self, PyObject *capsule)
     }
     EXPECT_SYSTEMERROR(PyUnstable_ExecStack_Switch(tstate, root, other),
                        "Switch(running, running)");
-    PyUnstable_ExecStack *fresh = PyUnstable_ExecStack_New(NULL);
+    PyUnstable_ExecStack *fresh = PyUnstable_ExecStack_New();
     if (fresh == NULL) {
         return NULL;
     }
@@ -610,7 +610,7 @@ execstack_run_on_fresh_stack(PyObject *self, PyObject *args)
     if (root == NULL) {
         return NULL;
     }
-    PyUnstable_ExecStack *fresh = PyUnstable_ExecStack_New(NULL);
+    PyUnstable_ExecStack *fresh = PyUnstable_ExecStack_New();
     if (fresh == NULL) {
         return NULL;
     }
@@ -630,15 +630,23 @@ execstack_run_on_fresh_stack(PyObject *self, PyObject *args)
     return result;
 }
 
+// New() + SetContext(arg) + GetContext() on a stack that never runs.
 static PyObject *
-execstack_new_bad_context(PyObject *self, PyObject *arg)
+execstack_new_with_context(PyObject *self, PyObject *arg)
 {
-    PyUnstable_ExecStack *stack = PyUnstable_ExecStack_New(arg);
+    PyUnstable_ExecStack *stack = PyUnstable_ExecStack_New();
     if (stack == NULL) {
         return NULL;
     }
+    PyObject *result = NULL;
+    if (PyUnstable_ExecStack_SetContext(stack, arg == Py_None ? NULL : arg) == 0) {
+        result = PyUnstable_ExecStack_GetContext(stack);
+        if (result == NULL) {
+            result = Py_NewRef(Py_None);
+        }
+    }
     PyUnstable_ExecStack_Free(stack);
-    Py_RETURN_NONE;
+    return result;
 }
 
 static PyMethodDef test_methods[] = {
@@ -646,7 +654,7 @@ static PyMethodDef test_methods[] = {
     {"execstack_held_state", execstack_held_state, METH_O, NULL},
     {"execstack_root_misuse", execstack_root_misuse, METH_O, NULL},
     {"execstack_run_on_fresh_stack", execstack_run_on_fresh_stack, METH_VARARGS, NULL},
-    {"execstack_new_bad_context", execstack_new_bad_context, METH_O, NULL},
+    {"execstack_new_with_context", execstack_new_with_context, METH_O, NULL},
     {NULL},
 };
 

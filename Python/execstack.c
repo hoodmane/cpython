@@ -580,19 +580,9 @@ clear_state(PyUnstable_ExecStack *stack)
 /* Public API --------------------------------------------------------------- */
 
 PyUnstable_ExecStack *
-PyUnstable_ExecStack_New(PyObject *context)
+PyUnstable_ExecStack_New(void)
 {
-    if (context != NULL && !PyContext_CheckExact(context)) {
-        PyErr_Format(PyExc_TypeError,
-                     "expected a Context object or NULL, got %T", context);
-        return NULL;
-    }
-    PyUnstable_ExecStack *stack = execstack_alloc();
-    if (stack == NULL) {
-        return NULL;
-    }
-    stack->context = Py_XNewRef(context);
-    return stack;
+    return execstack_alloc();
 }
 
 PyUnstable_ExecStack *

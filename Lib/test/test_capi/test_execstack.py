@@ -105,11 +105,12 @@ class RootStackTests(unittest.TestCase):
         with self.assertRaises(KeyError):
             _testcapi.execstack_run_on_fresh_stack(cap, raiser)
 
-    def test_new_rejects_non_context(self):
+    def test_context_of_unstarted_stack(self):
+        self.assertIsNone(_testcapi.execstack_new_with_context(None))
+        ctx = contextvars.copy_context()
+        self.assertIs(_testcapi.execstack_new_with_context(ctx), ctx)
         with self.assertRaises(TypeError):
-            _testcapi.execstack_new_bad_context(42)
-        # A real context is fine.
-        _testcapi.execstack_new_bad_context(contextvars.copy_context())
+            _testcapi.execstack_new_with_context(42)
 
 
 @unittest.skipUnless(hasattr(_testcapi, 'Fiber'), 'needs ucontext fibers')
